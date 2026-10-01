@@ -1,0 +1,12 @@
+{
+    "name":  "projects/job-scout-508222/locations/us-central1/jobs/visa-parser-every-30m",
+    "oauthToken":  {
+                       "scope":  "https://www.googleapis.com/auth/cloud-platform",
+                       "serviceAccountEmail":  "visa-parser-scheduler@job-scout-508222.iam.gserviceaccount.com"
+                   },
+    "schedule":  "*/30 * * * *",
+    "httpMethod":  "POST",
+    "oidcToken":  null,
+    "uri":  "https://run.googleapis.com/v2/projects/job-scout-508222/locations/us-central1/jobs/visa-parser:run",
+    "timeZone":  "Etc/UTC"
+}

@@ -49,6 +49,12 @@ next-env.d.ts
 **/__pycache__/
 *.py[cod]
 **/*.egg-info/
+**/target/
+**/build-check*/
+**/BrowserProfile/
+**/GeneratedResumes/
+**/JobDescriptions/
+**/ScoringResume/
 **/.pytest_cache/
 **/.ruff_cache/
 **/node_modules/

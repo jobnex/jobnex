@@ -1,0 +1,13 @@
+FROM rust:1-bookworm AS parser
+WORKDIR /app
+COPY visa-parser ./visa-parser
+RUN cargo build --release --locked --manifest-path visa-parser/Cargo.toml
+
+FROM node:24-bookworm-slim
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY scripts/process-visa.mjs ./scripts/process-visa.mjs
+COPY --from=parser /app/visa-parser/target/release/visa-parser /usr/local/bin/visa-parser
+ENV VISA_PARSER_BIN=/usr/local/bin/visa-parser
+CMD ["node", "scripts/process-visa.mjs"]

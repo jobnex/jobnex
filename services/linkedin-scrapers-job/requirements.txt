@@ -1,0 +1,11 @@
+playwright==1.45.1
+pydantic==2.8.2
+rich==13.7.1
+httpx==0.27.0
+beautifulsoup4==4.12.3
+lxml==5.2.2
+python-jobspy
+requests
+psycopg2-binary
+python-dotenv
+pg8000>=1.31.0

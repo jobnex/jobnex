@@ -1,0 +1,12 @@
+{
+    "name":  "projects/job-scout-508222/locations/us-central1/jobs/cron-linkedin-scrapers-job",
+    "oauthToken":  {
+                       "scope":  "https://www.googleapis.com/auth/cloud-platform",
+                       "serviceAccountEmail":  "6707978391-compute@developer.gserviceaccount.com"
+                   },
+    "schedule":  "0 */2 * * *",
+    "httpMethod":  "POST",
+    "oidcToken":  null,
+    "uri":  "https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/job-scout-508222/jobs/linkedin-scrapers-job:run",
+    "timeZone":  "Etc/UTC"
+}

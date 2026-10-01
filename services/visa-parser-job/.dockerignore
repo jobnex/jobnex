@@ -1,0 +1,14 @@
+node_modules
+my-app
+my-app-v2
+incoming-my-app-2
+incoming-my-app-2b
+visa-parser/target
+visa-parser/build-check
+visa-parser/build-check-*
+.local-data
+.next
+.env*
+.git
+coverage
+npm-debug.log*

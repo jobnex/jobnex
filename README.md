@@ -7,6 +7,8 @@ Updated application imported from `my-app(4).7z` on September 30, 2026.
 - Root `app/`, `components/`, and `lib/`: App 4 frontend and Next.js server routes/actions.
 - `resume-agent-inspect/`: Python LangGraph resume tailoring, factuality checks, result storage, and tests. See its `START_HERE.md`.
 - `techjobs/`: company job scraper, registry, export logic, and tests. See its `README.md`.
+- `services/linkedin-scrapers-job/`: deployed LinkedIn role scraper source, Dockerfile, and sanitized Cloud Run/Scheduler references.
+- `services/visa-parser-job/`: deployed Rust visa classifier and Node queue worker, build inputs, schema references, and sanitized Cloud Run/Scheduler references.
 - `gcp-resume/`: existing deployment scripts and integration overlays. Read `IMPORT_NOTES.md`; these are historical references requiring review before execution.
 
 Backend source is included, but the App 4 frontend's missing resume queue integration still needs restoration. Cloud services remain unchanged.

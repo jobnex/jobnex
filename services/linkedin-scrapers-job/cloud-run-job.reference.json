@@ -1,0 +1,50 @@
+{
+    "spec":  {
+                 "template":  {
+                                  "metadata":  {
+                                                   "annotations":  {
+                                                                       "run.googleapis.com/client-name":  "gcloud",
+                                                                       "run.googleapis.com/client-version":  "585.0.0",
+                                                                       "run.googleapis.com/execution-environment":  "gen2"
+                                                                   }
+                                               },
+                                  "spec":  {
+                                               "parallelism":  2,
+                                               "taskCount":  10,
+                                               "template":  {
+                                                                "spec":  {
+                                                                             "containers":  [
+                                                                                                {
+                                                                                                    "env":  [
+                                                                                                                {
+                                                                                                                    "name":  "DATABASE_URL",
+                                                                                                                    "value":  "CONFIGURE_DATABASE_URL"
+                                                                                                                },
+                                                                                                                {
+                                                                                                                    "name":  "SCRAPE_HOURS",
+                                                                                                                    "value":  "2"
+                                                                                                                }
+                                                                                                            ],
+                                                                                                    "image":  "us-central1-docker.pkg.dev/job-scout-508222/cloud-run-source-deploy/linkedin-scrapers-job@sha256:c3bac34d89bc27546b56f216749282ec78e3041011e0188bccee88a634de8594",
+                                                                                                    "resources":  {
+                                                                                                                      "limits":  {
+                                                                                                                                     "cpu":  "1",
+                                                                                                                                     "memory":  "1Gi"
+                                                                                                                                 }
+                                                                                                                  }
+                                                                                                }
+                                                                                            ],
+                                                                             "maxRetries":  1,
+                                                                             "serviceAccountName":  "6707978391-compute@developer.gserviceaccount.com",
+                                                                             "timeoutSeconds":  "3600"
+                                                                         }
+                                                            }
+                                           }
+                              }
+             },
+    "metadata":  {
+                     "name":  "linkedin-scrapers-job"
+                 },
+    "apiVersion":  "run.googleapis.com/v1",
+    "kind":  "Job"
+}

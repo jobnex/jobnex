@@ -1,0 +1,52 @@
+{
+    "spec":  {
+                 "template":  {
+                                  "metadata":  {
+                                                   "annotations":  {
+                                                                       "run.googleapis.com/client-name":  "gcloud",
+                                                                       "run.googleapis.com/client-version":  "585.0.0",
+                                                                       "run.googleapis.com/execution-environment":  "gen2"
+                                                                   }
+                                               },
+                                  "spec":  {
+                                               "delayExecution":  false,
+                                               "taskCount":  1,
+                                               "template":  {
+                                                                "spec":  {
+                                                                             "containers":  [
+                                                                                                {
+                                                                                                    "env":  [
+                                                                                                                {
+                                                                                                                    "name":  "DATABASE_URL",
+                                                                                                                    "valueFrom":  {
+                                                                                                                                      "secretKeyRef":  {
+                                                                                                                                                           "key":  "1",
+                                                                                                                                                           "name":  "DB-secret"
+                                                                                                                                                       }
+                                                                                                                                  }
+                                                                                                                }
+                                                                                                            ],
+                                                                                                    "image":  "us-central1-docker.pkg.dev/job-scout-508222/job-repo/visa-parser@sha256:6f0b4367a387f1c203ad3f7f58d9cf0fb9a5113e68f508d6305abd56317c8a87",
+                                                                                                    "name":  "visa-parser-1",
+                                                                                                    "resources":  {
+                                                                                                                      "limits":  {
+                                                                                                                                     "cpu":  "1000m",
+                                                                                                                                     "memory":  "512Mi"
+                                                                                                                                 }
+                                                                                                                  }
+                                                                                                }
+                                                                                            ],
+                                                                             "maxRetries":  1,
+                                                                             "serviceAccountName":  "6707978391-compute@developer.gserviceaccount.com",
+                                                                             "timeoutSeconds":  "1800"
+                                                                         }
+                                                            }
+                                           }
+                              }
+             },
+    "metadata":  {
+                     "name":  "visa-parser"
+                 },
+    "apiVersion":  "run.googleapis.com/v1",
+    "kind":  "Job"
+}

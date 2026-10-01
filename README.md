@@ -13,6 +13,10 @@ Updated application imported from `my-app(4).7z` on September 30, 2026.
 
 Backend source is included, but the App 4 frontend's missing resume queue integration still needs restoration. Cloud services remain unchanged.
 
+## Database plan
+
+Read [the database review](docs/database/REVIEW.md) for existing storage, measured gaps, and implementation order. [inspect.sql](docs/database/inspect.sql) contains read-only queries for refreshing the aggregate checks. These documents do not apply migrations or implement the proposed changes.
+
 Install with `npm ci --ignore-scripts`. Copy `.env.example` to `.env.local` and fill in your development Neon, Neon Auth, and R2 configuration. Run `npm run dev` and open http://localhost:3000.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the team workflow, environment separation, and production integration gaps. This import does not deploy or change existing cloud services. Do not run database maintenance or seed scripts against production.

@@ -29,6 +29,7 @@ import {
   Save
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
+import { preferenceSnapshot, samePreferences } from "@/lib/preferences-confirmation";
 
 import { ResumeModal } from "@/components/ResumeModal";
 import { PdfPreviewModal, PdfPreviewDocument } from "@/components/PdfPreviewModal";
@@ -39,7 +40,7 @@ import { FlagUS } from "@/components/LocationDropdown";
 import { useResumeStore } from "@/store/useResumeStore";
 import { useCreditStore } from "@/store/useCreditStore";
 import { getPreferenceTagOptions } from "@/app/actions/recommendations";
-import { getUserJobPreferences, saveUserJobPreferences, saveResumeDetails } from "@/app/actions/preferences";
+import { getUserJobPreferences, confirmUserJobPreferences, saveResumeDetails } from "@/app/actions/preferences";
 import { ManageJobHuntFormSkeleton } from "@/components/ManageJobHuntSkeleton";
 import { useR2Storage } from "@/lib/hooks/useR2Storage";
 import {
@@ -753,6 +754,21 @@ export default function ManageJobHuntPage() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false);
+  const [confirmation, setConfirmation] = useState<{ isConfirmed: boolean; confirmedAt: string | null; baseline: Record<string, unknown> }>({ isConfirmed: false, confirmedAt: null, baseline: {} });
+  const currentPreferences = {
+    country, cities: cities.slice(0, 3), seniority,
+    jobTypes: jobTypes.length ? jobTypes : ["Full-time"],
+    experienceYears: Math.min(60, Math.max(0, parseInt(experience || "0", 10) || 0)),
+    salaryMin: salaryFrom ? Math.max(0, parseInt(salaryFrom, 10)) : null,
+    salaryMax: salaryTo ? Math.max(0, parseInt(salaryTo, 10)) : null,
+    currency: "USD", domains: Array.from(new Set(domains)), skills: Array.from(new Set(skills)),
+    selectedTemplateId, includeSummarySections, autofillFromResume: autofill,
+    resumeUploaded: Boolean(selectedFile || resumeUploaded),
+    resumeFileName: selectedFile ? selectedFile.name : resumeFileName || null,
+    resumeFileKey: resumeFileKey || null,
+  };
+  const isDirty = !confirmation.isConfirmed || !samePreferences(currentPreferences, confirmation.baseline);
+
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -781,6 +797,8 @@ export default function ManageJobHuntPage() {
         if (isMounted && res.success && res.data) {
           const d = res.data;
           const p = (d.preferences || {}) as Record<string, any>;
+          setConfirmation({ isConfirmed: p.isConfirmed === true, confirmedAt: p.confirmedAt ?? null,
+            baseline: p.lastConfirmedPreferences ?? preferenceSnapshot(p) });
           const r = (d.resumeDetails || {}) as Record<string, any>;
 
           if (p.country) setCountry(p.country);
@@ -802,19 +820,28 @@ export default function ManageJobHuntPage() {
           if (p.resumeFileName) setResumeFileName(p.resumeFileName);
           if (p.resumeFileKey) setResumeFileKey(p.resumeFileKey);
 
-          if (r.personalDetails) {
+          if (r.personalDetails || r.header || r.form) {
+            const personal = r.personalDetails || r.form || r.header;
             setPersonalDetails({
-              fullName: r.personalDetails.fullName || "",
-              email: r.personalDetails.email || "",
-              phoneNumber: r.personalDetails.phoneNumber || "",
-              location: r.personalDetails.location || "",
+              fullName: personal.fullName || personal.name || "",
+              email: personal.email || "",
+              phoneNumber: personal.phoneNumber || personal.phone || "",
+              location: personal.location || p.cities?.[0] || "",
             });
           }
           if (Array.isArray(r.educationHistory) && r.educationHistory.length > 0) {
             setEducations(r.educationHistory);
+          } else if (Array.isArray(r.form?.educations)) {
+            setEducations(r.form.educations);
+          } else if (typeof r.education === 'string' && r.education) {
+            setEducations([{ id: '1', college: r.education, degree: '', field: '', startDate: '', endDate: '', grade: '', maxGrade: '', gradeType: 'CGPA' }]);
           }
           if (Array.isArray(r.experienceHistory) && r.experienceHistory.length > 0) {
             setExperiences(r.experienceHistory);
+          } else if (Array.isArray(r.form?.experiences)) {
+            setExperiences(r.form.experiences);
+          } else if (Array.isArray(r.experience)) {
+            setExperiences(r.experience.map((entry: { company?: string; title?: string; bullets?: string[] }, index: number) => ({ id: String(index + 1), company: entry.company || '', role: entry.title || '', startDate: '', endDate: '', jobDescription: (entry.bullets || []).join('\n'), skills: [], domains: [], responsibilities: '' })));
           }
         }
       } catch (err) {
@@ -879,9 +906,33 @@ export default function ManageJobHuntPage() {
       });
 
       if (commitRes.success) {
+        try {
+          const response = await fetch("/api/job-hunt/profile", { method: "POST",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objectKey: res.objectKey, fileName: file.name }) });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Resume extraction failed");
+          const details = data.resume_details || {};
+          const preferences = data.preferences || {};
+          setConfirmation({ isConfirmed: false, confirmedAt: preferences.confirmedAt ?? null,
+            baseline: preferences.lastConfirmedPreferences ?? confirmation.baseline });
+          if (autofill) {
+            if (details.personalDetails) setPersonalDetails(details.personalDetails);
+            setEducations(details.educationHistory || []);
+            setExperiences(details.experienceHistory || []);
+            if (Array.isArray(preferences.skills)) setSkills(preferences.skills);
+            if (Array.isArray(preferences.domains)) setDomains(preferences.domains);
+            if (Array.isArray(preferences.cities)) setCities(preferences.cities);
+            if (preferences.country) setCountry(preferences.country);
+            if (preferences.seniority) setSeniority(preferences.seniority);
+            if (preferences.experienceYears != null) setExperience(String(preferences.experienceYears));
+          }
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Resume details extraction failed", { id: "resume-upload-toast" });
+          return;
+        }
         toast.success("Resume updated & previous version pruned from cloud!", { id: "resume-upload-toast" });
       } else {
-        toast.success("Resume uploaded directly to Cloudflare R2!", { id: "resume-upload-toast" });
+        toast.error(commitRes.error || "File uploaded, but database save failed. Retry upload.", { id: "resume-upload-toast" });
       }
     } else {
       toast.error(res.error || "Failed to upload resume to Cloudflare R2.", { id: "resume-upload-toast" });
@@ -1145,33 +1196,19 @@ ${educationSection}
       }
 
       // 3. Persist Preferences to PostgreSQL via Server Action
-      const payload = {
-        country,
-        cities: cities.slice(0, 3),
-        seniority,
-        jobTypes: jobTypes.length > 0 ? jobTypes : ["Full-time"],
-        experienceYears: Math.min(60, Math.max(0, parseInt(experience || "0", 10) || 0)),
-        salaryMin: parsedSalaryMin,
-        salaryMax: parsedSalaryMax,
-        currency: "USD",
-        domains: Array.from(new Set(domains)),
-        skills: Array.from(new Set(skills)),
-        selectedTemplateId,
-        includeSummarySections,
-        autofillFromResume: autofill,
-        resumeUploaded: Boolean(selectedFile || resumeUploaded),
-        resumeFileName: selectedFile ? selectedFile.name : (resumeFileName || null),
-        resumeFileKey: resumeFileKey || null,
-      };
+      const payload = currentPreferences;
 
-      const res = await saveUserJobPreferences(payload);
+      const res = await confirmUserJobPreferences(payload);
 
-      if (res.success) {
+      if (res.success && res.data) {
+        const confirmed = res.data.preferences || {};
+        setConfirmation({ isConfirmed: confirmed.isConfirmed === true, confirmedAt: confirmed.confirmedAt ?? null,
+          baseline: confirmed.lastConfirmedPreferences ?? preferenceSnapshot(payload) });
         if (selectedFile) {
           setResumeFileName(selectedFile.name);
         }
         const chosenTemplate = RESUME_TEMPLATES.find((t) => t.id === selectedTemplateId);
-        toast.success("Preferences saved successfully!", {
+        toast.success("Preferences confirmed!", {
           description: chosenTemplate 
             ? `Saved to database. Active template: "${chosenTemplate.name}".`
             : "Your preferences have been persisted to the database.",
@@ -1220,7 +1257,7 @@ ${educationSection}
               <button 
                 onClick={() => formRef.current?.requestSubmit()}
                 type="button"
-                disabled={isSaving}
+                disabled={isSaving || (!showDetailsForm && (!hasLoadedPreferences || !isDirty || isR2Uploading))}
                 className={
                   showDetailsForm 
                     ? "inline-flex items-center justify-center gap-2 p-[0.38rem_1rem] rounded-sm border-[1.5px] border-transparent bg-brand-lime text-[#111827] font-heading text-[0.85rem] font-semibold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:border-border-color hover:bg-white hover:text-[#111827] active:scale-[0.98] dark:hover:bg-white dark:hover:text-[#111827] dark:hover:border-black disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1240,7 +1277,7 @@ ${educationSection}
                 ) : (
                   <>
                     <Save className="w-4 h-4 shrink-0" />
-                    <span>Save Preferences</span>
+                    <span>Confirm Changes</span>
                   </>
                 )}
               </button>
@@ -1252,6 +1289,12 @@ ${educationSection}
       {!hasLoadedPreferences ? (
         <ManageJobHuntFormSkeleton />
       ) : (
+        <>
+        {!showDetailsForm && hasLoadedPreferences && (
+          <p role="status" className={isDirty ? "text-amber-600 text-sm font-semibold" : "text-green-600 text-sm font-semibold"}>
+            {isDirty ? "Unconfirmed changes" : "Preferences confirmed"}
+          </p>
+        )}
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
         
         {/* SECTION 1: Resume */}
@@ -2153,7 +2196,7 @@ ${educationSection}
           )}
           <button 
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || (!showDetailsForm && (!hasLoadedPreferences || !isDirty || isR2Uploading))}
             className={
               showDetailsForm 
                 ? "inline-flex items-center justify-center gap-2 p-[0.38rem_1.25rem] rounded-sm border-[1.5px] border-transparent bg-brand-lime text-[#111827] font-heading text-[0.85rem] font-semibold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:border-border-color hover:bg-white hover:text-[#111827] active:scale-[0.98] dark:hover:bg-white dark:hover:text-[#111827] dark:hover:border-black disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2173,12 +2216,13 @@ ${educationSection}
             ) : (
               <>
                 <Save className="w-4 h-4 shrink-0" />
-                <span>Save Preferences</span>
+                <span>Confirm Changes</span>
               </>
             )}
           </button>
         </div>
       </form>
+        </>
       )}
 
 

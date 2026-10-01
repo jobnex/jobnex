@@ -35,7 +35,7 @@ for key in ("RESUME_COMPILER_URL", "RESUME_COMPILER_SECRET"):
     lines = [line for line in lines if not line.startswith(key+"=")]
     lines.append(key+"="+values[key])
 env.write_text("\n".join(lines)+"\n",encoding="utf-8")
-cloud("run","deploy","job-hunt-profile","--region",REGION,"--image",f"{REGION}-docker.pkg.dev/{PROJECT}/job-hunt/job-hunt-profile:app4-r2-final-20261001",
+cloud("run","deploy","job-hunt-profile","--region",REGION,"--image",f"{REGION}-docker.pkg.dev/{PROJECT}/job-hunt/job-hunt-profile:confirmation-20261001",
       "--concurrency","4","--max","3","--min","0","--memory","1Gi","--quiet")
 (ROOT/"scratch/service-deployment.json").write_text(json.dumps({"project":PROJECT,"region":REGION,"compilerUrl":url,"compilerConcurrency":4,"profileConcurrency":4,"maxInstances":3},indent=2),encoding="utf-8")
 print("RESUME SERVICES DEPLOYED")

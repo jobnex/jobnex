@@ -6,6 +6,8 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { revalidatePath } from "next/cache";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { pendingPreferences, confirmedPreferences } from "@/lib/preferences-confirmation";
+import { preferenceWrite } from "@/lib/db/preferences-confirmation";
 
 const EducationEntrySchema = z.object({
   id: z.string().default(() => Math.random().toString(36).substring(2, 9)),
@@ -175,6 +177,14 @@ export async function getUserJobPreferences(): Promise<GetPreferencesResult> {
 export async function saveUserJobPreferences(
   input: unknown
 ): Promise<SavePreferencesResult> {
+  return persistPreferences(input, false);
+}
+
+export async function confirmUserJobPreferences(input: unknown): Promise<SavePreferencesResult> {
+  return persistPreferences(input, true);
+}
+
+async function persistPreferences(input: unknown, confirm: boolean): Promise<SavePreferencesResult> {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -256,7 +266,7 @@ export async function saveUserJobPreferences(
       .insert(userJobPreferences)
       .values({
         userId: user.id,
-        preferences: cleanPreferences,
+        preferences: confirm ? confirmedPreferences({}, cleanPreferences as Record<string, unknown>, now.toISOString()) : pendingPreferences({}, cleanPreferences as Record<string, unknown>),
         resumeDetails: {},
         activeResumeId,
         preferencesCreatedAt: now,
@@ -267,7 +277,7 @@ export async function saveUserJobPreferences(
       .onConflictDoUpdate({
         target: userJobPreferences.userId,
         set: {
-          preferences: cleanPreferences,
+          preferences: preferenceWrite(cleanPreferences as Record<string, unknown>, confirm ? now.toISOString() : undefined),
           activeResumeId: cleanPreferences.resumeFileKey 
             ? activeResumeId 
             : (cleanPreferences.resumeUploaded === false ? null : sql`user_job_preferences.active_resume_id`),

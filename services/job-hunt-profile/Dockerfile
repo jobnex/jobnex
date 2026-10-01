@@ -5,6 +5,7 @@ COPY service/requirements.txt service/requirements.txt
 RUN pip install --no-cache-dir -r service/requirements.txt
 COPY scripts/resume_to_json.py scripts/resume_json_to_preferences.py scripts/
 COPY service/main.py service/main.py
+COPY service/confirmation.py service/confirmation.py
 COPY service/test_main.py service/test_main.py
 RUN JOB_HUNT_SERVICE_SECRET=container-test-only python -m unittest service.test_main
 RUN useradd --create-home appuser

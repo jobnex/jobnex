@@ -14,6 +14,7 @@ import { userPrefResumes, userJobPreferences } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
+import { preferenceWrite } from "@/lib/db/preferences-confirmation";
 
 export type StorageCategory = "resume" | "avatar";
 
@@ -350,18 +351,11 @@ export async function commitResumeUpload({
       .limit(1);
 
     if (existingPref) {
-      const updatedPrefs = {
-        ...(existingPref.preferences as Record<string, any>),
-        resumeUploaded: true,
-        resumeFileName: cleanFileName,
-        resumeFileKey: objectKey,
-      };
-
       await db
         .update(userJobPreferences)
         .set({
           activeResumeId: savedResume.id,
-          preferences: updatedPrefs,
+          preferences: preferenceWrite({ resumeUploaded: true, resumeFileName: cleanFileName, resumeFileKey: objectKey }),
           updatedAt: now,
         })
         .where(eq(userJobPreferences.userId, user.id));
@@ -435,18 +429,11 @@ export async function deleteUserResume(): Promise<{ success: boolean; error?: st
       .limit(1);
 
     if (existingPref) {
-      const updatedPrefs = {
-        ...(existingPref.preferences as Record<string, any>),
-        resumeUploaded: false,
-        resumeFileName: null,
-        resumeFileKey: null,
-      };
-
       await db
         .update(userJobPreferences)
         .set({
           activeResumeId: null,
-          preferences: updatedPrefs,
+          preferences: preferenceWrite({ resumeUploaded: false, resumeFileName: null, resumeFileKey: null }),
           updatedAt: new Date(),
         })
         .where(eq(userJobPreferences.userId, user.id));
@@ -496,5 +483,4 @@ export async function getUserActiveResume(): Promise<{
     };
   }
 }
-
 

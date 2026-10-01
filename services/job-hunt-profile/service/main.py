@@ -17,6 +17,7 @@ from fastapi import FastAPI, File, Header, HTTPException, UploadFile, Request
 from pydantic import BaseModel
 from psycopg.types.json import Jsonb
 from dotenv import load_dotenv
+from service.confirmation import pending_preferences, PENDING_UPDATE
 
 sys.path.insert(0, os.environ.get("RESUME_SCRIPTS_DIR") or str(Path(__file__).resolve().parents[1]))
 from scripts.resume_json_to_preferences import apply_overrides, build_preferences
@@ -89,21 +90,21 @@ def save_profile(
         details = details | update.resume_details
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         conn.execute(
-            """INSERT INTO user_job_preferences
+            f"""INSERT INTO user_job_preferences
                (user_id, preferences, resume_details, preferences_created_at, preferences_updated_at,
                 resume_details_created_at, resume_details_updated_at)
                VALUES (%s, %s, %s, CASE WHEN %s THEN now() END, CASE WHEN %s THEN now() END,
                        CASE WHEN %s THEN now() END, CASE WHEN %s THEN now() END)
                ON CONFLICT (user_id) DO UPDATE SET
-                 preferences = EXCLUDED.preferences, resume_details = EXCLUDED.resume_details,
+                 preferences = {PENDING_UPDATE}, resume_details = EXCLUDED.resume_details,
                  preferences_updated_at = CASE WHEN %s THEN now() ELSE user_job_preferences.preferences_updated_at END,
                  resume_details_updated_at = CASE WHEN %s THEN now() ELSE user_job_preferences.resume_details_updated_at END,
                  updated_at = now()""",
-            (user_id, Jsonb(preferences), Jsonb(details), update.preferences is not None,
+            (user_id, Jsonb(pending_preferences({}, preferences)), Jsonb(details), update.preferences is not None,
              update.preferences is not None, update.resume_details is not None,
              update.resume_details is not None, update.preferences is not None, update.resume_details is not None),
         )
-    return {"preferences": preferences, "resume_details": details}
+    return read_profile(user_id)
 
 
 @app.post("/profile/resume")
@@ -137,16 +138,16 @@ def upload_resume(
     preferences["resumeUploaded"] = True
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         conn.execute(
-            """INSERT INTO user_job_preferences
+            f"""INSERT INTO user_job_preferences
                (user_id, preferences, resume_details, preferences_created_at, preferences_updated_at,
                 resume_details_created_at, resume_details_updated_at)
                VALUES (%s, %s, %s, now(), now(), now(), now())
-               ON CONFLICT (user_id) DO UPDATE SET preferences = EXCLUDED.preferences,
+               ON CONFLICT (user_id) DO UPDATE SET preferences = {PENDING_UPDATE},
                  resume_details = EXCLUDED.resume_details, preferences_updated_at = now(),
                  resume_details_updated_at = now(), updated_at = now()""",
-            (user_id, Jsonb(preferences), Jsonb(details)),
+            (user_id, Jsonb(pending_preferences({}, preferences)), Jsonb(details)),
         )
-    return {"preferences": preferences, "resume_details": details}
+    return read_profile(user_id)
 
 
 @app.post("/profile/resume-from-r2")
@@ -226,9 +227,9 @@ def import_r2_resume(user: str, data: dict):
         active = conn.execute("SELECT file_key FROM user_pref_resumes WHERE user_id=%s FOR UPDATE", (user,)).fetchone()
         if not active or active[0] != data["objectKey"]:
             raise HTTPException(409, "Resume replaced during extraction; retry latest upload")
-        conn.execute("""INSERT INTO user_job_preferences(user_id,preferences,resume_details,active_resume_id,resume_details_created_at,resume_details_updated_at)
+        conn.execute(f"""INSERT INTO user_job_preferences(user_id,preferences,resume_details,active_resume_id,resume_details_created_at,resume_details_updated_at)
             VALUES(%s,%s,%s,(SELECT id FROM user_pref_resumes WHERE user_id=%s),now(),now())
-            ON CONFLICT(user_id) DO UPDATE SET preferences=EXCLUDED.preferences,resume_details=EXCLUDED.resume_details,
+            ON CONFLICT(user_id) DO UPDATE SET preferences={PENDING_UPDATE},resume_details=EXCLUDED.resume_details,
             active_resume_id=EXCLUDED.active_resume_id,resume_details_created_at=COALESCE(user_job_preferences.resume_details_created_at,now()),resume_details_updated_at=now(),updated_at=now()""",
-            (user, Jsonb(preferences), Jsonb(details), user))
-    return result
+            (user, Jsonb(pending_preferences({}, preferences)), Jsonb(details), user))
+    return read_profile(user)

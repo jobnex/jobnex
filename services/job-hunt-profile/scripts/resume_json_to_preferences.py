@@ -100,7 +100,7 @@ def build_preferences(text: str, skill_names: tuple[str, ...] = SKILLS) -> dict:
     seniority = None if years is None else "Entry-level" if years <= 2 else "Mid-level" if years <= 5 else "Senior-level"
     country = "us" if cities else None
     return {
-        "cities": cities,
+        "cities": cities[:3],
         "skills": skills,
         "country": country,
         "domains": roles,
@@ -143,6 +143,8 @@ def apply_overrides(preferences: dict, overrides: dict) -> dict:
             raise ValueError(f"{field} must be a nonnegative integer or null")
     if result["salaryMin"] is not None and result["salaryMax"] is not None and result["salaryMin"] > result["salaryMax"]:
         raise ValueError("salaryMin cannot exceed salaryMax")
+    if len(result["cities"]) > 3:
+        raise ValueError("cities allows at most 3 entries")
     if "country" in overrides and "currency" not in overrides:
         result["currency"] = "USD" if result["country"] == "us" else None
     return result

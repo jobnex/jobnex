@@ -33,6 +33,9 @@ export interface PersonalDetails {
 }
 
 export interface JobPreferencesData {
+  isConfirmed?: boolean;
+  confirmedAt?: string | null;
+  lastConfirmedPreferences?: Record<string, unknown> | null;
   country?: string;
   cities?: string[];
   seniority?: string;

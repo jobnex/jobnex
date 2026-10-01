@@ -11,9 +11,20 @@ from docx import Document
 from fastapi import HTTPException
 
 from service.main import authenticated_user, convert, build_preferences, apply_overrides, health
+from service.confirmation import pending_preferences
 
 
 class AuthenticationTest(unittest.TestCase):
+    def test_confirmation_baseline_and_timestamp_survive_automated_updates(self):
+        baseline = {"skills": ["SQL"]}
+        existing = {"skills": ["SQL"], "isConfirmed": True, "confirmedAt": "2026-09-01", "lastConfirmedPreferences": baseline}
+        result = pending_preferences(existing, {"skills": ["Python"], "isConfirmed": True, "confirmedAt": "bad", "lastConfirmedPreferences": {}, "cities": ["A", "B", "C", "D"]})
+        self.assertFalse(result["isConfirmed"])
+        self.assertEqual(result["confirmedAt"], existing["confirmedAt"])
+        self.assertEqual(result["lastConfirmedPreferences"], baseline)
+        self.assertEqual(result["cities"], ["A", "B", "C"])
+        self.assertEqual(pending_preferences({"skills": ["SQL"], "lastConfirmedPreferences": None}, {"skills": ["Python"]})["lastConfirmedPreferences"], baseline)
+
     def test_signed_user_cannot_be_changed_or_replayed_later(self):
         timestamp = str(int(time.time()))
         signature = hmac.new(

@@ -213,6 +213,10 @@ export async function saveUserJobPreferences(
       resumeFileKey: val.resumeFileKey ?? null,
     };
 
+    if (cleanPreferences.resumeFileKey && !cleanPreferences.resumeFileKey.startsWith(`user_pref_resumes/${user.id}/`)) {
+      return { success: false, error: "Invalid resume owner" };
+    }
+
     const now = new Date();
 
     // 1. Ensure normalized user_pref_resumes table is synchronized if file key is present
@@ -349,7 +353,7 @@ export async function saveResumeDetails(
       .onConflictDoUpdate({
         target: userJobPreferences.userId,
         set: {
-          resumeDetails: cleanResumeDetails,
+          resumeDetails: sql`${userJobPreferences.resumeDetails} || ${JSON.stringify(cleanResumeDetails)}::jsonb`,
           resumeDetailsCreatedAt: sql`COALESCE(${userJobPreferences.resumeDetailsCreatedAt}, ${now})`,
           resumeDetailsUpdatedAt: now,
           updatedAt: now,

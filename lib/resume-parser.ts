@@ -188,8 +188,8 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
         const entryText = line.replace(/^###\s+/, "").replace(/^\*\*|\*\*$/g, "");
         const parts = entryText.split("|").map((p) => p.trim());
         
-        let role = parts[0] || "";
-        let company = parts[1] || "";
+        const role = parts[0] || "";
+        const company = parts[1] || "";
         let location = parts[2] || "";
         let duration = parts[3] || "";
 
@@ -237,7 +237,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
       // Lines: **School** — Location OR School | Location
       if (line.startsWith("**") && (line.includes("—") || line.includes("-") || line.includes("|"))) {
         if (currentEduItem) education.push(currentEduItem);
-        const cleaned = line.replace(/^\*\*|\*\*$/g, "");
+        const cleaned = line.replace(/\*\*/g, "");
         const parts = cleaned.split(/—|-|\|/).map((p) => p.trim());
         currentEduItem = {
           institution: parts[0] || "",
@@ -246,7 +246,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
           duration: "",
         };
       } else if (line.startsWith("*") && line.includes("|")) {
-        const cleaned = line.replace(/^\*|\*$/g, "");
+        const cleaned = line.replace(/\*/g, "");
         const parts = cleaned.split("|").map((p) => p.trim());
         if (currentEduItem) {
           currentEduItem.degree = parts[0] || "";
@@ -254,7 +254,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
         }
       } else if (line.toLowerCase().includes("coursework") || line.toLowerCase().includes("gpa")) {
         if (currentEduItem) {
-          currentEduItem.details = line.replace(/^\*\*|\*\*$/g, "").trim();
+          currentEduItem.details = line.replace(/\*\*/g, "").trim();
         }
       } else if (line && !currentEduItem) {
         currentEduItem = {

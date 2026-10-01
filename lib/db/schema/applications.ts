@@ -65,3 +65,18 @@ export const matchResults = pgTable("match_results", {
   matchedSkills: jsonb("matched_skills").default([]).notNull(),
   computedAt: timestamp("computed_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 });
+
+export const userJobResumes = pgTable("user_job_resumes", {
+  id: uuid("id").defaultRandom().primaryKey().notNull(),
+  userId: uuid("user_id").notNull(),
+  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }).notNull(),
+  markdown: text("markdown").default("").notNull(),
+  r2ObjectKey: text("r2_object_key"),
+  templateId: text("template_id").notNull(),
+  theme: integer("theme").notNull(),
+  status: text("status").default("draft").notNull(),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  exportedAt: timestamp("exported_at", { withTimezone: true }),
+}, table => [uniqueIndex("user_job_resumes_user_id_job_id_key").on(table.userId, table.jobId)]);

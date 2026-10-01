@@ -1,0 +1,10 @@
+[package]
+name = "resume-builder-rs"
+version = "0.1.0"
+edition = "2021"
+default-run = "resume-builder-rs"
+
+[dependencies]
+regex = "1.13.1"
+serde_json = "1.0"
+thiserror = "1.0"

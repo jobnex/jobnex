@@ -42,3 +42,25 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Backend environments and runtime files
+**/.venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+**/*.egg-info/
+**/.pytest_cache/
+**/.ruff_cache/
+**/node_modules/
+**/.unlazy/
+**/output/
+**/outputs/
+/gcp-resume/build-context/
+/gcp-resume/*.json
+/techjobs/.techjobs_seen*
+/techjobs/*.csv
+/techjobs/*.json
+/techjobs/*.jsonl
+/techjobs/*.html
+**/GATES.md
+**/*-GATES.md

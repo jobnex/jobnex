@@ -1,0 +1,419 @@
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from collections.abc import Callable
+from typing import Any, Literal, Protocol, TypeVar
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+from pydantic import BaseModel, TypeAdapter, ValidationError
+
+from .cache import stable_json
+from .models import PipelineConfig, TokenUsage
+
+OutputT = TypeVar("OutputT", bound=BaseModel)
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+MODEL_PRICES = {
+    "google/gemini-3.8-flash": (0.75, 3.75, 0.075),
+    "openai/gpt-5.6-terra": (2.0, 12.0, 0.2),
+}
+MAX_OUTPUT_TOKENS = 16_000
+
+
+def configure_langsmith_env() -> None:
+    """Finish wiring LangSmith env vars once RESUME_ENABLE_LANGSMITH=1.
+
+    Shared by cli.py and portal.py so both entry points require the same
+    API key and apply the same content-visibility default — do not
+    duplicate this logic at either call site.
+    """
+    if os.getenv("RESUME_ENABLE_LANGSMITH") != "1":
+        return
+    if not os.getenv("LANGSMITH_API_KEY"):
+        raise ValueError("LANGSMITH_API_KEY is required when RESUME_ENABLE_LANGSMITH=1")
+    os.environ["LANGSMITH_TRACING"] = "true"
+    if os.getenv("RESUME_LANGSMITH_ALLOW_CONTENT") != "1":
+        os.environ["LANGSMITH_HIDE_INPUTS"] = "true"
+        os.environ["LANGSMITH_HIDE_OUTPUTS"] = "true"
+    else:
+        os.environ.pop("LANGSMITH_HIDE_INPUTS", None)
+        os.environ.pop("LANGSMITH_HIDE_OUTPUTS", None)
+
+
+class ModelOutputError(RuntimeError):
+    pass
+
+
+class OutputTokenLimitError(ModelOutputError):
+    """A truncated response, including billable usage from the failed attempt."""
+
+    def __init__(self, message: str, usage: TokenUsage) -> None:
+        super().__init__(message)
+        self.usage = usage
+
+
+class StructuredLLM(Protocol):
+    def complete(
+        self,
+        *,
+        stage: str,
+        model: str,
+        output_type: type[OutputT],
+        system: str,
+        payload: dict[str, Any],
+        max_tokens: int,
+        effort: Effort | None = None,
+    ) -> tuple[OutputT, TokenUsage]: ...
+
+
+def estimated_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int,
+    cache_write_tokens: int,
+) -> float:
+    input_rate, output_rate, cache_read_rate = MODEL_PRICES.get(model, (0.0, 0.0, 0.0))
+    dollars = (
+        (input_tokens - cache_read_tokens) * input_rate
+        + cache_read_tokens * cache_read_rate
+        + cache_write_tokens * input_rate
+        + output_tokens * output_rate
+    ) / 1_000_000
+    return round(dollars, 10)
+
+
+def langsmith_usage(usage: TokenUsage) -> dict[str, Any]:
+    """Convert OpenRouter usage into LangSmith's cost-tracking schema."""
+    input_rate, output_rate, cache_read_rate = MODEL_PRICES.get(usage.model, (0.0, 0.0, 0.0))
+    cache_read_cost = usage.cache_read_tokens * cache_read_rate / 1_000_000
+    input_cost = (
+        (usage.input_tokens - usage.cache_read_tokens) * input_rate
+        + usage.cache_write_tokens * input_rate
+    ) / 1_000_000
+    details = {"cache_read": usage.cache_read_tokens} if usage.cache_read_tokens else {}
+    if usage.cache_write_tokens:
+        details["cache_creation"] = usage.cache_write_tokens
+    calculated_total = input_cost + cache_read_cost + usage.output_tokens * output_rate / 1_000_000
+    multiplier = (
+        usage.provider_cost_usd / calculated_total
+        if calculated_total and usage.provider_cost_usd is not None
+        else 1.0
+    )
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "total_tokens": usage.input_tokens + usage.output_tokens,
+        "input_token_details": details,
+        "input_cost": round((input_cost + cache_read_cost) * multiplier, 10),
+        "input_cost_details": {"cache_read": round(cache_read_cost * multiplier, 10)},
+        "output_cost": round(usage.output_tokens * output_rate * multiplier / 1_000_000, 10),
+    }
+
+
+def _field(value: Any, name: str, default: Any = None) -> Any:
+    return value.get(name, default) if isinstance(value, dict) else getattr(value, name, default)
+
+
+class _InlineRateLimitError(Exception):
+    """OpenRouter surfaces an upstream rate limit inline, inside an
+    otherwise-200 response's choices[0].error — not as an HTTPError status.
+    _request()'s existing HTTP-429 retry/backoff logic (Retry-After header,
+    exponential fallback, config.transient_retries budget) already handles
+    this exact failure mode correctly when it arrives as a real HTTP error;
+    this synthetic exception lets the same loop treat the inline shape
+    identically instead of needing a second, parallel retry mechanism.
+    Confirmed live: google/gemini-3.8-flash returned a 200 response with
+    finish_reason="error", choices[0].error.code=429, and
+    error.metadata.error_type="rate_limit_exceeded" — a partial completion
+    and reasoning trace had already streamed before the cutoff."""
+
+
+def inline_rate_limit(response: Any) -> _InlineRateLimitError | None:
+    choices = _field(response, "choices", []) or []
+    if not choices:
+        return None
+    error = _field(choices[0], "error", None)
+    if not error:
+        return None
+    code = _field(error, "code", None)
+    error_type = _field(_field(error, "metadata", {}) or {}, "error_type", "")
+    if code != 429 and error_type != "rate_limit_exceeded":
+        return None
+    message = _field(error, "message", "rate-limited upstream")
+    return _InlineRateLimitError(message)
+
+
+Transport = Callable[[str, str, dict[str, Any], float], dict[str, Any]]
+
+
+class OpenAICompatibleClient:
+    """Minimal client for OpenRouter's OpenAI-compatible API."""
+
+    def __init__(self, config: PipelineConfig, transport: Transport | None = None) -> None:
+        self.config = config
+        self.transport = transport or self._post_json
+        self.trace_enabled = os.getenv("RESUME_ENABLE_LANGSMITH") == "1"
+
+    def complete(
+        self,
+        *,
+        stage: str,
+        model: str,
+        output_type: type[OutputT],
+        system: str,
+        payload: dict[str, Any],
+        max_tokens: int,
+        effort: Effort | None = None,
+    ) -> tuple[OutputT, TokenUsage]:
+        kwargs = {
+            "stage": stage,
+            "model": model,
+            "output_type": output_type,
+            "system": system,
+            "payload": payload,
+            "max_tokens": max_tokens,
+            "effort": effort,
+        }
+        if not self.trace_enabled:
+            return self._complete_with_length_retry(**kwargs)
+        from langsmith import traceable
+
+        return traceable(
+            name=f"resume.{stage}",
+            run_type="llm",
+            metadata={
+                "ls_provider": "openrouter",
+                "ls_model_name": model,
+                "resume_stage": stage,
+            },
+            tags=["resume-tailoring", stage],
+        )(
+            self._complete_with_length_retry
+        )(**kwargs)
+
+    def _complete_with_length_retry(
+        self,
+        *,
+        stage: str,
+        model: str,
+        output_type: type[OutputT],
+        system: str,
+        payload: dict[str, Any],
+        max_tokens: int,
+        effort: Effort | None = None,
+    ) -> tuple[OutputT, TokenUsage]:
+        if not 0 < max_tokens <= MAX_OUTPUT_TOKENS:
+            raise ValueError(f"max_tokens must be between 1 and {MAX_OUTPUT_TOKENS}")
+        prior_usage: list[TokenUsage] = []
+        for attempt in range(3):
+            try:
+                value, usage = self._complete(
+                    stage=stage,
+                    model=model,
+                    output_type=output_type,
+                    system=system,
+                    payload=payload,
+                    max_tokens=max_tokens,
+                    effort=effort,
+                )
+            except OutputTokenLimitError as error:
+                prior_usage.append(error.usage)
+                if attempt == 2 or max_tokens == MAX_OUTPUT_TOKENS:
+                    raise
+                max_tokens = min(max_tokens * 2, MAX_OUTPUT_TOKENS)
+            else:
+                # Include paid, truncated attempts in the successful stage's audit totals.
+                fields = (
+                    "input_tokens",
+                    "output_tokens",
+                    "cache_read_tokens",
+                    "cache_write_tokens",
+                    "estimated_cost_usd",
+                )
+                records = [*prior_usage, usage]
+                updates = {field: sum(getattr(item, field) for item in records) for field in fields}
+                updates["provider_cost_usd"] = (
+                    sum(item.provider_cost_usd for item in records)
+                    if all(item.provider_cost_usd is not None for item in records)
+                    else None
+                )
+                total_usage = usage.model_copy(update=updates)
+                self._record_langsmith_usage(total_usage)
+                return value, total_usage
+        raise AssertionError("unreachable")
+
+    @staticmethod
+    def _provider_settings() -> tuple[str, str]:
+        key = os.getenv("OPENROUTER_API_KEY", "")
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        if not key:
+            raise ValueError("OPENROUTER_API_KEY is required")
+        if not base_url:
+            raise ValueError("OPENROUTER_BASE_URL is required")
+        return key, base_url.rstrip("/") + "/chat/completions"
+
+    def _complete(
+        self,
+        *,
+        stage: str,
+        model: str,
+        output_type: type[OutputT],
+        system: str,
+        payload: dict[str, Any],
+        max_tokens: int,
+        effort: Effort | None = None,
+    ) -> tuple[OutputT, TokenUsage]:
+        print(f"[{stage}] {model}", file=sys.stderr, flush=True)
+        api_key, endpoint = self._provider_settings()
+        schema = TypeAdapter(output_type).json_schema()
+        body = {
+            "model": model,
+            "temperature": 0,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        f"{system}\n\n"
+                        "Return exactly one JSON object conforming to this schema:\n"
+                        f"{stable_json(schema)}"
+                    ),
+                },
+                {"role": "user", "content": stable_json(payload)},
+            ],
+        }
+        if effort:
+            body["reasoning"] = {"effort": effort, "exclude": True}
+        response = self._request(
+            endpoint,
+            api_key,
+            body,
+        )
+        raw_usage = _field(response, "usage", {})
+        input_tokens = int(_field(raw_usage, "prompt_tokens", 0) or 0)
+        output_tokens = int(_field(raw_usage, "completion_tokens", 0) or 0)
+        prompt_details = _field(raw_usage, "prompt_tokens_details", {})
+        cache_read = int(_field(prompt_details, "cached_tokens", 0) or 0)
+        cache_write = int(_field(prompt_details, "cache_write_tokens", 0) or 0)
+        raw_cost = _field(raw_usage, "cost", None)
+        try:
+            provider_cost = float(raw_cost) if raw_cost is not None else None
+        except (TypeError, ValueError):
+            provider_cost = None
+        usage = TokenUsage(
+            stage=stage,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+            estimated_cost_usd=provider_cost
+            if provider_cost is not None
+            else estimated_cost(model, input_tokens, output_tokens, cache_read, cache_write),
+            provider_cost_usd=provider_cost,
+            request_id=str(_field(response, "id", "")),
+        )
+        self._record_langsmith_usage(usage)
+        choices = _field(response, "choices", [])
+        if len(choices) != 1:
+            raise ModelOutputError("expected exactly one completion choice")
+        choice = choices[0]
+        finish_reason = _field(choice, "finish_reason", "")
+        if finish_reason in {"length", "max_tokens"}:
+            details = _field(raw_usage, "completion_tokens_details", {})
+            reasoning_tokens = _field(details, "reasoning_tokens", "unknown")
+            raise OutputTokenLimitError(
+                f"{stage} ({model}) exhausted max_tokens={body['max_tokens']}; "
+                f"completion_tokens={output_tokens}, reasoning_tokens={reasoning_tokens}, "
+                f"request_id={usage.request_id}",
+                usage,
+            )
+        if finish_reason != "stop":
+            raise ModelOutputError(f"{stage} ({model}): unexpected stop_reason: {finish_reason}")
+        text = _field(_field(choice, "message", {}), "content", "")
+        if not isinstance(text, str) or not text:
+            raise ModelOutputError("expected exactly one structured text block")
+        try:
+            value = output_type.model_validate_json(text)
+        except (json.JSONDecodeError, ValidationError) as error:
+            raise ModelOutputError("model returned invalid structured output") from error
+
+        return value, usage
+
+    def _record_langsmith_usage(self, usage: TokenUsage) -> None:
+        if not self.trace_enabled:
+            return
+        from langsmith import get_current_run_tree
+
+        run = get_current_run_tree()
+        if run is not None:
+            run.set(usage_metadata=langsmith_usage(usage))
+
+    def _request(self, endpoint: str, api_key: str, body: dict[str, Any]) -> dict[str, Any]:
+        last_error: Exception | None = None
+        retry_seconds_remaining = 30.0
+        for attempt in range(self.config.transient_retries + 1):
+            try:
+                response = self.transport(endpoint, api_key, body, self.config.timeout_seconds)
+                inline_error = inline_rate_limit(response)
+                if inline_error is not None:
+                    raise inline_error
+                return response
+            except (HTTPError, URLError, TimeoutError, _InlineRateLimitError) as error:
+                last_error = error
+                is_rate_limit = isinstance(error, _InlineRateLimitError) or (
+                    isinstance(error, HTTPError) and error.code == 429
+                )
+                retryable = not isinstance(error, HTTPError) or error.code in {
+                    408,
+                    409,
+                    429,
+                    500,
+                    502,
+                    503,
+                    504,
+                }
+                if not retryable or attempt == self.config.transient_retries:
+                    break
+                retry_after = (
+                    error.headers.get("Retry-After", "") if isinstance(error, HTTPError) else ""
+                )
+                try:
+                    delay = float(retry_after)
+                except ValueError:
+                    delay = 5.0 * (2**attempt) if is_rate_limit else 0.5 * (2**attempt)
+                delay = min(max(delay, 0.0), retry_seconds_remaining)
+                if retry_seconds_remaining <= 0:
+                    break
+                if delay:
+                    time.sleep(delay)
+                    retry_seconds_remaining -= delay
+        if isinstance(last_error, _InlineRateLimitError):
+            raise RuntimeError(f"model provider request failed ({last_error})") from last_error
+        if isinstance(last_error, HTTPError):
+            message = f"model provider request failed (HTTP {last_error.code})"
+            raise RuntimeError(message) from last_error
+        if isinstance(last_error, TimeoutError):
+            raise RuntimeError("model provider request timed out") from last_error
+        raise RuntimeError("model provider network request failed") from last_error
+
+    @staticmethod
+    def _post_json(
+        endpoint: str, api_key: str, body: dict[str, Any], timeout_seconds: float
+    ) -> dict[str, Any]:
+        request = Request(
+            endpoint,
+            data=stable_json(body).encode("utf-8"),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+            value = json.loads(response.read().decode("utf-8"))
+        if not isinstance(value, dict):
+            raise RuntimeError("model provider returned a non-object response")
+        return value

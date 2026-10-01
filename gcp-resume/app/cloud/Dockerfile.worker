@@ -1,0 +1,21 @@
+FROM node:24-bookworm-slim AS node-build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM python:3.12-slim-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 && rm -rf /var/lib/apt/lists/*
+COPY --from=node-build /usr/local/bin/node /usr/local/bin/node
+WORKDIR /app
+COPY --from=node-build /app/node_modules ./node_modules
+COPY package.json tsconfig.json ./
+COPY lib/resume-generation.ts lib/resume-worker.ts ./lib/
+COPY scripts/resume-worker.ts ./scripts/
+COPY service/resume-agent/requirements.txt ./service/resume-agent/requirements.txt
+RUN python -m venv /opt/resume-venv && /opt/resume-venv/bin/pip install --no-cache-dir -r service/resume-agent/requirements.txt
+COPY service/resume-agent/src ./service/resume-agent/src
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 RESUME_PIPELINE_ROOT=/app/service/resume-agent RESUME_PYTHON=/opt/resume-venv/bin/python PORT=8080
+RUN useradd --create-home appuser
+USER appuser
+EXPOSE 8080
+CMD ["node","node_modules/tsx/dist/cli.mjs","scripts/resume-worker.ts"]

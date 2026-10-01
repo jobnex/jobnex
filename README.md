@@ -2,6 +2,15 @@
 
 Updated application imported from `my-app(4).7z` on September 30, 2026.
 
+## Repository components
+
+- Root `app/`, `components/`, and `lib/`: App 4 frontend and Next.js server routes/actions.
+- `resume-agent-inspect/`: Python LangGraph resume tailoring, factuality checks, result storage, and tests. See its `START_HERE.md`.
+- `techjobs/`: company job scraper, registry, export logic, and tests. See its `README.md`.
+- `gcp-resume/`: existing deployment scripts and integration overlays. Read `IMPORT_NOTES.md`; these are historical references requiring review before execution.
+
+Backend source is included, but the App 4 frontend's missing resume queue integration still needs restoration. Cloud services remain unchanged.
+
 Install with `npm ci --ignore-scripts`. Copy `.env.example` to `.env.local` and fill in your development Neon, Neon Auth, and R2 configuration. Run `npm run dev` and open http://localhost:3000.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the team workflow, environment separation, and production integration gaps. This import does not deploy or change existing cloud services. Do not run database maintenance or seed scripts against production.

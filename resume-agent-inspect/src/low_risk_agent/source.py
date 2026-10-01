@@ -1,0 +1,682 @@
+from __future__ import annotations
+
+import hashlib
+import re
+import unicodedata
+from dataclasses import dataclass
+
+from .models import (
+    AmbiguousBlock,
+    FallbackFacts,
+    ResumeSource,
+    SourceFact,
+    SourceGroup,
+)
+
+SECTION_NAMES = {
+    "professional summary": "summary",
+    "summary": "summary",
+    "profile": "summary",
+    "executive profile": "summary",
+    "professional profile": "summary",
+    "objective": "summary",
+    "career objective": "summary",
+    "experience": "experience",
+    "professional experience": "experience",
+    "work experience": "experience",
+    "employment history": "experience",
+    "skills": "skills",
+    "technical skills": "skills",
+    "core competencies": "skills",
+    "relevant knowledge areas": "skills",
+    "knowledge areas": "skills",
+    "areas of expertise": "skills",
+    "projects": "projects",
+    "selected projects": "projects",
+    "technical projects": "projects",
+    "personal projects": "projects",
+    "academic projects": "projects",
+    "key projects": "projects",
+    "education": "education",
+    "education & training": "education",
+    "education and training": "education",
+    "coursework": "education",
+    "certifications": "preserved",
+    "certifications & licenses": "preserved",
+    "licenses & certifications": "preserved",
+    "awards": "preserved",
+    "honors & awards": "preserved",
+    "publications": "preserved",
+    "languages": "preserved",
+    "additional information": "preserved",
+    "volunteering": "preserved",
+    "volunteer experience": "preserved",
+    "extracurricular": "preserved",
+    "extracurricular activities": "preserved",
+    "interests": "preserved",
+    "affiliations": "preserved",
+    "professional affiliations": "preserved",
+}
+BULLET = re.compile(r"^(?:[-\u2013\u2014*\u2022\u2023\u25aa\u25e6\u25cf]|\d+[.)])\s+")
+HORIZONTAL_RULE = re.compile(r"^(?:[-*_]\s*){3,}$")
+METRIC = re.compile(
+    r"(?<![\w.])(?:[$\u00a3\u20ac]\s*)?\d[\d,]*(?:\.\d+)?"
+    r"(?:\s?(?:%|x|X|k|K|m|M|ms|s|sec|secs|seconds?|minutes?|hours?|days?|weeks?|months?|years?))?"
+)
+CITATION = re.compile(r"\[cite:\s*\d+\]", re.IGNORECASE)
+DATE = re.compile(
+    r"\b(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"\.?\s+)?(?:19|20)\d{2}\s*(?:[-\u2013\u2014]\s*(?:Present|Current|"
+    r"(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"\.?\s+)?(?:19|20)\d{2}))?\b",
+    re.IGNORECASE,
+)
+LEAD_VERBS = re.compile(
+    r"^(?:architected|directed|headed|led|managed|owned|spearheaded|supervised)\b",
+    re.IGNORECASE,
+)
+CONTRIBUTOR_VERBS = re.compile(
+    r"^(?:analyzed|automated|built|created|delivered|designed|developed|implemented|improved|"
+    r"launched|maintained|optimized|reduced|shipped|tested|wrote)\b",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedLine:
+    text: str
+    start: int
+    end: int
+    is_bullet: bool
+    indent: int = 0
+
+
+def normalize_document(value: str) -> str:
+    value = unicodedata.normalize("NFC", value).replace("\r\n", "\n").replace("\r", "\n")
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _parsed_lines(text: str) -> list[ParsedLine]:
+    parsed: list[ParsedLine] = []
+    for match in re.finditer(r"[^\n]*(?:\n|$)", text):
+        raw = match.group(0).rstrip("\r\n")
+        if not raw.strip():
+            continue
+        left = len(raw) - len(raw.lstrip())
+        right = len(raw.rstrip())
+        content = raw[left:right]
+        bullet = BULLET.match(content)
+        marker = bullet.end() if bullet else 0
+        heading = re.match(r"#{1,6}\s+", content[marker:])
+        if heading:
+            marker += heading.end()
+        value = content[marker:].strip()
+        if not value or HORIZONTAL_RULE.fullmatch(value):
+            continue
+        value_left = content.find(value, marker)
+        start = match.start() + left + value_left
+        parsed.append(ParsedLine(value, start, start + len(value), bullet is not None, left))
+    return parsed
+
+
+def _section(line: str) -> str | None:
+    key = re.sub(r"^#{1,6}\s+", "", line.strip())
+    key = re.sub(r"\s*\[cite:\s*\d+\]", "", key, flags=re.IGNORECASE)
+    key = re.sub(r"\s+", " ", key.rstrip(":"))
+    return SECTION_NAMES.get(key.casefold())
+
+
+def _ownership(text: str) -> str:
+    plain = re.sub(r"^[\s>#-]+", "", re.sub(r"[*_`~]", "", text))
+    if LEAD_VERBS.match(plain):
+        return "lead"
+    if CONTRIBUTOR_VERBS.match(plain):
+        return "contributor"
+    return "none"
+
+
+def _metrics(text: str):
+    citations = [match.span() for match in CITATION.finditer(text)]
+    return [
+        metric
+        for metric in METRIC.finditer(text)
+        if not any(start <= metric.start() < end for start, end in citations)
+    ]
+
+
+def _skill_spans(line: ParsedLine) -> list[tuple[str, int, int]]:
+    text = line.text
+    colon = text.find(":")
+    if 0 < colon < 40:
+        offset = colon + 1
+        value = text[offset:]
+    else:
+        offset, value = 0, text
+    spans: list[tuple[str, int, int]] = []
+    for match in re.finditer(r"[^,;|\u2022\u25cf]+", value):
+        raw_item = match.group()
+        item = raw_item.strip()
+        local = offset + match.start() + raw_item.find(item)
+        marker = re.match(r"\*+\s*", item)
+        if marker:
+            local += marker.end()
+            item = item[marker.end() :]
+        citation = re.search(r"\s*\[cite:\s*\d+\]\s*$", item, re.IGNORECASE)
+        if citation:
+            item = item[: citation.start()].rstrip()
+        item = item.rstrip(".")
+        if not item:
+            continue
+        spans.append((item, line.start + local, line.start + local + len(item)))
+    return spans
+
+
+def extract_source(resume: str) -> ResumeSource:
+    if not resume or not resume.strip():
+        return ResumeSource(
+            skill_categories={},
+            original_hash=sha256_text(resume or ""),
+            normalized_hash=sha256_text(normalize_document(resume or "")),
+            facts=[],
+            protected_fact_ids=[],
+            preamble_fact_ids=[],
+            roles=[],
+            projects=[],
+            education_fact_ids=[],
+            preserved_fact_ids=[],
+            ambiguous_blocks=[],
+        )
+    facts: list[SourceFact] = []
+    protected: list[str] = []
+    preamble: list[str] = []
+    education: list[str] = []
+    preserved: list[str] = []
+    roles: list[dict[str, object]] = []
+    projects: list[dict[str, object]] = []
+    ambiguous: list[AmbiguousBlock] = []
+    section_order: list[str] = []
+    section = "preamble"
+    parsed_lines = _parsed_lines(resume)
+    recognized_headings = sum(_section(line.text) is not None for line in parsed_lines)
+    unstructured_lines = 0
+    has_summary = any(_section(line.text) == "summary" for line in parsed_lines)
+
+    def add_fact(
+        kind: str,
+        text: str,
+        start: int,
+        end: int,
+        group_id: str = "",
+        *,
+        ownership: str = "none",
+        is_protected: bool = False,
+    ) -> str:
+        fact_id = f"F{len(facts) + 1:04d}"
+        fact = SourceFact(
+            fact_id=fact_id,
+            kind=kind,
+            source_span=text,
+            span_start=start,
+            span_end=end,
+            role_or_project_id=group_id,
+            ownership_level=ownership,
+            protected=is_protected,
+        )
+        facts.append(fact)
+        if is_protected:
+            protected.append(fact_id)
+        return fact_id
+
+    def _is_continuation(groups: list[dict[str, object]], line: ParsedLine) -> bool:
+        if not groups or not groups[-1]["body_fact_ids"] or line.is_bullet:
+            return False
+        if line.text and line.text[0].islower():
+            return True
+        if line.indent >= 2 and "|" not in line.text:
+            return True
+        # PDF extraction re-flows a wrapped bullet without preserving
+        # indentation, so neither heuristic above catches a continuation
+        # that happens to start with a capitalized word -- an acronym or
+        # proper noun (e.g. "...LangChain RAG on\nGCP Vertex AI; MLflow
+        # ..."). The immediately preceding BODY fact trailing off without
+        # sentence-ending punctuation is a much stronger signal here than
+        # this line's own capitalization: a genuine new header is never a
+        # mid-sentence fragment. Must walk back to the last
+        # responsibility/project_detail fact specifically, not just
+        # facts[-1] -- a metric or date fact for the same bullet (e.g.
+        # "$10M", extracted right after and sharing the same group_id)
+        # can land last without carrying the sentence's own punctuation,
+        # which would otherwise misfire on the very next role/project's
+        # unrelated header line.
+        if "|" not in line.text:
+            for prior_fact in reversed(facts):
+                if prior_fact.role_or_project_id != groups[-1]["group_id"]:
+                    break
+                if prior_fact.kind not in ("responsibility", "project_detail"):
+                    continue
+                prior = prior_fact.source_span.rstrip()
+                if prior and prior[-1] not in ".!?:":
+                    return True
+                break
+        return False
+
+    def current_group(
+        groups: list[dict[str, object]], prefix: str, line: ParsedLine
+    ) -> dict[str, object]:
+        is_cont = _is_continuation(groups, line)
+        if not groups or (groups[-1]["body_fact_ids"] and not line.is_bullet and not is_cont):
+            groups.append(
+                {
+                    "group_id": f"{prefix}_{len(groups) + 1}",
+                    "header_fact_ids": [],
+                    "body_fact_ids": [],
+                }
+            )
+        return groups[-1]
+
+    for line in parsed_lines:
+        heading = _section(line.text)
+        if heading:
+            section = heading
+            if heading not in section_order:
+                section_order.append(heading)
+            continue
+
+        if recognized_headings == 0:
+            unstructured_lines += 1
+            if unstructured_lines <= 3:
+                fact_id = add_fact("identity", line.text, line.start, line.end, is_protected=True)
+                preamble.append(fact_id)
+            else:
+                add_fact("other", line.text, line.start, line.end)
+            continue
+
+        if section == "preamble":
+            fact_id = add_fact("identity", line.text, line.start, line.end, is_protected=True)
+            preamble.append(fact_id)
+        elif section == "experience":
+            is_cont = _is_continuation(roles, line)
+            group = current_group(roles, "role", line)
+            group_id = str(group["group_id"])
+            if line.is_bullet or is_cont:
+                fact_id = add_fact(
+                    "responsibility",
+                    line.text,
+                    line.start,
+                    line.end,
+                    group_id,
+                    ownership=_ownership(line.text),
+                )
+                if line.is_bullet:
+                    group["body_fact_ids"].append(fact_id)  # type: ignore[union-attr]
+                for metric in _metrics(line.text):
+                    add_fact(
+                        "metric",
+                        metric.group(),
+                        line.start + metric.start(),
+                        line.start + metric.end(),
+                        group_id,
+                    )
+            else:
+                fact_id = add_fact(
+                    "role_header", line.text, line.start, line.end, group_id, is_protected=True
+                )
+                group["header_fact_ids"].append(fact_id)  # type: ignore[union-attr]
+                masked_line = list(line.text)
+                for d in DATE.finditer(line.text):
+                    for i in range(d.start(), d.end()):
+                        masked_line[i] = " "
+                masked_str = "".join(masked_line)
+                masked_str = re.sub(
+                    r"(\(\s*\)|\[\s*\])", lambda m: " " * len(m.group(0)), masked_str
+                )
+                parts = list(re.finditer(r"[^|\u2013\u2014]+", masked_str))
+                existing_kinds = {
+                    fact.kind for fact in facts if fact.role_or_project_id == group_id
+                }
+                first = parts[0].group().strip().strip(" ,;()[]") if parts else ""
+                # Bold is emphasis, not a signal that a company name is a title.
+                title_first = "employer" in existing_kinds or bool(
+                    re.match(r"^(?:\*(?!\*)|_(?!_))", first)
+                    or re.search(
+                        r"\b(?:engineer|developer|analyst|scientist|intern|manager|consultant|"
+                        r"architect|specialist|director|officer|designer)\b",
+                        first,
+                        re.I,
+                    )
+                )
+                for index, part in enumerate(parts[:2]):
+                    value = part.group().strip().strip(" ,;()[]")
+                    if not value or DATE.fullmatch(value):
+                        continue
+                    local = part.start() + part.group().find(value)
+                    if index == (0 if title_first else 1) and "title" not in existing_kinds:
+                        kind = "title"
+                    elif index == (1 if title_first else 0) and "employer" not in existing_kinds:
+                        kind = "employer"
+                    else:
+                        continue
+                    add_fact(
+                        kind,
+                        value,
+                        line.start + local,
+                        line.start + local + len(value),
+                        group_id,
+                        is_protected=True,
+                    )
+                    existing_kinds.add(kind)
+                for date in DATE.finditer(line.text):
+                    add_fact(
+                        "date",
+                        date.group(),
+                        line.start + date.start(),
+                        line.start + date.end(),
+                        group_id,
+                        is_protected=True,
+                    )
+        elif section == "projects":
+            is_cont = _is_continuation(projects, line)
+            group = current_group(projects, "project", line)
+            group_id = str(group["group_id"])
+            if line.is_bullet or is_cont:
+                fact_id = add_fact(
+                    "project_detail",
+                    line.text,
+                    line.start,
+                    line.end,
+                    group_id,
+                    ownership=_ownership(line.text),
+                )
+                if line.is_bullet:
+                    group["body_fact_ids"].append(fact_id)  # type: ignore[union-attr]
+                for metric in _metrics(line.text):
+                    add_fact(
+                        "metric",
+                        metric.group(),
+                        line.start + metric.start(),
+                        line.start + metric.end(),
+                        group_id,
+                    )
+            else:
+                fact_id = add_fact(
+                    "project_header", line.text, line.start, line.end, group_id, is_protected=True
+                )
+                group["header_fact_ids"].append(fact_id)  # type: ignore[union-attr]
+        elif section == "skills":
+            for item, start, end in _skill_spans(line):
+                add_fact("skill", item, start, end)
+        elif section == "education":
+            kind = (
+                "coursework"
+                if re.search(r"\bcourse(?:work|s)?\b", line.text, re.I)
+                else "education"
+            )
+            fact_id = add_fact(kind, line.text, line.start, line.end, is_protected=True)
+            education.append(fact_id)
+        elif section == "preserved":
+            fact_id = add_fact("other", line.text, line.start, line.end, is_protected=True)
+            preserved.append(fact_id)
+        else:
+            add_fact("other", line.text, line.start, line.end)
+
+    for groups in (roles, projects):
+        for group in groups:
+            if group["header_fact_ids"] and not group["body_fact_ids"]:
+                header_ids = set(group["header_fact_ids"])
+                block_facts = [fact for fact in facts if fact.fact_id in header_ids]
+                if block_facts:
+                    start = min(fact.span_start for fact in block_facts)
+                    end = max(fact.span_end for fact in block_facts)
+                    ambiguous.append(
+                        AmbiguousBlock(
+                            source_span=resume[start:end], span_start=start, span_end=end
+                        )
+                    )
+    if recognized_headings == 0 and len(facts) >= 4:
+        ambiguous.append(AmbiguousBlock(source_span=resume, span_start=0, span_end=len(resume)))
+
+    skill_categories: dict[str, list[str]] = {}
+    for fact in facts:
+        if fact.kind != "skill":
+            continue
+        line_start = resume.rfind("\n", 0, fact.span_start) + 1
+        prefix = resume[line_start : fact.span_start]
+        if ":" in prefix:
+            category = prefix.split(":", 1)[0].strip(" -*#_`\\\t")
+            if category:
+                skill_categories.setdefault(category, []).append(fact.source_span)
+    return ResumeSource(
+        skill_categories=skill_categories,
+        original_hash=sha256_text(resume),
+        normalized_hash=sha256_text(normalize_document(resume)),
+        facts=facts,
+        protected_fact_ids=protected,
+        preamble_fact_ids=preamble,
+        roles=[SourceGroup(**group) for group in roles],
+        projects=[SourceGroup(**group) for group in projects],
+        education_fact_ids=education,
+        preserved_fact_ids=preserved,
+        ambiguous_blocks=ambiguous,
+        has_summary=has_summary,
+        section_order=section_order,
+    )
+
+
+def merge_fallback_facts(
+    source: ResumeSource, resume: str, fallback: FallbackFacts
+) -> ResumeSource:
+    if source.ambiguous_blocks and not fallback.facts:
+        raise ValueError("fallback returned no facts for ambiguous source")
+    facts = list(source.facts)
+    seen = {(fact.kind, fact.span_start, fact.span_end) for fact in facts}
+    resolved = []
+    for candidate in fallback.facts:
+        if not candidate.source_span:
+            raise ValueError("fallback fact span is empty")
+        possible: set[int] = set()
+        for block in source.ambiguous_blocks:
+            offset = 0
+            while (index := block.source_span.find(candidate.source_span, offset)) >= 0:
+                possible.add(block.span_start + index)
+                offset = index + 1
+        if not possible:
+            raise ValueError("fallback fact is not a verbatim source span")
+        # A short, legitimately-repeated snippet (a skill name, a common
+        # word) can verbatim-match more than one ambiguous block -- that
+        # used to hard-fail the whole generation. Nothing downstream keys
+        # off of *which* occurrence a non-structural fact resolved to
+        # (grouping/coverage below only care about structural facts'
+        # exact positions, checked separately); the lowest position is
+        # picked for determinism, not because it's more "correct" than
+        # any other verbatim occurrence of the same text.
+        start = min(possible)
+        end = start + len(candidate.source_span)
+        if resume[start:end] != candidate.source_span:
+            raise ValueError("fallback fact span mismatch")
+        # No per-line containment check: a fallback model reading genuinely
+        # unstructured (no-bullet) prose naturally merges content that was
+        # only split across physical lines by PDF wrapping or a manual
+        # line break, not by any real sentence/bullet boundary -- observed
+        # live, not hypothetical (a real run produced exactly this: one
+        # "responsibility" fact spanning what the raw text had as two
+        # lines). The real safety net is the block-boundary check above:
+        # `possible` positions only ever come from a contiguous match
+        # inside one ambiguous block's own text, so a candidate can never
+        # extend past that block regardless of how many lines it spans.
+        # Whole-line and partial-line cases were already allowed (both
+        # legitimate, both fully verbatim); this just stops the line
+        # boundary itself from being treated as a hard wall it isn't.
+        resolved.append((candidate, start, end))
+
+    ambiguous_line_spans = [
+        (fact.span_start, fact.span_end)
+        for fact in source.facts
+        if fact.kind == "other"
+        and any(
+            block.span_start <= fact.span_start and fact.span_end <= block.span_end
+            for block in source.ambiguous_blocks
+        )
+    ]
+    # A line counts as classified once some resolved fact *overlaps* it --
+    # not "fits entirely inside it" (a fact can be a partial-line span, see
+    # above) and not "contains it entirely" (a fact can also span multiple
+    # lines, merging content the source only split by a line break, see
+    # the block-boundary comment above). Interval overlap, not containment
+    # in either direction, is the actual invariant: only a line untouched
+    # by any resolved fact at all means the fallback silently skipped it.
+    for line_start, line_end in ambiguous_line_spans:
+        if not any(start < line_end and end > line_start for _, start, end in resolved):
+            raise ValueError("fallback did not classify every ambiguous source line")
+
+    used_group_ids = {fact.role_or_project_id for fact in facts if fact.role_or_project_id}
+
+    def allocate_group(prefix: str) -> str:
+        index = 1
+        while f"{prefix}_{index}" in used_group_ids:
+            index += 1
+        group_id = f"{prefix}_{index}"
+        used_group_ids.add(group_id)
+        return group_id
+
+    anchors = [
+        (fact.span_start, fact.span_end, fact.role_or_project_id, family)
+        for fact in facts
+        for family, header_kind in (("role", "role_header"), ("project", "project_header"))
+        if fact.kind == header_kind
+    ]
+    header_groups: dict[tuple[str, int, int], str] = {
+        (family, start, end): group_id for start, end, group_id, family in anchors
+    }
+    for candidate, start, end in sorted(resolved, key=lambda item: item[1]):
+        family = (
+            "role"
+            if candidate.kind == "role_header"
+            else "project"
+            if candidate.kind == "project_header"
+            else ""
+        )
+        if family and (family, start, end) not in header_groups:
+            group_id = allocate_group(family)
+            header_groups[(family, start, end)] = group_id
+            anchors.append((start, end, group_id, family))
+    anchors.sort()
+
+    def derive_group(kind: str, start: int, end: int) -> str:
+        if kind in {"role_header", "project_header"}:
+            family = "role" if kind == "role_header" else "project"
+            return header_groups[(family, start, end)]
+        grouped_kinds = {
+            "employer",
+            "title",
+            "date",
+            "responsibility",
+            "project_detail",
+            "metric",
+            "tool",
+            "architecture",
+            "domain",
+        }
+        if kind not in grouped_kinds:
+            return ""
+        preceding = [anchor for anchor in anchors if anchor[0] <= start]
+        if not preceding:
+            raise ValueError(f"fallback {kind} has no preceding role or project header")
+        _, _, group_id, family = max(preceding, key=lambda anchor: anchor[0])
+        if kind in {"employer", "title", "responsibility"} and family != "role":
+            raise ValueError(f"fallback {kind} is outside a role")
+        if kind == "project_detail" and family != "project":
+            raise ValueError("fallback project detail is outside a project")
+        return group_id
+
+    priority = {"role_header": 0, "project_header": 0}
+    for candidate, start, end in sorted(
+        resolved, key=lambda item: (item[1], priority.get(item[0].kind, 1), item[2])
+    ):
+        key = (candidate.kind, start, end)
+        if key in seen:
+            continue
+        replacement = next(
+            (
+                index
+                for index, fact in enumerate(facts)
+                if fact.span_start == start
+                and fact.span_end == end
+                and fact.kind in {"identity", "other"}
+            ),
+            None,
+        )
+        fact_id = (
+            facts[replacement].fact_id if replacement is not None else f"F{len(facts) + 1:04d}"
+        )
+        inherently_protected = candidate.kind in {
+            "identity",
+            "employer",
+            "title",
+            "date",
+            "role_header",
+            "project_header",
+            "education",
+            "coursework",
+        }
+        fact = SourceFact(
+            fact_id=fact_id,
+            kind=candidate.kind,
+            source_span=candidate.source_span,
+            span_start=start,
+            span_end=end,
+            role_or_project_id=derive_group(candidate.kind, start, end),
+            ownership_level=(
+                _ownership(candidate.source_span)
+                if candidate.kind in {"responsibility", "project_detail"}
+                else "none"
+            ),
+            protected=inherently_protected,
+        )
+        if replacement is None:
+            facts.append(fact)
+        else:
+            facts[replacement] = fact
+        seen.add(key)
+
+    def rebuild_groups(kind_header: str, kind_body: str) -> list[SourceGroup]:
+        grouped: dict[str, list[SourceFact]] = {}
+        for fact in facts:
+            if fact.kind in {kind_header, kind_body} and fact.role_or_project_id:
+                grouped.setdefault(fact.role_or_project_id, []).append(fact)
+        ordered = sorted(grouped.items(), key=lambda item: min(fact.span_start for fact in item[1]))
+        return [
+            SourceGroup(
+                group_id=group_id,
+                header_fact_ids=[fact.fact_id for fact in group_facts if fact.kind == kind_header],
+                body_fact_ids=[fact.fact_id for fact in group_facts if fact.kind == kind_body],
+            )
+            for group_id, group_facts in ordered
+        ]
+
+    protected = [fact.fact_id for fact in facts if fact.protected]
+    return source.model_copy(
+        update={
+            "facts": facts,
+            "protected_fact_ids": protected,
+            "preamble_fact_ids": [fact.fact_id for fact in facts if fact.kind == "identity"],
+            "roles": rebuild_groups("role_header", "responsibility"),
+            "projects": rebuild_groups("project_header", "project_detail"),
+            "education_fact_ids": [
+                fact.fact_id for fact in facts if fact.kind in {"education", "coursework"}
+            ],
+            "preserved_fact_ids": [
+                fact.fact_id for fact in facts if fact.kind == "other" and fact.protected
+            ],
+            "ambiguous_blocks": [],
+        }
+    )
+
+
+def fact_map(source: ResumeSource) -> dict[str, SourceFact]:
+    return {fact.fact_id: fact for fact in source.facts}

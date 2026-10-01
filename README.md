@@ -1,4 +1,4 @@
-# Joberry
+# Jobnex
 
 Updated application imported from `my-app(4).7z` on September 30, 2026.
 

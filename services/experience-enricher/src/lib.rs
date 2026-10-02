@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde::Serialize;
 
-pub const VERSION: &str = "required-years-v2";
+pub const VERSION: &str = "required-years-v3";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Extraction {
@@ -15,6 +15,7 @@ pub struct Extractor {
     experience: Regex,
     preferred: Regex,
     not_required: Regex,
+    marketing_stat: Regex,
     required: Regex,
     heading: Regex,
     alternative: Regex,
@@ -31,6 +32,7 @@ impl Default for Extractor {
             experience: Regex::new(r"(?i)\bexperience\b").unwrap(),
             preferred: Regex::new(r"(?i)\b(prefer|preferred|preferably|desired|desirable|ideally|bonus|nice.to.have|a plus|an advantage)\b").unwrap(),
             not_required: Regex::new(r"(?i)\bnot\s+(?:required|necessary|mandatory)\b").unwrap(),
+            marketing_stat: Regex::new(r"(?i)^\s*\*\*\s*[0-9]+\s+years?\s+(?:of\s+)?experience\s*\*\*\s*$").unwrap(),
             required: Regex::new(r"(?i)\b(minimum|at least|must have|must possess|requires?|required|you have|you bring|you possess|should have|need to have)\b").unwrap(),
             heading: Regex::new(r"(?i)^(?:(?:minimum|basic|required|preferred|desired)\s+)?(?:qualifications|requirements|skills|experience)(?:\s+and\s+(?:experience|skills))?\s*:?[\s]*$").unwrap(),
             alternative: Regex::new(r"(?i)\b(or|equivalent|in lieu)\b").unwrap(),
@@ -81,6 +83,10 @@ impl Extractor {
         for raw in plain.split(['\n', ';']) {
             let line = raw.trim();
             if line.is_empty() {
+                continue;
+            }
+            // Standalone bold tenure statistics commonly describe the company.
+            if self.marketing_stat.is_match(line) {
                 continue;
             }
             if self
@@ -221,6 +227,7 @@ mod tests {
             "3+ years relevant experience or equivalent BS degree",
             "Minimum of Five years hands-on delivery with GCP Gemini Enterprise for Customer Experience",
             "5 years of experience is not required.", "We prefer 5 years of experience",
+            "**37 years of experience**", "**25 years of experience**",
         ] {
             assert_eq!(parser.extract(text).years, None, "{text}");
         }

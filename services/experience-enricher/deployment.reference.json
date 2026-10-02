@@ -2,10 +2,10 @@
   "project": "job-scout-508222",
   "region": "us-central1",
   "job": "experience-enricher",
-  "parser_version": "required-years-v3",
-  "runtime_source_commit": "69326b4",
-  "build": "04b7408d-a37d-4e72-b82b-d94a16bca471",
-  "image": "us-central1-docker.pkg.dev/job-scout-508222/job-repo/experience-enricher@sha256:2d2a020d30a3e68f3d9c90d79d6c04f9fea214e6aa50d337a768ff27a4fd3464",
+  "parser_version": "required-years-v4",
+  "runtime_source_commit": "def7169",
+  "build": "3da125a2-00e1-43c3-ac33-5bbd62314e0e",
+  "image": "us-central1-docker.pkg.dev/job-scout-508222/job-repo/experience-enricher@sha256:14753ee7a856e4ee133590bdf1220cf027ce3f001df6c4d526ce23ec57c86219",
   "runtime_service_account": "experience-enricher@job-scout-508222.iam.gserviceaccount.com",
   "database_secret": "experience-enricher-database-url:1",
   "cpu": 1,
@@ -14,12 +14,12 @@
   "processing_budget_seconds": 1200,
   "task_timeout_seconds": 1800,
   "successful_backfill": {
-    "execution": "experience-enricher-l7x7b",
-    "processed": 118152,
-    "explicit_experience": 21441,
+    "execution": "experience-enricher-g25n2",
+    "processed": 121981,
+    "explicit_experience": 66467,
     "remaining_at_completion": 0,
-    "processing_elapsed_ms": 291424,
-    "completed_at": "2026-10-02T06:03:59.322481Z"
+    "processing_elapsed_ms": 532542,
+    "completed_at": "2026-10-02T14:00:43.820122Z"
   },
   "scheduler": {
     "name": "experience-enricher-every-30m",

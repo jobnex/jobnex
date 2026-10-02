@@ -31,8 +31,9 @@ $ErrorActionPreference = 'Continue'
 $existing = & rtk proxy gcloud scheduler jobs describe experience-enricher-every-30m --location=$region --project=$project --format=json 2>$null
 $probeCode = $LASTEXITCODE
 $ErrorActionPreference = $previousErrorAction
-if ($probeCode -eq 0) { $action = 'update' } else { $action = 'create' }
+if ($probeCode -eq 0) { $action = 'update'; $headerFlag = '--update-headers=Content-Type=application/json' }
+else { $action = 'create'; $headerFlag = '--headers=Content-Type=application/json' }
 Invoke-Cloud @('scheduler','jobs',$action,'http','experience-enricher-every-30m',"--location=$region",
     '--schedule=10,40 * * * *','--time-zone=Etc/UTC',"--uri=$uri",'--http-method=POST',
-    '--message-body={}','--headers=Content-Type=application/json',
+    '--message-body={}', $headerFlag,
     "--oauth-service-account-email=$scheduler",'--attempt-deadline=180s','--max-retry-attempts=0')

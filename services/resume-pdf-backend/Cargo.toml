@@ -1,0 +1,26 @@
+[package]
+name = "resume-cloud-backend"
+version = "0.3.0"
+edition = "2021"
+
+[dependencies]
+pulldown-cmark = "0.13"
+tiny_http = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+sha2 = "0.10"
+tempfile = "3"
+regex = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+subtle = "2"
+postgres = { version = "0.19", features = ["with-uuid-1"] }
+postgres-native-tls = "0.5"
+native-tls = "0.2"
+r2d2 = "0.8"
+r2d2_postgres = "0.18"
+rust-s3 = { version = "0.37.2", default-features = false, features = ["sync-native-tls"] }
+
+[features]
+# Filesystem adapters are deliberately absent from production builds.
+local-test = []

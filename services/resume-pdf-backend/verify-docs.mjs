@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const doc=readFileSync('API_ENDPOINTS.md','utf8'),main=readFileSync('src/main.rs','utf8');
+for(const term of ['/health','/generated','/resume','/preview','/export','/pdf/{PREVIEW_ID}','X-User-Id','X-Serverless-Authorization','expected_revision','r2_object_key','409','Retry-After','curl','source_map','UTF-16'])assert.ok(doc.includes(term),term);
+for(const route of ['"generated"','"resume"','"preview"','"export"','"pdf"'])assert.ok(main.includes(route),route);
+assert.ok(doc.includes('not deployed yet')||doc.includes('Verified deployed URL:'));
+assert.ok(doc.includes('not silently substituted'));
+assert.ok(doc.includes('Replaying an already committed identical export succeeds'));
+assert.ok(doc.includes('No UI change')||doc.includes('No UI'));
+console.log('ENDPOINT_DOCS_VERIFIED');

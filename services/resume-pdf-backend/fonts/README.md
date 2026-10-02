@@ -1,0 +1,1 @@
+Place appropriately licensed Arial and Times New Roman font files here before building if matching the Windows layout exactly is required. Do not redistribute fonts without permission. The image includes Liberation fallback fonts; their line wrapping may differ. PDF downloads always match the corresponding cloud-generated preview bytes.

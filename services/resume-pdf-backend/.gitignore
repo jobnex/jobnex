@@ -1,0 +1,14 @@
+/target/
+/.tools/
+.env
+.env.*
+!env.example
+*.log
+*.exe
+tests/artifacts/
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/*.tfvars
+terraform/*.tfplan
+fonts/*.ttf
+fonts/*.otf

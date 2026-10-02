@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde::Serialize;
 
-pub const VERSION: &str = "experience-details-v5";
+pub const VERSION: &str = "experience-details-v6";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Requirement {
@@ -52,7 +52,7 @@ impl Default for Extractor {
             preferred_heading: Regex::new(r"(?i)^(?:preferred|desired|desirable|nice.to.have|bonus|optional)(?:\s+(?:qualifications|requirements|skills|criteria|experience|additional|attributes))*$").unwrap(),
             required_heading: Regex::new(r"(?i)^(?:(?:(?:minimum|basic|required|essential|necessary|technical|education|knowledge|and|work|professional|additional|candidate|key|your|qualifications|skills|experience|requirements|criteria|background|attributes)[ /&,:-]*)+|what.*(?:bring|looking(?: for)?|need)|you(?:'ll| will)? (?:have|bring)|must.haves?|to qualify.*|to be considered.*)$").unwrap(),
             excluded_heading: Regex::new(r"(?i)\b(about (?:us|the company)|our company|benefits|compensation|responsibilities|duties|equal opportunity|eligibility|job description)\b").unwrap(),
-            required: Regex::new(r"(?i)\b(min(?:imum)?|at least|no less than|must have|must possess|requires?|required|you have|you bring|you possess|should have|need to have)\b").unwrap(),
+            required: Regex::new(r"(?i)\b(min(?:imum)?|at least|no less than|must have|must possess|requires?|required|you(?:['’]ll| will)? have|you bring|you possess|should have|need to have)\b|^\s*have\b").unwrap(),
             unrelated: Regex::new(r"(?i)\byears?\s+(?:of\s+age|old)\b|\b(?:age|aged)\s*\(?\s*(?:at least\s+)?[0-9]|\b(probation(?:ary)?|polygraph|background check|within.*hire|project (?:funded|duration)|contract duration|founded|established)\b|\b(?:after|vesting|eligible)[^.;\n]*\b(?:vacation|retirement|anniversary)\b|(?:our company (?:has|is|celebrates)|we have|company has|brings the strength of|serving clients)[^\n]*|Gemini Enterprise for Customer Experience").unwrap(),
             non_experience_tail: Regex::new(r"(?i)^\s*(?:of age|old|probationary|project|contract|college|university|degree|diploma|existence|state .*apprenticeship program|is equivalent to.*(?:semester|quarter|hours))\b").unwrap(),
             degree: Regex::new(r"(?i)\b(bachelor(?:'s|’s|s)?|master(?:'s|’s|s)?|associate(?:'s|’s|s)?|phd|doctorate|graduate degree|advanced degree|high school|(?-i:BS|BA|MS|MA|GED)|degree|diploma)\b").unwrap(),
@@ -273,9 +273,17 @@ impl Extractor {
                     let prefix = clause[..whole.start()].trim_matches(['*', ' ', ':']);
                     let tail = &clause[whole.end()..];
                     let has_experience = self.experience.is_match(clause);
-                    let labelled_alternative = self.alternative_label.is_match(&clause[..whole.start()]);
+                    let labelled_alternative =
+                        self.alternative_label.is_match(&clause[..whole.start()]);
+                    let degree = if tail.trim_start().to_ascii_lowercase().starts_with("with ") {
+                        self.degree_label(tail, false)
+                    } else {
+                        self.degree_label(prefix, true)
+                            .or_else(|| self.degree_label(tail, false))
+                    };
                     let context_required = section == "required"
                         || self.required.is_match(prefix)
+                        || degree.is_some() && (conditional || or_branch) && has_experience
                         || prefix.is_empty() && has_experience
                         || clause[..whole.start()].trim().ends_with(':') && has_experience;
                     let mut kind = if self.unrelated.is_match(clause)
@@ -315,12 +323,6 @@ impl Extractor {
                             kind = "preferred";
                         }
                     }
-                    let degree = if tail.trim_start().to_ascii_lowercase().starts_with("with ") {
-                        self.degree_label(tail, false)
-                    } else {
-                        self.degree_label(prefix, true)
-                            .or_else(|| self.degree_label(tail, false))
-                    };
                     if let Some(label) = &degree {
                         if matches!(kind, "required" | "conditional")
                             && degree_candidates.iter().any(|(_, old)| old != label)
@@ -513,6 +515,53 @@ mod tests {
         let parser = Extractor::default();
         assert_eq!(parser.extract("Qualifications:\nSpecialist-Admin I: 0-2 years of experience\nSpecialist-Admin II: 2-4 years of experience\nSpecialist-Admin Sr: 6+ years of experience").years, None);
         assert_eq!(parser.extract("Qualifications:\nThe degree must be accredited AND two years experience; the degree requires one year experience; -OR- Four years experience").years, None);
+    }
+
+    #[test]
+    fn requirement_phrases_and_unheaded_degree_alternatives() {
+        let parser = Extractor::default();
+        for text in [
+            "Have 5+ years of experience working on software",
+            "You'll have 5+ years of experience",
+            "You’ll have 5+ years of experience",
+            "You will have 5+ years of experience",
+        ] {
+            assert_eq!(parser.extract(text).years, Some(5), "{text}");
+        }
+        for text in [
+            "We have 5 years of experience",
+            "Preferred Qualifications:\nHave 5+ years of experience",
+            "You'll have 5 years of experience preferred",
+            "Have 5 years of experience is not required",
+        ] {
+            assert_eq!(parser.extract(text).years, None, "{text}");
+        }
+        let text = "Bachelor’s degree with 4+ years of relevant experience OR Associate’s degree with 6+ years of relevant experience";
+        let result = parser.extract(text);
+        assert_eq!(result.years, None);
+        assert_eq!(result.reason, "conditional_education");
+        assert_eq!(
+            result
+                .requirements
+                .iter()
+                .map(|r| (r.minimum_months, r.kind, r.condition.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                (48.0, "conditional", Some("bachelors")),
+                (72.0, "conditional", Some("associate"))
+            ]
+        );
+        let result = parser.extract(&format!(
+            "{text}\nHave 8+ years of experience in leadership"
+        ));
+        assert_eq!(result.years, Some(8));
+        assert_eq!(result.reason, "required_with_alternatives");
+        assert_eq!(
+            parser
+                .extract(&format!("Preferred Qualifications:\n{text}"))
+                .reason,
+            "preferred_only"
+        );
     }
 
     #[test]

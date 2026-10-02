@@ -33,14 +33,14 @@ async function main() {
   await client.connect();
   const ids = Array.from({ length: 8 }, (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`);
   const fixtures = [
-    ['3+ years of experience', null],
+    ["You'll have 3+ years of experience", null],
     ['Our company has 20 years of experience serving customers.', null],
     ['3 years of experience', 7],
     ['Preferred Qualifications:\n8 years of experience', null],
     ['5 years of experience', null],
     ['No prior experience required.', null],
     ['Minimum 6 months of relevant experience', null],
-    ["Qualifications:\nBachelor's with 5 years experience or master's with 3 years experience", null],
+    ["Bachelor’s degree with 4+ years of relevant experience OR Associate’s degree with 6+ years of relevant experience", null],
   ];
   try {
     assert.equal(Number((await client.query('SELECT count(*) FROM public.jobs WHERE id=ANY($1::uuid[])', [ids])).rows[0].count), 0);
@@ -66,8 +66,8 @@ async function main() {
     assert.equal(details[6].years, null);
     assert.equal(details[7].status, 'conditional_education');
     assert.equal(details[7].requirements.filter(r=>r.kind==='conditional').length, 2);
-    assert.deepEqual(details[7].requirements.map(r=>r.condition).sort(), ['bachelors','masters']);
-    assert.deepEqual(details[7].requirements.map(r=>r.minimum_months).sort((a,b)=>a-b), [36,60]);
+    assert.deepEqual(details[7].requirements.map(r=>r.condition).sort(), ['associate','bachelors']);
+    assert.deepEqual(details[7].requirements.map(r=>r.minimum_months).sort((a,b)=>a-b), [48,72]);
     const stamp = (await client.query('SELECT processed_at FROM public.job_experience_processing WHERE job_id=$1', [ids[0]])).rows[0].processed_at.toISOString();
     invoke([]);
     assert.equal((await client.query('SELECT processed_at FROM public.job_experience_processing WHERE job_id=$1', [ids[0]])).rows[0].processed_at.toISOString(), stamp);

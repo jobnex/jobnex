@@ -99,8 +99,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 tx.commit()?;
                 break;
             }
-            let mut ids = vec![];
-            let mut values = vec![];
             let mut states = vec![];
             for row in rows {
                 let id: uuid::Uuid = row.get(0);
@@ -112,17 +110,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let result = parser.extract(text.as_deref().unwrap_or(""));
                 let may_write = current.is_none() || owned && current == previous;
                 if may_write && current != result.years {
-                    ids.push(id);
-                    values.push(result.years);
+                    updated += 1;
                 }
+                let effective_years = if may_write { result.years } else { current };
+                let mut details = serde_json::to_value(&result)?;
+                details["status"] = json!(result.reason);
+                details["parser_version"] = json!(VERSION);
+                details["description_hash"] = json!(hash);
+                details["effective_years"] = json!(effective_years);
+                details["numeric_source"] = json!(if may_write { "parser" } else { "manual" });
                 states.push(json!({"id":id,"hash":hash,"years":result.years,
-                    "owned":may_write,"evidence":result.evidence,"reason":result.reason}));
+                    "owned":may_write,"evidence":result.evidence,"reason":result.reason,
+                    "effective_years":effective_years,"details":details}));
                 processed += 1;
                 known += usize::from(result.years.is_some());
             }
-            if !ids.is_empty() {
-                updated += tx.execute("UPDATE public.jobs j SET experience_required=x.years FROM unnest($1::uuid[],$2::integer[]) AS x(id,years) WHERE j.id=x.id", &[&ids,&values])? as usize;
-            }
+            tx.execute("UPDATE public.jobs j SET experience_required=x.effective_years,experience_details=x.details FROM jsonb_to_recordset($1::jsonb) AS x(id uuid,effective_years integer,details jsonb) WHERE j.id=x.id AND (j.experience_required IS DISTINCT FROM x.effective_years OR j.experience_details IS DISTINCT FROM x.details)", &[&json!(states)])?;
             tx.execute("UPDATE public.job_experience_processing q SET pending=false,description_hash=x.hash,extracted_years=x.years,owns_value=x.owned,evidence=x.evidence,reason=x.reason,parser_version=$2,processed_at=now() FROM jsonb_to_recordset($1::jsonb) AS x(id uuid,hash text,years integer,owned boolean,evidence jsonb,reason text) WHERE q.job_id=x.id", &[&json!(states),&VERSION])?;
             tx.commit()?;
             println!(

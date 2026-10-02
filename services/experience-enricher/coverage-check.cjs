@@ -11,7 +11,7 @@ async function main() {
   url.searchParams.set('sslmode', 'verify-full');
   const client = new Client({connectionString:url.toString()});
   await client.connect();
-  const report = {scanned:0, previous:0, extracted:0, newlyExtracted:0, cleared:0, reasons:{}};
+  const report = {scanned:0, previous:0, extracted:0, newlyExtracted:0, cleared:0, exactMonthRequirements:0, mentionsByKind:{}, reasons:{}};
   let after = '00000000-0000-0000-0000-000000000000';
   const sample = process.argv.includes('--sample');
   try {
@@ -32,6 +32,8 @@ async function main() {
         const previous = rows[i].experience_required !== null;
         report.scanned++; report.previous += +previous; report.extracted += +known;
         report.newlyExtracted += +(known && !previous); report.cleared += +(!known && previous);
+        report.exactMonthRequirements += +(entry.result.minimum_months !== null && !known);
+        for (const mention of entry.result.requirements || []) report.mentionsByKind[mention.kind]=(report.mentionsByKind[mention.kind] || 0)+1;
         report.reasons[entry.result.reason] = (report.reasons[entry.result.reason] || 0)+1;
       });
       after = rows.at(-1).id;

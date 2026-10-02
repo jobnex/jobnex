@@ -31,6 +31,8 @@ Defaults: 250 jobs per transaction, 20-minute processing budget, 60-second state
 
 ## Deployment
 
+Version 7 adds activity-only requirements, additional applicant phrases, escaped Markdown and joined headings, PhD/MS and equivalent-education alternatives, substitution allowances, and repeated-unit ranges. It excludes observed company-history, benefit, college-tenure, internship-duration and deadline expressions. Recency windows use `recency_constraint` with `recency` candidates; upper experience limits use `experience_ceiling` with `maximum_experience` candidates (minimum 0 months, maximum stated). Neither becomes an unconditional numeric year requirement. Malformed adjacent numbers stay `needs_review`. `coverage-check.cjs --review` audits the current review cohort without production writes.
+
 Target: `job-scout-508222`, `us-central1`, Cloud Run job `experience-enricher`. Runtime database credentials use Secret Manager; no secret value belongs in source, build arguments, image, or logs. A dedicated scheduler service account receives `roles/run.invoker` only on this job. Runtime service account receives access only to the selected database secret.
 
 `prepare-secret.cjs` creates `experience-enricher-database-url` from the existing `DB-secret`, changing only the hostname to the direct Neon endpoint. The direct connection keeps session timeouts reliable without transaction-pooler routing.

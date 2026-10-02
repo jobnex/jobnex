@@ -34,7 +34,7 @@ async function main() {
   const ids = Array.from({ length: 8 }, (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`);
   const fixtures = [
     ["You'll have 3+ years of experience", null],
-    ['Our company has 20 years of experience serving customers.', null],
+    ['Recent hands-on experience within the last three years in CSfC solution design', null],
     ['3 years of experience', 7],
     ['Preferred Qualifications:\n8 years of experience', null],
     ['5 years of experience', null],
@@ -60,6 +60,8 @@ async function main() {
     const details = (await client.query('SELECT experience_details FROM public.jobs WHERE id=ANY($1::uuid[]) ORDER BY id', [ids])).rows.map(r=>r.experience_details);
     assert.ok(details.every(d=>d && typeof d.status === 'string' && Array.isArray(d.requirements)));
     assert.equal(details[2].numeric_source, 'manual');
+    assert.equal(details[1].status, 'recency_constraint');
+    assert.equal(details[1].requirements[0].kind, 'recency');
     assert.equal(details[2].effective_years, 7);
     assert.equal(details[3].status, 'preferred_only');
     assert.equal(details[6].minimum_months, 6);

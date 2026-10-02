@@ -14,15 +14,17 @@ async function main() {
   const report = {scanned:0, previous:0, extracted:0, newlyExtracted:0, cleared:0, exactMonthRequirements:0, mentionsByKind:{}, reasons:{}};
   let after = '00000000-0000-0000-0000-000000000000';
   const sample = process.argv.includes('--sample');
+  const clearedSample = process.argv.includes('--cleared-sample');
+  const review = process.argv.includes('--review');
   try {
     for (;;) {
-      const rows = (await client.query(sample
+      const rows = (await client.query(sample || clearedSample
         ? `SELECT id,job_description AS description,experience_required FROM public.jobs WHERE status='published'
-          AND experience_required IS NULL ORDER BY md5(id::text) LIMIT 500`
+          AND experience_required IS ${clearedSample ? 'NOT NULL' : 'NULL'} ORDER BY md5(id::text) LIMIT 500`
         : `SELECT id,job_description AS description,experience_required FROM public.jobs
-        WHERE status='published' AND id>$1 ORDER BY id LIMIT 1000`, sample ? [] : [after])).rows;
+        WHERE status='published' AND id>$1 ${review ? "AND experience_details->>'status'='needs_review'" : ''} ORDER BY id LIMIT 1000`, sample || clearedSample ? [] : [after])).rows;
       if (!rows.length) break;
-      const run = spawnSync(path.join(__dirname,'target','release',`experience-enricher${process.platform === 'win32' ? '.exe' : ''}`), ['--stdin'], {
+      const run = spawnSync(path.join(__dirname,'target',process.argv.includes('--debug') ? 'debug' : 'release',`experience-enricher${process.platform === 'win32' ? '.exe' : ''}`), ['--stdin'], {
         input:rows.map(row=>JSON.stringify(row)).join('\n')+'\n',encoding:'utf8',windowsHide:true,maxBuffer:64*1024*1024});
       if (run.status !== 0) throw Error('Parser failed');
       const results = run.stdout.trim().split(/\r?\n/).map(JSON.parse);
@@ -37,13 +39,16 @@ async function main() {
         report.reasons[entry.result.reason] = (report.reasons[entry.result.reason] || 0)+1;
       });
       after = rows.at(-1).id;
+      if (review && report.scanned <= 1000) console.log(JSON.stringify(results.filter(r=>r.result.reason !== 'needs_review').slice(0,30).map(r=>({years:r.result.years,reason:r.result.reason,requirements:r.result.requirements}))));
+      if (review && report.scanned <= 1000) console.log(JSON.stringify({remainingSample:results.filter(r=>r.result.reason === 'needs_review').slice(0,25).map(r=>r.result.requirements)}));
+      if (clearedSample) { console.log(JSON.stringify(results.filter(r=>r.result.years===null).slice(0,30))); break; }
       if (sample) {
         console.log(JSON.stringify(results.filter(r=>r.result.years!==null).slice(0,30).map(r=>({id:r.id,years:r.result.years,evidence:r.result.evidence.map(e=>e.slice(0,180))}))));
         break;
       }
       if (report.scanned % 10000 === 0) console.log(JSON.stringify({progress:report.scanned}));
     }
-    if (!sample) fs.writeFileSync(path.join(__dirname,'coverage.local.json'),JSON.stringify(report,null,2));
+    if (!sample && !clearedSample) fs.writeFileSync(path.join(__dirname,review ? 'review-coverage.local.json' : 'coverage.local.json'),JSON.stringify(report,null,2));
     console.log(JSON.stringify(report));
   } finally { await client.end(); }
 }

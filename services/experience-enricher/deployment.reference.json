@@ -1,0 +1,37 @@
+{
+  "project": "job-scout-508222",
+  "region": "us-central1",
+  "job": "experience-enricher",
+  "parser_version": "experience-details-v8",
+  "runtime_source_commit": "5c6abdf",
+  "build": "22a1bed3-dfb3-42d5-a232-6bcfc13d387f",
+  "image": "us-central1-docker.pkg.dev/job-scout-508222/job-repo/experience-enricher@sha256:ef49a2d3a7b69132bcd842d6cad3380068a84fa0b3f38d0ad9a0465333bfab65",
+  "runtime_service_account": "experience-enricher@job-scout-508222.iam.gserviceaccount.com",
+  "database_secret": "experience-enricher-database-url:1",
+  "cpu": 1,
+  "memory_mib": 512,
+  "batch_size": 250,
+  "processing_budget_seconds": 1200,
+  "task_timeout_seconds": 1800,
+  "successful_backfill": {
+    "execution": "experience-enricher-nfs6q",
+    "processed": 126702,
+    "experience_profiles": 126702,
+    "explicit_experience": 85530,
+    "numeric_values_changed": 173,
+    "needs_review_at_verification": 1214,
+    "remaining_at_completion": 0,
+    "processing_elapsed_ms": 441983,
+    "completed_at": "2026-10-02T20:22:30.781206Z"
+  },
+  "scheduler": {
+    "name": "experience-enricher-every-30m",
+    "cron": "10,40 * * * *",
+    "time_zone": "Etc/UTC",
+    "state": "ENABLED",
+    "oauth_service_account": "experience-scheduler@job-scout-508222.iam.gserviceaccount.com",
+    "target": "https://run.googleapis.com/v2/projects/job-scout-508222/locations/us-central1/jobs/experience-enricher:run",
+    "verified_invocation": "2026-10-02T06:06:27.767292Z",
+    "created_execution": "experience-enricher-d8rvt"
+  }
+}

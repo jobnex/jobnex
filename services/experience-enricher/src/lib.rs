@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde::Serialize;
 
-pub const VERSION: &str = "experience-details-v7";
+pub const VERSION: &str = "experience-details-v8";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Requirement {
@@ -46,6 +46,7 @@ pub struct Extractor {
     service_duration: Regex,
     repeated_unit_range: Regex,
     ceiling: Regex,
+    non_work_duration: Regex,
 }
 
 impl Default for Extractor {
@@ -75,6 +76,7 @@ impl Default for Extractor {
             service_duration: Regex::new(r"(?i)\b(?:tuition reimbursement|sabbatical|longevity pay|paid time off|hybrid work arrangement|years? of (?:state )?service|years? of employment|start date|after.*hire|within.*start|earning (?:your|a|the) degree|company.*has spent|subsidiary.*has spent|history spanning|legacy of over|we draw on|combines over.*expertise|limit yourself.*applications|applying for.*roles within|internship program is|voted by associates|years? in a row|years? in business|has spent.*years building software|team focuses on matching)[^\n]*|^(?:for nearly|for over|boasting over|with (?:more than|nearly|over)?)\s*[0-9]+\s+years?[^\n]*\b(?:we|our|partners|laboratory|company|specializes|industries|worldwide|innovation)\b|\byear[- ](?:history|heritage|legacy)\b|serving policyholders|coverage across.*industries").unwrap(),
             repeated_unit_range: Regex::new(r"(?i)\b([0-9]+)\s+(years?|months?)\s+to\s+([0-9]+)\s+(years?|months?)\b").unwrap(),
             ceiling: Regex::new(r"(?i)(?:up to|at most|no more than|maximum of)\s*$").unwrap(),
+            non_work_duration: Regex::new(r"(?i)\bwe may extend you up to\b|\bwe bring (?:the strength of )?(?:over|more than) [0-9]+[- ]*years?\b|^backed by (?:over|more than) [0-9]+ years?[^\n]*\bour\b").unwrap(),
         }
     }
 }
@@ -345,6 +347,7 @@ impl Extractor {
                             .or_else(|| self.degree_label(tail, false))
                     };
                     let context_required = section == "required"
+                        || labelled_alternative && has_experience
                         || self.required.is_match(prefix)
                         || prefix.to_ascii_lowercase().ends_with("experience") && has_experience
                         || matches!(prefix.to_ascii_lowercase().as_str(), "over" | "more than")
@@ -355,6 +358,7 @@ impl Extractor {
                         || clause[..whole.start()].trim().ends_with(':') && has_experience;
                     let mut kind = if self.unrelated.is_match(clause)
                         || self.service_duration.is_match(clause)
+                        || self.non_work_duration.is_match(clause)
                         || tail
                             .trim_start()
                             .to_ascii_lowercase()
@@ -378,6 +382,7 @@ impl Extractor {
                         .split_whitespace()
                         .last()
                         .is_some_and(|word| word.parse::<u32>().is_ok())
+                        && !(labelled_alternative && clause[..whole.start()].trim().ends_with(':'))
                         || upper.is_some_and(|n| n < minimum || n > 480.0)
                         || minimum > 480.0
                     {
@@ -611,6 +616,34 @@ mod tests {
     #[test]
     fn labelled_alternatives() {
         let parser = Extractor::default();
+        let result =
+            parser.extract("Option 2: 1 years’ experience in merchandising or related area.");
+        assert_eq!(result.reason, "conditional_alternatives");
+        assert_eq!(result.years, None);
+        assert_eq!(result.requirements[0].minimum_months, 12.0);
+        assert_eq!(
+            result.requirements[0].condition.as_deref(),
+            Some("Option 2")
+        );
+        for text in [
+            "3 5 years’ experience in quality engineering",
+            "Option 2: 3 5 years of experience",
+        ] {
+            assert_eq!(parser.extract(text).reason, "needs_review", "{text}");
+            assert_eq!(parser.extract(text).years, None, "{text}");
+        }
+        for text in ["We may extend you up to 6 months in total depending on business needs", "Backed by over 140 years of construction experience, our engineering focuses on safety", "As the parent company of two brands, we bring over 50 years of experience in protecting homes", "We bring the strength of more than 100 years of experience and engineering expertise"] {
+            let result = parser.extract(text);
+            assert_eq!(result.years, None, "{text}");
+            assert_eq!(result.requirements[0].kind, "non_experience", "{text}");
+            assert_ne!(result.reason, "needs_review", "{text}");
+        }
+        assert_eq!(
+            parser
+                .extract("You bring 5 years of engineering experience")
+                .years,
+            Some(5)
+        );
         assert_eq!(parser.extract("Qualifications:\nSpecialist-Admin I: 0-2 years of experience\nSpecialist-Admin II: 2-4 years of experience\nSpecialist-Admin Sr: 6+ years of experience").years, None);
         assert_eq!(parser.extract("Qualifications:\nThe degree must be accredited AND two years experience; the degree requires one year experience; -OR- Four years experience").years, None);
     }

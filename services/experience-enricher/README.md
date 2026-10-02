@@ -31,6 +31,8 @@ Defaults: 250 jobs per transaction, 20-minute processing budget, 60-second state
 
 ## Deployment
 
+Version 8 separates option numbers from experience quantities, including `Option 2: 1 years` without a qualification heading. The malformed-range guard still flags `3 5 years` and `Option 2: 3 5 years`. Additional exclusions distinguish corporate “we bring / backed by” history and co-op extension durations from applicant experience.
+
 Version 7 adds activity-only requirements, additional applicant phrases, escaped Markdown and joined headings, PhD/MS and equivalent-education alternatives, substitution allowances, and repeated-unit ranges. It excludes observed company-history, benefit, college-tenure, internship-duration and deadline expressions. Recency windows use `recency_constraint` with `recency` candidates; upper experience limits use `experience_ceiling` with `maximum_experience` candidates (minimum 0 months, maximum stated). Neither becomes an unconditional numeric year requirement. Malformed adjacent numbers stay `needs_review`. `coverage-check.cjs --review` audits the current review cohort without production writes.
 
 Target: `job-scout-508222`, `us-central1`, Cloud Run job `experience-enricher`. Runtime database credentials use Secret Manager; no secret value belongs in source, build arguments, image, or logs. A dedicated scheduler service account receives `roles/run.invoker` only on this job. Runtime service account receives access only to the selected database secret.

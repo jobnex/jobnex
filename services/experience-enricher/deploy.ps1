@@ -14,7 +14,7 @@ function Invoke-Cloud {
 }
 # Accounts and the secret grant are created once before this script is run.
 $arguments = @('run','jobs','deploy','experience-enricher',"--region=$region",
-    "--image=$Image","--service-account=$runtime",'--set-secrets=DATABASE_URL=DB-secret:1',
+    "--image=$Image","--service-account=$runtime",'--set-secrets=DATABASE_URL=experience-enricher-database-url:1',
     '--set-env-vars=BATCH_SIZE=250,MAX_RUN_SECONDS=1200','--tasks=1','--parallelism=1',
     '--cpu=1','--memory=512Mi','--task-timeout=1800s','--max-retries=1')
 if ($Bootstrap) { $arguments += '--args=--migrate' }

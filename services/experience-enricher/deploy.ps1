@@ -26,8 +26,12 @@ if ($Bootstrap) {
     Invoke-Cloud @('run','jobs','update','experience-enricher',"--region=$region",'--args=')
 }
 $uri = "https://run.googleapis.com/v2/projects/$project/locations/$region/jobs/experience-enricher:run"
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 $existing = & rtk proxy gcloud scheduler jobs describe experience-enricher-every-30m --location=$region --project=$project --format=json 2>$null
-if ($LASTEXITCODE -eq 0) { $action = 'update' } else { $action = 'create' }
+$probeCode = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorAction
+if ($probeCode -eq 0) { $action = 'update' } else { $action = 'create' }
 Invoke-Cloud @('scheduler','jobs',$action,'http','experience-enricher-every-30m',"--location=$region",
     '--schedule=10,40 * * * *','--time-zone=Etc/UTC',"--uri=$uri",'--http-method=POST',
     '--message-body={}','--headers=Content-Type=application/json',

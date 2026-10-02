@@ -2,6 +2,8 @@
 
 This Rust Cloud Run job extracts explicit required years of experience from job descriptions and updates `public.jobs.experience_required`. It uses no LLM or external inference API.
 
+Version 4 normalizes escaped Markdown ranges and plus signs, recognizes experience before a number and combined education/experience headings, and distinguishes optional specialties from required minimums. An ambiguous education clause no longer cancels a separate explicit requirement. `coverage-check.cjs` compares the parser against every published description using read-only keyset pagination; its local report contains aggregate counts only.
+
 The extractor chooses the lower endpoint of an explicit range and the largest independent required minimum. Preferred qualifications, company tenure, fractional years, and ambiguous education alternatives remain unknown. An explicit zero minimum or a generic statement that no experience is required produces zero. Title seniority never invents years. This is conservative English-language extraction, not semantic understanding; evidence and parser version are stored for audit.
 
 The additive migration creates a processing table and a trigger for new jobs or changed descriptions. Unknown results are recorded once. Each batch locks both queue and job rows with `SKIP LOCKED`, writes values in bulk, and commits atomically. Existing non-null values remain unchanged unless they still equal this worker's previous value. Changed descriptions can clear obsolete worker-owned values. Unpublished jobs remain queued until publication. Other job columns and `updated_at` remain unchanged.

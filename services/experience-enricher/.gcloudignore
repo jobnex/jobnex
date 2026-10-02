@@ -1,5 +1,5 @@
 .git
 target
 .env*
-GATES.md
+GATES*.md
 *.local.json

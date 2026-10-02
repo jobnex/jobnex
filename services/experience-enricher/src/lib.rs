@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde::Serialize;
 
-pub const VERSION: &str = "required-years-v1";
+pub const VERSION: &str = "required-years-v2";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Extraction {
@@ -136,7 +136,11 @@ impl Extractor {
                 {
                     continue;
                 }
-                let context = prefix.trim_start_matches(['-', '•', '*', ' ', '\t']);
+                let context = prefix
+                    .rsplit(['.', '!', '?'])
+                    .next()
+                    .unwrap_or("")
+                    .trim_start_matches(['-', '•', '*', ' ', '\t']);
                 let starts_requirement = context.is_empty() || self.required.is_match(context);
                 if !starts_requirement {
                     continue;
@@ -191,6 +195,7 @@ mod tests {
             ("<ul><li>4+ years of relevant experience</li></ul>", Some(4)),
             ("2 to 4 years of experience", Some(2)),
             ("Must have 7 years of experience", Some(7)),
+            ("Minimum 3 years of experience. Our company has 20 years of experience.", Some(3)),
         ] { assert_eq!(parser.extract(text).years, expected, "{text}"); }
     }
     #[test]

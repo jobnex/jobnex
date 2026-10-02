@@ -1,0 +1,14 @@
+target
+.tools
+.git
+.env
+.env.*
+!env.example
+tests
+*.exe
+*.log
+*.zip
+terraform/.terraform
+terraform/*.tfstate*
+terraform/*.tfvars
+terraform/*.tfplan

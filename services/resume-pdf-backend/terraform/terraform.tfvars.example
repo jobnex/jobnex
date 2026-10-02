@@ -1,0 +1,12 @@
+project_id = "YOUR_GCP_PROJECT"
+region = "us-east1"
+image = "us-east1-docker.pkg.dev/YOUR_GCP_PROJECT/resume/resume-pdf@sha256:IMAGE_DIGEST"
+api_domain = "resume-api.example.com"
+r2_endpoint = "https://ACCOUNT_ID.r2.cloudflarestorage.com"
+r2_bucket = "YOUR_PRIVATE_BUCKET"
+secrets = {
+  DATABASE_URL = { name = "resume-neon-database-url", version = "1" }
+  R2_ACCESS_KEY_ID = { name = "resume-r2-access-key", version = "1" }
+  R2_SECRET_ACCESS_KEY = { name = "resume-r2-secret-key", version = "1" }
+  BACKEND_SERVICE_TOKEN = { name = "resume-backend-service-token", version = "1" }
+}

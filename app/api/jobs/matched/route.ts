@@ -6,6 +6,24 @@ import { Job } from "@/types";
 
 export const dynamic = "force-dynamic";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sanitizeStringList(param: string | null, maxItems = 25, maxLen = 100): string[] | null {
+  if (!param) return null;
+  const items = param
+    .split(",")
+    .map(s => s.trim().slice(0, maxLen))
+    .filter(Boolean)
+    .slice(0, maxItems);
+  return items.length > 0 ? items : null;
+}
+
+function sanitizeText(param: string | null, maxLen = 100): string | null {
+  if (!param) return null;
+  const clean = param.trim().slice(0, maxLen);
+  return clean.length > 0 ? clean : null;
+}
+
 function mapRecordToUIJob(row: MatchedJobRecord): Job & { similarityScore?: number; tierRank?: number } {
   const displayLocation = row.countryName 
     ? `${row.location}, ${row.countryName}` 
@@ -36,25 +54,30 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const user = await getCurrentUser().catch(() => null);
 
-    const userId = searchParams.get("userId") || user?.id || null;
-    const cursor = searchParams.get("cursor");
-    const limitParam = searchParams.get("limit");
-    const limit = limitParam ? parseInt(limitParam, 10) : 24;
+    // OWASP API1:2023 - Broken Object Level Authorization (IDOR) Prevention:
+    // If authenticated, lock candidate to their own identity.
+    const authenticatedUserId = user?.id && UUID_REGEX.test(user.id) ? user.id : null;
+    const requestedUserId = searchParams.get("userId");
+    const validRequestedUserId = requestedUserId && UUID_REGEX.test(requestedUserId) ? requestedUserId : null;
+    const userId = authenticatedUserId ? authenticatedUserId : validRequestedUserId;
 
-    // Optional query overrides
-    const country = searchParams.get("country");
-    const seniority = searchParams.get("seniority");
-    const domainsParam = searchParams.get("domains");
-    const domains = domainsParam ? domainsParam.split(",").map(d => d.trim()).filter(Boolean) : null;
-    const skillsParam = searchParams.get("skills");
-    const skills = skillsParam ? skillsParam.split(",").map(s => s.trim()).filter(Boolean) : null;
-    const citiesParam = searchParams.get("cities");
-    const cities = citiesParam ? citiesParam.split(",").map(c => c.trim()).filter(Boolean) : null;
-    const jobTypesParam = searchParams.get("jobTypes");
-    const jobTypes = jobTypesParam ? jobTypesParam.split(",").map(t => t.trim()).filter(Boolean) : null;
-    const modeParam = searchParams.get("mode");
-    const mode = (modeParam === "strict" || modeParam === "balanced" || modeParam === "broad") 
-      ? modeParam 
+    // OWASP API4:2023 - Unrestricted Resource Consumption: Clamp limit to [1, 50]
+    const rawLimit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!, 10) : 24;
+    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(1, rawLimit), 50) : 24;
+
+    const cursorParam = searchParams.get("cursor");
+    const cursor = cursorParam && cursorParam.length <= 512 ? cursorParam : null;
+
+    // Sanitize query overrides against JSON-bombs and excessive string lengths
+    const country = sanitizeText(searchParams.get("country"), 60);
+    const seniority = sanitizeText(searchParams.get("seniority"), 50);
+    const domains = sanitizeStringList(searchParams.get("domains"));
+    const skills = sanitizeStringList(searchParams.get("skills"));
+    const cities = sanitizeStringList(searchParams.get("cities"));
+    const jobTypes = sanitizeStringList(searchParams.get("jobTypes"));
+    const rawMode = searchParams.get("mode");
+    const mode = (rawMode === "strict" || rawMode === "balanced" || rawMode === "broad") 
+      ? rawMode 
       : undefined;
 
     // Forward directly to GCP Cloud Run microservice if configured
@@ -64,17 +87,22 @@ export async function GET(request: Request) {
         const targetUrl = new URL(`${cloudRunUrl}/api/jobs/matched`);
         if (userId) targetUrl.searchParams.set("userId", userId);
         if (cursor) targetUrl.searchParams.set("cursor", cursor);
-        if (limitParam) targetUrl.searchParams.set("limit", limitParam);
+        targetUrl.searchParams.set("limit", limit.toString());
         if (mode) targetUrl.searchParams.set("mode", mode);
         if (country) targetUrl.searchParams.set("country", country);
         if (seniority) targetUrl.searchParams.set("seniority", seniority);
-        if (domainsParam) targetUrl.searchParams.set("domains", domainsParam);
-        if (skillsParam) targetUrl.searchParams.set("skills", skillsParam);
-        if (citiesParam) targetUrl.searchParams.set("cities", citiesParam);
-        if (jobTypesParam) targetUrl.searchParams.set("jobTypes", jobTypesParam);
+        if (domains) targetUrl.searchParams.set("domains", domains.join(","));
+        if (skills) targetUrl.searchParams.set("skills", skills.join(","));
+        if (cities) targetUrl.searchParams.set("cities", cities.join(","));
+        if (jobTypes) targetUrl.searchParams.set("jobTypes", jobTypes.join(","));
+
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (process.env.INTERNAL_SERVICE_KEY) {
+          headers["x-internal-secret"] = process.env.INTERNAL_SERVICE_KEY;
+        }
 
         const cloudRes = await fetch(targetUrl.toString(), {
-          headers: { "Content-Type": "application/json" },
+          headers,
           cache: "no-store",
         });
 
@@ -114,9 +142,10 @@ export async function GET(request: Request) {
       executionTimeMs: result.executionTimeMs,
     });
   } catch (error: any) {
+    // OWASP API10:2023 - Prevent internal server/database error leakage in production
     console.error("Failed to fetch matched jobs:", error);
     return NextResponse.json(
-      { error: "Failed to fetch matched jobs", details: error.message },
+      { error: "Failed to fetch matched jobs" },
       { status: 500 }
     );
   }
@@ -127,18 +156,36 @@ export async function POST(request: Request) {
     const user = await getCurrentUser().catch(() => null);
     const body = await request.json().catch(() => ({}));
 
-    const userId = body.userId || user?.id || null;
+    // OWASP API1:2023 - IDOR Prevention
+    const authenticatedUserId = user?.id && UUID_REGEX.test(user.id) ? user.id : null;
+    const requestedUserId = body.userId;
+    const validRequestedUserId = requestedUserId && UUID_REGEX.test(requestedUserId) ? requestedUserId : null;
+    const userId = authenticatedUserId ? authenticatedUserId : validRequestedUserId;
+
+    const rawLimit = typeof body.limit === "number" ? body.limit : 24;
+    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(1, rawLimit), 50) : 24;
+
+    const cursor = typeof body.cursor === "string" && body.cursor.length <= 512 ? body.cursor : null;
+
     const rawPreferences = body.preferences || body;
     const preferences: UserPreferencesInput = {};
     if (rawPreferences && typeof rawPreferences === "object") {
-      for (const [k, v] of Object.entries(rawPreferences)) {
-        if (v !== null && v !== undefined) {
-          (preferences as any)[k] = v;
-        }
+      if (rawPreferences.country) preferences.country = sanitizeText(rawPreferences.country, 60);
+      if (rawPreferences.seniority) preferences.seniority = sanitizeText(rawPreferences.seniority, 50);
+      if (Array.isArray(rawPreferences.domains)) {
+        preferences.domains = rawPreferences.domains.map((d: unknown) => String(d).slice(0, 100)).slice(0, 25);
+      }
+      if (Array.isArray(rawPreferences.skills)) {
+        preferences.skills = rawPreferences.skills.map((s: unknown) => String(s).slice(0, 100)).slice(0, 25);
+      }
+      if (Array.isArray(rawPreferences.cities)) {
+        preferences.cities = rawPreferences.cities.map((c: unknown) => String(c).slice(0, 100)).slice(0, 25);
+      }
+      if (Array.isArray(rawPreferences.jobTypes)) {
+        preferences.jobTypes = rawPreferences.jobTypes.map((t: unknown) => String(t).slice(0, 100)).slice(0, 25);
       }
     }
-    const cursor = body.cursor || null;
-    const limit = typeof body.limit === "number" ? body.limit : 24;
+
     const rawMode = body.mode !== undefined ? body.mode : preferences?.mode;
     const mode = (rawMode === "strict" || rawMode === "balanced" || rawMode === "broad")
       ? rawMode
@@ -148,9 +195,14 @@ export async function POST(request: Request) {
     const cloudRunUrl = process.env.CLOUDRUN_MATCHING_URL;
     if (cloudRunUrl) {
       try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (process.env.INTERNAL_SERVICE_KEY) {
+          headers["x-internal-secret"] = process.env.INTERNAL_SERVICE_KEY;
+        }
+
         const cloudRes = await fetch(`${cloudRunUrl}/api/jobs/matched`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             userId,
             preferences: Object.keys(preferences).length > 0 ? preferences : undefined,
@@ -189,7 +241,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("Failed to match jobs by preferences:", error);
     return NextResponse.json(
-      { error: "Failed to match jobs by preferences", details: error.message },
+      { error: "Failed to match jobs by preferences" },
       { status: 500 }
     );
   }

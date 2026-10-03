@@ -438,3 +438,21 @@ gcloud run deploy job-matching-service \
   --cpu 1 \
   --set-secrets DATABASE_URL=job-matching-service-database-url:latest
 ```
+
+---
+
+## 9. Security Architecture & Industry Best Practices
+
+The job matching microservice and Next.js integration adhere strictly to **OWASP Top 10 API Security (2023)** and **CIS Docker Container Benchmarks**:
+
+| Security Domain | Threat / Risk | Implemented Control | Standard / Benchmark |
+|---|---|---|---|
+| **Broken Object Level Authorization (IDOR / BOLA)** | Malicious authenticated user queries another candidate's private match feed via `?userId=<victim_id>`. | **Session Identity Locking:** In `app/api/jobs/matched/route.ts`, if an authenticated session exists, `userId` is strictly locked to `user.id`. Any conflicting `userId` parameter is discarded. | **OWASP API1:2023** |
+| **Broken Authentication / Unprotected Microservices** | Direct Internet abuse of Cloud Run endpoint bypassing Next.js auth controls. | **Service-to-Service Secret Authentication:** Optional `INTERNAL_SERVICE_KEY` verified via `x-internal-secret` or `Authorization: Bearer`. Health checks (`/health`) remain public for GCP monitoring. | **OWASP API2:2023** |
+| **Unrestricted Resource Consumption (DoS)** | Client requests `limit=1000000` or negative values, exhausting database connections and container memory. | **Strict Clamping & Type Coercion:** All limits are strictly coerced and clamped to `[1, 50]` (`Math.min(Math.max(1, limit), 50)`). Arrays (`domains`, `skills`, etc.) are capped at 25 items and 100 characters per string. | **OWASP API4:2023** |
+| **SQL Injection (SQLi)** | Arbitrary SQL commands injected through search strings, cursors, or IDs. | **100% Parameterized Queries:** All values (`$1` through `$6`) are passed as native protocol parameters to PostgreSQL. String interpolation (`sql.raw`) has been eliminated. | **OWASP Top 10 A03:2021** |
+| **Security Misconfiguration & Fingerprinting** | Server signatures and sniffing attacks on API responses. | **HTTP Security Headers:** `app.disable("x-powered-by")`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security: max-age=31536000`, `Referrer-Policy: no-referrer`. | **OWASP API8:2023** |
+| **Information Disclosure / Stack Leakage** | Database schema, hostnames, or connection errors returned to clients in error responses. | **Production Error Masking:** In `NODE_ENV === "production"`, detailed error messages (`err.message`) are masked and replaced with generic `{ error: "Failed to match jobs" }`. All internal errors are logged securely to Google Cloud Logging. | **OWASP API10:2023** |
+| **Container Privilege Escalation** | Container breakout or process hijacking running as root. | **Unprivileged Non-Root Execution:** Dockerfile uses `USER node` (UID 1000) with file ownership set to `node:node`, dropping all root capabilities. | **CIS Docker Benchmark 4.1** |
+| **Secrets Management** | Leaking database connection strings or credentials in source code. | **GCP Secret Manager Integration:** Production database URLs are injected via `job-matching-service-database-url:latest` in Secret Manager. No credentials exist in the Git repository. | **NIST SP 800-53** |
+

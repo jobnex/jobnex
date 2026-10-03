@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { config } from "dotenv";
 import { Pool } from "pg";
@@ -7,8 +7,32 @@ import { PREFERENCE_MATCHING_SQL } from "./query";
 config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// Security Hardening: Disable Express signature header
+app.disable("x-powered-by");
+
+// Security Hardening: Enforce strict payload limits to mitigate JSON-bomb DoS attacks
+app.use(express.json({ limit: "100kb" }));
+
+// Security Hardening: Standard OWASP HTTP response security headers
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+// Security Hardening: Configurable CORS allowlist
+const corsOrigins = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(",").map(o => o.trim()) 
+  : "*";
+
+app.use(cors({
+  origin: corsOrigins,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-internal-secret"],
+}));
 
 const PORT = process.env.PORT || 8080;
 const connectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
@@ -25,20 +49,73 @@ const pool = new Pool({
   connectionTimeoutMillis: 15000,
 });
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sanitizeArray(input: unknown, maxItems = 25, maxLen = 100): string[] | undefined {
+  if (Array.isArray(input)) {
+    const cleaned = input
+      .map(item => String(item).trim().slice(0, maxLen))
+      .filter(Boolean)
+      .slice(0, maxItems);
+    return cleaned.length > 0 ? cleaned : undefined;
+  }
+  if (typeof input === "string") {
+    const cleaned = input
+      .split(",")
+      .map(item => item.trim().slice(0, maxLen))
+      .filter(Boolean)
+      .slice(0, maxItems);
+    return cleaned.length > 0 ? cleaned : undefined;
+  }
+  return undefined;
+}
+
+function sanitizeText(input: unknown, maxLen = 100): string | undefined {
+  if (typeof input === "string") {
+    const clean = input.trim().slice(0, maxLen);
+    return clean.length > 0 ? clean : undefined;
+  }
+  return undefined;
+}
+
+// Public Health Check Endpoint
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() });
 });
 
-app.all("/api/jobs/matched", async (req: Request, res: Response) => {
+// Security Hardening: Optional Service-to-Service Secret Authentication
+const requireServiceAuth = (req: Request, res: Response, next: NextFunction) => {
+  const internalSecret = process.env.INTERNAL_SERVICE_KEY;
+  if (internalSecret) {
+    const clientSecret = req.headers["x-internal-secret"] || 
+      (req.headers["authorization"]?.startsWith("Bearer ") ? req.headers["authorization"].slice(7) : null);
+
+    if (clientSecret !== internalSecret) {
+      return res.status(401).json({ error: "Unauthorized: Invalid service authentication token" });
+    }
+  }
+  next();
+};
+
+app.all("/api/jobs/matched", requireServiceAuth, async (req: Request, res: Response) => {
   try {
     const isGet = req.method === "GET";
     const params = isGet ? req.query : req.body;
 
-    const userId = (params.userId as string) || null;
-    const cursor = (params.cursor as string) || null;
-    const limit = params.limit ? parseInt(params.limit as string, 10) : 24;
-    const mode = (params.mode as string) || "balanced";
+    // OWASP API1: Validate and enforce UUID format for candidate ID
+    const rawUserId = typeof params.userId === "string" ? params.userId.trim() : null;
+    const userId = rawUserId && UUID_REGEX.test(rawUserId) ? rawUserId : null;
 
+    // OWASP API4: Clamp pagination limits to [1, 50] to prevent resource exhaustion / DoS
+    const rawLimit = params.limit ? parseInt(params.limit as string, 10) : 24;
+    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(1, rawLimit), 50) : 24;
+
+    const rawMode = params.mode as string;
+    const mode = (rawMode === "strict" || rawMode === "balanced" || rawMode === "broad")
+      ? rawMode
+      : "balanced";
+
+    const cursor = typeof params.cursor === "string" && params.cursor.length <= 512 ? params.cursor : null;
     let cursorPublishedAt: string | null = null;
     let cursorId: string | null = null;
     let cursorTierRank: number | null = null;
@@ -47,36 +124,41 @@ app.all("/api/jobs/matched", async (req: Request, res: Response) => {
     if (cursor) {
       try {
         const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf-8"));
-        if (decoded?.id && decoded?.publishedAt) {
-          cursorPublishedAt = decoded.publishedAt;
+        if (decoded?.id && decoded?.publishedAt && UUID_REGEX.test(decoded.id)) {
+          cursorPublishedAt = String(decoded.publishedAt);
           cursorId = decoded.id;
-          cursorTierRank = decoded.tierRank ?? null;
-          cursorSimilarityScore = decoded.similarityScore ?? null;
+          cursorTierRank = typeof decoded.tierRank === "number" ? decoded.tierRank : null;
+          cursorSimilarityScore = typeof decoded.similarityScore === "number" ? decoded.similarityScore : null;
         }
-      } catch (err) {
-        console.warn("Invalid cursor passed:", cursor);
+      } catch {
+        // Non-fatal if cursor is malformed; falls back to initial page
       }
     }
 
-    const prefPayload: Record<string, unknown> = {
-      ...(typeof params.preferences === "object" ? params.preferences : {}),
-      mode,
-    };
+    const rawPref = typeof params.preferences === "object" && params.preferences !== null
+      ? params.preferences
+      : {};
 
-    if (params.domains) {
-      prefPayload.domains = typeof params.domains === "string" ? params.domains.split(",") : params.domains;
-    }
-    if (params.skills) {
-      prefPayload.skills = typeof params.skills === "string" ? params.skills.split(",") : params.skills;
-    }
-    if (params.country) prefPayload.country = params.country;
-    if (params.cities) {
-      prefPayload.cities = typeof params.cities === "string" ? params.cities.split(",") : params.cities;
-    }
-    if (params.seniority) prefPayload.seniority = params.seniority;
-    if (params.jobTypes) {
-      prefPayload.jobTypes = typeof params.jobTypes === "string" ? params.jobTypes.split(",") : params.jobTypes;
-    }
+    const prefPayload: Record<string, unknown> = { mode };
+
+    const domains = sanitizeArray(params.domains ?? rawPref.domains);
+    if (domains) prefPayload.domains = domains;
+
+    const skills = sanitizeArray(params.skills ?? rawPref.skills);
+    if (skills) prefPayload.skills = skills;
+
+    const country = sanitizeText(params.country ?? rawPref.country, 60);
+    if (country) prefPayload.country = country;
+
+    const cities = sanitizeArray(params.cities ?? rawPref.cities);
+    if (cities) prefPayload.cities = cities;
+
+    const seniority = sanitizeText(params.seniority ?? rawPref.seniority, 50);
+    if (seniority) prefPayload.seniority = seniority;
+
+    const jobTypes = sanitizeArray(params.jobTypes ?? rawPref.jobTypes);
+    if (jobTypes) prefPayload.jobTypes = jobTypes;
+
     if (cursorTierRank !== null) prefPayload.cursorTierRank = cursorTierRank;
     if (cursorSimilarityScore !== null) prefPayload.cursorSimilarityScore = cursorSimilarityScore;
 
@@ -140,10 +222,11 @@ app.all("/api/jobs/matched", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("Cloud Run Matching Service Error:", err);
-    res.status(500).json({ error: "Failed to match jobs", details: err.message });
+    // OWASP API10: Mask database error details in production to prevent information disclosure
+    res.status(500).json({ error: "Failed to match jobs" });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Cloud Run Matching Service running on port ${PORT}`);
+  console.log(`Cloud Run Matching Service running securely on port ${PORT}`);
 });

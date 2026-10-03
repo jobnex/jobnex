@@ -981,11 +981,20 @@ export async function matchUserJobs(
   const fetchLimit = Math.max(1, limit) + 1; // Fetch 1 extra to check hasMore
 
   const start = performance.now();
-  const queryClient = (pool as any) || (db as any).$client;
-  let rawRows: Record<string, unknown>[];
+  let rawRows: Record<string, unknown>[] = [];
 
-  if (queryClient?.query) {
-    const res = await queryClient.query(PREFERENCE_MATCHING_SQL, [
+  if (pool && typeof pool.query === "function") {
+    const res = await pool.query(PREFERENCE_MATCHING_SQL, [
+      prefJson,
+      userId,
+      cursorPublishedAt,
+      cursorId,
+      fetchLimit,
+      resolvedCountryId,
+    ]);
+    rawRows = (res.rows || []) as Record<string, unknown>[];
+  } else if ((db as any)?.$client?.query) {
+    const res = await (db as any).$client.query(PREFERENCE_MATCHING_SQL, [
       prefJson,
       userId,
       cursorPublishedAt,
@@ -995,17 +1004,7 @@ export async function matchUserJobs(
     ]);
     rawRows = (res.rows || []) as Record<string, unknown>[];
   } else {
-    const paramMap: Record<string, string> = {
-      "$1": `'${prefJson.replace(/'/g, "''")}'::jsonb`,
-      "$2": userId ? `'${userId.replace(/'/g, "''")}'::text` : "NULL::text",
-      "$3": cursorPublishedAt ? `'${cursorPublishedAt}'::timestamptz` : "NULL::timestamptz",
-      "$4": cursorId ? `'${cursorId}'::uuid` : "NULL::uuid",
-      "$5": `${fetchLimit}`,
-      "$6": resolvedCountryId ? `'${resolvedCountryId}'::uuid` : "NULL::uuid",
-    };
-    const interpolatedSql = PREFERENCE_MATCHING_SQL.replace(/\$([1-6])\b/g, (match) => paramMap[match] || match);
-    const queryResult = await db.execute<Record<string, unknown>>(sql.raw(interpolatedSql));
-    rawRows = (queryResult.rows || []) as Record<string, unknown>[];
+    throw new Error("No database client available for matching query");
   }
 
   const durationMs = performance.now() - start;

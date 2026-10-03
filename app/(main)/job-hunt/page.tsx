@@ -15,12 +15,17 @@ export default function JobHuntPage() {
   const { data: sessionData } = authClient.useSession();
   const userId = sessionData?.user?.id;
 
+  const [mounted, setMounted] = useState<boolean>(false);
   const [jobsData, setJobsData] = useState<Job[]>([]);
   const [requestedJobIds, setRequestedJobIds] = useState<string[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 400);
@@ -112,7 +117,7 @@ export default function JobHuntPage() {
   useEffect(() => {
     fetchApplications();
     fetchMatchedJobs();
-  }, [fetchApplications, fetchMatchedJobs, userId]);
+  }, [fetchApplications, fetchMatchedJobs]);
 
   const handleTabChange = useCallback((tabId: string) => {
     const nextTab = tabId as "jobs" | "requested";
@@ -209,11 +214,11 @@ export default function JobHuntPage() {
              </button>
              <button 
                onClick={() => fetchMatchedJobs()}
-               disabled={isLoading}
+               disabled={mounted ? isLoading : false}
                title="Refresh live recommendations from GCP"
                className="inline-flex items-center gap-2 px-4 py-[0.65rem] rounded-md font-bold text-[0.88rem] border-[1.5px] border-brand-dark text-brand-dark bg-transparent hover:bg-brand-dark/5 transition-all hover:-translate-y-[1px] cursor-pointer active:translate-y-[1px] disabled:opacity-50 dark:border-brand-lime dark:text-brand-lime dark:hover:bg-brand-lime/10"
              >
-               <RefreshCw className={`w-[16px] h-[16px] ${isLoading ? "animate-spin" : ""}`} strokeWidth={2.5} />
+               <RefreshCw className={`w-[16px] h-[16px] ${mounted && isLoading ? "animate-spin" : ""}`} strokeWidth={2.5} />
                <span>Fetch Jobs</span>
              </button>
           </div>
@@ -250,7 +255,7 @@ export default function JobHuntPage() {
               isPremium={true}
               variant={activeTab === "jobs" ? "emerald" : "purple"}
               isRequested={activeTab === "requested"}
-              isLoading={isLoading && jobsData.length === 0}
+              isLoading={!mounted || (isLoading && jobsData.length === 0)}
               skeletonCount={12}
               onSelectJob={handleSelectJob}
             />

@@ -3,14 +3,21 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { JobGrid } from "@/components/JobGrid";
 import { AnimatedTabs } from "@/components/AnimatedTabs";
-import { Search, Filter, Plus, RefreshCw, X } from "lucide-react";
-import { getCuratedPartition, jobsData } from "@/data/jobs";
+import { Search, Filter, Plus, RefreshCw, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { JobDescriptionPanel } from "@/components/JobDescriptionPanel";
 import { useJobStore } from "@/store/useJobStore";
 import { Job } from "@/types";
 
 export default function JobHuntPage() {
+  const [jobsData, setJobsData] = useState<Job[]>([]);
+  const [requestedJobIds, setRequestedJobIds] = useState<string[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 400);
 
@@ -35,6 +42,70 @@ export default function JobHuntPage() {
       window.scrollTo({ top: 0, behavior: "instant" });
     }
   }, [curatedJdJob]);
+
+  // Load requested applications to partition them
+  const fetchApplications = useCallback(async () => {
+    try {
+      const response = await fetch("/api/job-hunt/applications");
+      if (response.ok) {
+        const data = await response.json();
+        setRequestedJobIds((data.jobs || []).map((job: Job) => job.id));
+      }
+    } catch {
+      // Non-fatal if applications cannot be loaded
+    }
+  }, []);
+
+  // Fetch live personalized matched jobs (powered by GCP Cloud Run backend)
+  const fetchMatchedJobs = useCallback(async (cursorParam?: string | null) => {
+    const isInitial = !cursorParam;
+    if (isInitial) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+
+    try {
+      const url = new URL("/api/jobs/matched", window.location.origin);
+      url.searchParams.set("limit", "24");
+      url.searchParams.set("mode", "balanced");
+      if (cursorParam) {
+        url.searchParams.set("cursor", cursorParam);
+      }
+
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const newJobs: Job[] = data.jobs || [];
+
+      if (isInitial) {
+        setJobsData(newJobs);
+      } else {
+        setJobsData(prev => {
+          const existingIds = new Set(prev.map(j => j.id));
+          const deduped = newJobs.filter(j => !existingIds.has(j.id));
+          return [...prev, ...deduped];
+        });
+      }
+
+      setNextCursor(data.nextCursor || null);
+      setHasMore(Boolean(data.hasMore));
+    } catch (err) {
+      console.error("Error loading matched jobs:", err);
+      toast.error("Could not load personalized jobs");
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchApplications();
+    fetchMatchedJobs();
+  }, [fetchApplications, fetchMatchedJobs]);
 
   const handleTabChange = useCallback((tabId: string) => {
     const nextTab = tabId as "jobs" | "requested";
@@ -70,9 +141,12 @@ export default function JobHuntPage() {
     return jobsData.filter(
       (job) => job.jobRoleTitle.toLowerCase().includes(q) || job.company.toLowerCase().includes(q)
     );
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, jobsData]);
 
-  const { standardJobs, requestedJobs } = useMemo(() => getCuratedPartition(jobs), [jobs]);
+  const { standardJobs, requestedJobs } = useMemo(() => ({
+    standardJobs: jobs.filter(job => !requestedJobIds.includes(job.id)),
+    requestedJobs: jobs.filter(job => requestedJobIds.includes(job.id)),
+  }), [jobs, requestedJobIds]);
 
   const displayedJobs = activeTab === "jobs" ? standardJobs : requestedJobs;
 
@@ -126,8 +200,13 @@ export default function JobHuntPage() {
                <Plus className="w-[16px] h-[16px]" strokeWidth={2.5} />
                <span>Add Job</span>
              </button>
-             <button className="inline-flex items-center gap-2 px-4 py-[0.65rem] rounded-md font-bold text-[0.88rem] border-[1.5px] border-brand-dark text-brand-dark bg-transparent hover:bg-brand-dark/5 transition-all hover:-translate-y-[1px] cursor-pointer active:translate-y-[1px] dark:border-brand-lime dark:text-brand-lime dark:hover:bg-brand-lime/10">
-               <RefreshCw className="w-[16px] h-[16px]" strokeWidth={2.5} />
+             <button 
+               onClick={() => fetchMatchedJobs()}
+               disabled={isLoading}
+               title="Refresh live recommendations from GCP"
+               className="inline-flex items-center gap-2 px-4 py-[0.65rem] rounded-md font-bold text-[0.88rem] border-[1.5px] border-brand-dark text-brand-dark bg-transparent hover:bg-brand-dark/5 transition-all hover:-translate-y-[1px] cursor-pointer active:translate-y-[1px] disabled:opacity-50 dark:border-brand-lime dark:text-brand-lime dark:hover:bg-brand-lime/10"
+             >
+               <RefreshCw className={`w-[16px] h-[16px] ${isLoading ? "animate-spin" : ""}`} strokeWidth={2.5} />
                <span>Fetch Jobs</span>
              </button>
           </div>
@@ -137,7 +216,7 @@ export default function JobHuntPage() {
           activeTab={activeTab} 
           onTabChange={handleTabChange}
           tabs={[
-            { id: "jobs", label: "Jobs", count: standardJobs.length },
+            { id: "jobs", label: "Jobs", count: displayedJobs.length },
             { id: "requested", label: "Requested", count: requestedJobs.length }
           ]} 
         />
@@ -164,8 +243,30 @@ export default function JobHuntPage() {
               isPremium={true}
               variant={activeTab === "jobs" ? "emerald" : "purple"}
               isRequested={activeTab === "requested"}
+              isLoading={isLoading && jobsData.length === 0}
+              skeletonCount={12}
               onSelectJob={handleSelectJob}
             />
+
+            {/* Keyset Infinite Scroll Load More */}
+            {activeTab === "jobs" && hasMore && (
+              <div className="flex justify-center items-center pt-8 pb-4">
+                <button
+                  onClick={() => fetchMatchedJobs(nextCursor)}
+                  disabled={isLoadingMore}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold border-[1.5px] border-border-color bg-bg-card text-text-primary shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all active:translate-y-0 cursor-pointer disabled:opacity-50 dark:bg-[#151720] dark:border-[#2B3042] dark:hover:border-[#ACEE5F]"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-brand-dark dark:text-brand-lime" />
+                      <span>Loading more recommendations...</span>
+                    </>
+                  ) : (
+                    <span>Load More Jobs</span>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

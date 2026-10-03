@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde::Serialize;
 
-pub const VERSION: &str = "experience-details-v8";
+pub const VERSION: &str = "experience-details-v9";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Requirement {
@@ -47,24 +47,27 @@ pub struct Extractor {
     repeated_unit_range: Regex,
     ceiling: Regex,
     non_work_duration: Regex,
+    approximate: Regex,
+    detached_degree: Regex,
+    company_history: Regex,
 }
 
 impl Default for Extractor {
     fn default() -> Self {
         Self {
-            quantities: Regex::new(r"(?i)\b([0-9]{1,4}(?:\.[0-9]{1,2})?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s*(?:\(\s*[0-9]{1,3}\s*\))?\s*(?:(?:[-–—]|to)\s*([0-9]{1,4}(?:\.[0-9]{1,2})?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:\(\s*[0-9]{1,3}\s*\))?)?\s*\+?\s*[- ]?\s*(years?|yrs?|months?|mos?)\b").unwrap(),
+            quantities: Regex::new(r"(?i)\b([0-9]{1,4}(?:\.[0-9]{1,2})?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s*(?:\(\s*[0-9]{1,3}\s*\))?\s*(?:(?:[-–—]|to)\s*([0-9]{1,4}(?:\.[0-9]{1,2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s*(?:\(\s*[0-9]{1,3}\s*\))?)?\s*\+?\s*[- ]?\s*(years?|yrs?|months?|mos?)\b").unwrap(),
             experience: Regex::new(r"(?i)\b(experience|expertise|background)\b").unwrap(),
             preferred: Regex::new(r"(?i)\b(prefer|preferred|preferably|desired|desirable|ideally|bonus|nice.to.have|a plus|an advantage)\b").unwrap(),
-            preferred_heading: Regex::new(r"(?i)^(?:preferred|desired|desirable|nice.to.have|bonus|optional)(?:\s+(?:qualifications|requirements|skills|criteria|experience|additional|attributes))*$").unwrap(),
+            preferred_heading: Regex::new(r"(?i)^(?:preferred|desired|desirable|nice.to.have|bonus|optional)(?:[ /&,:-]+(?:education|and|qualifications|requirements|skills|criteria|experience|additional|attributes))*$").unwrap(),
             required_heading: Regex::new(r"(?i)^(?:(?:(?:minimum|basic|required|essential|necessary|technical|education|knowledge|and|work|professional|additional|candidate|key|your|qualifications|skills|experience|requirements|criteria|background|attributes)[ /&,:-]*)+|what.*(?:bring|looking(?: for)?|need)|you(?:'ll| will)? (?:have|bring)|must.haves?|to qualify.*|to be considered.*)$").unwrap(),
             excluded_heading: Regex::new(r"(?i)\b(about (?:us|the company)|our company|benefits|compensation|responsibilities|duties|equal opportunity|eligibility|job description)\b").unwrap(),
-            required: Regex::new(r"(?i)\b(min(?:imum)?|at least|no less than|must have|must possess|requires?|required|qualifications|you(?:['’]ll| will)? have|you['’]ve spent|you have spent|you bring|you possess|should have|need to have|we need|seeking|looking for|we seek|supplemented by|proven (?:experience|expertise)|demonstrated expertise|significant professional .*experience|typically (?:has|candidate will have)|has actively served)\b|^\s*(?:have|experience|need|brings|typically)\b|\b(?:engineer|architect|candidate|manager|assistant)s? with\s*$|\bformal training or certification.*\band\s*$").unwrap(),
+            required: Regex::new(r"(?i)\b(min(?:imum)?|at least|no less than|must have|must possess|requires?|required|qualifications|you(?:['’]ll| will)? have|you['’]ve spent|you have spent|you (?:should |will )?bring|you possess|should have|need to have|we need|seeking|looking for|we seek|supplemented by|proven|demonstrated expertise|extensive experience|strong expertise|high proficiency|expert in production|experienced professional|significant professional .*experience|typically (?:has|candidate will have)|(?:ideal )?candidate (?:will have|has)|applicant[^.;\n]{0,60}will have|(?:strong|advanced)[^.;\n]{0,60}(?:experience|expertise)|expert software engineering|technical skills|bring a wealth of|role is calibrated for|previous experience|has actively served)\b|^\s*(?:has|plus|have|experience|need|bring|brings|possess|possesses|typically|roughly|approximately|circa|c\.)\b|\b(?:professional|engineer|architect|candidate|manager|assistant|developer|auditor|lawyer|EIT)s? with\s*$|\bformal training or certification.*\b(?:and|plus)\s*$").unwrap(),
             unrelated: Regex::new(r"(?i)\byears?\s+(?:of\s+age|old)\b|\b(?:age|aged)\s*\(?\s*(?:at least\s+)?[0-9]|\b(probation(?:ary)?|polygraph|background check|within.*hire|project (?:funded|duration)|contract duration|founded|established)\b|\b(?:after|vesting|eligible)[^.;\n]*\b(?:vacation|retirement|anniversary)\b|(?:our company (?:has|is|celebrates)|we have|company has|brings the strength of|serving clients)[^\n]*|Gemini Enterprise for Customer Experience").unwrap(),
-            non_experience_tail: Regex::new(r"(?i)^\s*(?:of age|old|probationary|(?:project|contract) (?:duration|term|funded)|college|university|high school diploma|degree|diploma|existence|state .*apprenticeship program|is equivalent to.*(?:semester|quarter|hours))\b").unwrap(),
-            degree: Regex::new(r"(?i)\b(bachelor(?:'s|’s|s)?|master(?:'s|’s|s)?|associate(?:'s|’s|s)?|phd|doctorate|graduate(?:-level)? (?:degree|education)|advanced degree|high school|(?-i:BSEE|BSME|BS|BA|MS|MA|GED)|degree|diploma)\b").unwrap(),
-            education_alternative: Regex::new(r"(?i)\bin lieu of|\b(?:may|can) (?:consider|be substituted|be waived)|\bsubstitution (?:available|allowed)|\bor\s+(?:(?:an?|the)\s+)?(?:bachelor|master|associate|phd|doctorate|graduate degree|advanced degree|high school|BS|BA|MS|MA|equivalence to|equivalent combination|equivalent (?:BS|BA|MS|degree|education|experience)|equivalent demonstrated through)\b|\bor[-* ]+(?:for (?:internal|external) candidates,?\s+)?(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)\b").unwrap(),
+            non_experience_tail: Regex::new(r"(?i)^\s*(?:of age|of (?:continuous )?employment|of (?:history|steady growth|proven growth|practice|commitment|making great things possible)|rotations|of employment|ago|old|probationary|(?:technical |product |strategic )?roadmaps?|(?:of )?(?:data )?retention|(?:of )?(?:existing client relationships|learning science)|rotational.{0,30}program|developmental experience consisting|(?:project|contract) (?:duration|term|funded)|college|university|high school diploma|degree|diploma|existence|state .*apprenticeship program|is equivalent to.*(?:semester|quarter|hours))\b").unwrap(),
+            degree: Regex::new(r"(?i)\b(bachelor(?:'s|’s|s)?|master(?:'s|’s|s)?|associate(?:'s|’s|s)?|phd|doctorate|graduate(?:-level)? (?:degree|education)|advanced degree|high school|MSc|BSc|(?-i:BSEE|BSME|BS|BA|MS|MA|GED)|education|graduate|degree|diploma)\b").unwrap(),
+            education_alternative: Regex::new(r"(?i)\bgraduate or\b|\bin lieu of|\b(?:may|can) (?:consider|be substituted|be waived)|\bsubstitution (?:available|allowed)|\bor[, ]+(?:(?:an?|the)\s+)?(?:some formal college|education|bachelor|master|associate|phd|doctorate|graduate degree|advanced degree|high school|MSc|BSc|BS|BA|MS|MA|equivalence to|equivalent combination|equivalent (?:BS|BA|MS|degree|education|experience)|equivalent demonstrated through)\b|\bor[-* ]+(?:for (?:internal|external) candidates,?\s+)?(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)\b").unwrap(),
             alternative_label: Regex::new(r"(?i)\b(?:option|level|grade|classification)\s+(?:[0-9]+|[ivx]+)\b|(?:^|[- ])(?:I|II|III|IV|Sr)\s*:").unwrap(),
-            bullet: Regex::new(r"^\s*(?:[-+*•●▪◦‣–—›\u{f0b7}]\s+|[0-9]+[.)]\s+)").unwrap(),
+            bullet: Regex::new(r"^\s*(?:[-+•●▪◦‣·➤►✓✔–—›\u{f0b7}]\s*|\*\s+|[0-9]+[.)]\s+)").unwrap(),
             sentence: Regex::new(r"[.!?;]\s+").unwrap(),
             zero: Regex::new(r"(?i)^\s*no\s+(?:(?:prior|previous|professional|work)\s+)?experience\s+(?:is\s+)?(?:required|necessary)\b").unwrap(),
             negated: Regex::new(r"(?i)\bnot\s+(?:required|necessary|mandatory)\b").unwrap(),
@@ -76,7 +79,10 @@ impl Default for Extractor {
             service_duration: Regex::new(r"(?i)\b(?:tuition reimbursement|sabbatical|longevity pay|paid time off|hybrid work arrangement|years? of (?:state )?service|years? of employment|start date|after.*hire|within.*start|earning (?:your|a|the) degree|company.*has spent|subsidiary.*has spent|history spanning|legacy of over|we draw on|combines over.*expertise|limit yourself.*applications|applying for.*roles within|internship program is|voted by associates|years? in a row|years? in business|has spent.*years building software|team focuses on matching)[^\n]*|^(?:for nearly|for over|boasting over|with (?:more than|nearly|over)?)\s*[0-9]+\s+years?[^\n]*\b(?:we|our|partners|laboratory|company|specializes|industries|worldwide|innovation)\b|\byear[- ](?:history|heritage|legacy)\b|serving policyholders|coverage across.*industries").unwrap(),
             repeated_unit_range: Regex::new(r"(?i)\b([0-9]+)\s+(years?|months?)\s+to\s+([0-9]+)\s+(years?|months?)\b").unwrap(),
             ceiling: Regex::new(r"(?i)(?:up to|at most|no more than|maximum of)\s*$").unwrap(),
-            non_work_duration: Regex::new(r"(?i)\bwe may extend you up to\b|\bwe bring (?:the strength of )?(?:over|more than) [0-9]+[- ]*years?\b|^backed by (?:over|more than) [0-9]+ years?[^\n]*\bour\b").unwrap(),
+            non_work_duration: Regex::new(r"(?i)\bwe may extend you up to\b|\bwe bring (?:the strength of )?(?:(?:over|more than) )?[0-9]+\+?[- ]*years?\b|^backed by (?:over|more than) [0-9]+ years?[^\n]*\bour\b|\b(?:building on|drawing on) (?:nearly|over|more than)\b|^(?:and )?for (?:more than |nearly |over )?[0-9]+[- ]*years?[^\n]*\b(?:we|our|firm|company|university|school|institute|grossman|laboratory|has|reputation)\b|\b(?:^(?:this|the)[^.;\n]{0,30}program[^.;\n]{0,60}(?:consist(?:s|ing)?|duration|rotations)|funding.{0,30}secured|years? of history|industry leader for over|independent for over|(?:services|company|firm|group|network|inc)[^\n]{0,80}brings (?:over|more than))\b|\b(?:providers?|global network|aero\s*engines)[^\n]*\b(?:over|more than) [0-9]+[- ]*years?\b").unwrap(),
+            approximate: Regex::new(r"(?i)\b(?:roughly|approximately|around|about|usually|circa)\s*$|\bc\.\s*$|~\s*$").unwrap(),
+            detached_degree: Regex::new(r"(?i)^\s*(?:or[, ]+)?(?:plus|and|with)\b").unwrap(),
+            company_history: Regex::new(r"(?i)^[\p{L}&.'’ -]{1,100}\b(?:has|brings)\s+(?:(?:over|more than)\s+)?[0-9]+\+?[- ]*years?\b|^with (?:over|more than|nearly) [0-9]+[- ]*years? (?:of )?(?:industry |proven )?(?:experience|expertise|growth|practice|commitment|history),\s*(?-i:[A-Z][a-z])|\b(?:organization|firm|company|business|services|network)[^.;\n]{0,120}\bwith (?:over|more than|nearly) [0-9]+\+?[- ]*years?\b").unwrap(),
         }
     }
 }
@@ -134,7 +140,7 @@ impl Extractor {
         let mut matches = self.degree.find_iter(text).filter(|m| {
             !matches!(
                 m.as_str().to_ascii_lowercase().as_str(),
-                "degree" | "diploma"
+                "degree" | "diploma" | "education"
             )
         });
         let found = if before {
@@ -160,10 +166,10 @@ impl Extractor {
         let label = found.as_str().to_ascii_lowercase();
         Some(
             if label.starts_with("bachelor")
-                || matches!(label.as_str(), "bs" | "ba" | "bsee" | "bsme")
+                || matches!(label.as_str(), "bs" | "ba" | "bsee" | "bsme" | "bsc")
             {
                 "bachelors"
-            } else if label.starts_with("master") || matches!(label.as_str(), "ms" | "ma") {
+            } else if label.starts_with("master") || matches!(label.as_str(), "ms" | "ma" | "msc") {
                 "masters"
             } else if label.starts_with("associate") {
                 "associate"
@@ -172,7 +178,7 @@ impl Extractor {
             } else if label.contains("high school") || label == "ged" {
                 "high_school"
             } else {
-                if matches!(label.as_str(), "degree" | "diploma") {
+                if matches!(label.as_str(), "degree" | "diploma" | "education") {
                     "degree"
                 } else {
                     "graduate"
@@ -195,11 +201,20 @@ impl Extractor {
             ("\\)", ")"),
             ("\\(", "("),
             ("\\*", "*"),
+            ("\\&", "&"),
             ("e.g.", "eg"),
             ("i.e.", "ie"),
             ("Ph.D.", "PhD"),
             ("B.S.", "BS"),
             ("M.S.", "MS"),
+            ("exp.", "experience"),
+            ("rel.", "related"),
+            ("fld.", "field"),
+            ("Fin.", "Finance"),
+            ("fin.", "finance"),
+            ("Bus.", "Business"),
+            ("Stats.", "Statistics"),
+            ("Accnt'g", "Accounting"),
         ] {
             plain = plain.replace(from, to);
         }
@@ -222,6 +237,7 @@ impl Extractor {
         let mut section = "unknown";
         let mut degree_candidates: Vec<(usize, String)> = vec![];
         let mut alternative_next = false;
+        let mut pending_degree: Option<String> = None;
         for raw in plain.lines().map(str::trim).filter(|line| !line.is_empty()) {
             let line = raw.trim_matches(['*', '#', ' ', '\t', ':']);
             if line.trim_matches(['-', ' ']).eq_ignore_ascii_case("or") {
@@ -238,24 +254,28 @@ impl Extractor {
                     section = "preferred";
                     degree_candidates.clear();
                     alternative_next = false;
+                    pending_degree = None;
                     continue;
                 }
                 if self.excluded_heading.is_match(line) {
                     section = "excluded";
                     degree_candidates.clear();
                     alternative_next = false;
+                    pending_degree = None;
                     continue;
                 }
                 if self.required_heading.is_match(line) {
                     section = "required";
                     degree_candidates.clear();
                     alternative_next = false;
+                    pending_degree = None;
                     continue;
                 }
                 if raw.starts_with("**") || raw.ends_with(':') {
                     section = "unknown";
                     degree_candidates.clear();
                     alternative_next = false;
+                    pending_degree = None;
                 }
             }
             let text = self.bullet.replace(raw, "").replace('*', "");
@@ -323,6 +343,15 @@ impl Extractor {
                 }
             }
             for clause in self.sentence.split(&text) {
+                if !self.quantities.is_match(clause) {
+                    // Bind only an immediately following plus/and/with experience clause.
+                    pending_degree = if clause.to_ascii_lowercase().contains("without a bachelor") {
+                        Some("no_degree".to_string())
+                    } else {
+                        self.degree_label(clause, true)
+                    };
+                    continue;
+                }
                 for capture in self.quantities.captures_iter(clause) {
                     let whole = capture.get(0).unwrap();
                     let Some(value) = number(capture.get(1).unwrap().as_str()) else {
@@ -335,7 +364,8 @@ impl Extractor {
                         .get(2)
                         .and_then(|m| number(m.as_str()))
                         .map(|n| n * scale);
-                    let prefix = clause[..whole.start()].trim_matches(['*', ' ', ':', '"', '“']);
+                    let prefix =
+                        clause[..whole.start()].trim_matches(['*', ' ', ':', '"', '“', '(', ')']);
                     let tail = &clause[whole.end()..];
                     let has_experience = self.experience.is_match(clause);
                     let labelled_alternative =
@@ -345,7 +375,14 @@ impl Extractor {
                     } else {
                         self.degree_label(prefix, true)
                             .or_else(|| self.degree_label(tail, false))
-                    };
+                    }
+                    .or_else(|| {
+                        if self.detached_degree.is_match(prefix) && has_experience {
+                            pending_degree.clone()
+                        } else {
+                            None
+                        }
+                    });
                     let context_required = section == "required"
                         || labelled_alternative && has_experience
                         || self.required.is_match(prefix)
@@ -359,6 +396,13 @@ impl Extractor {
                     let mut kind = if self.unrelated.is_match(clause)
                         || self.service_duration.is_match(clause)
                         || self.non_work_duration.is_match(clause)
+                        || self.company_history.find_iter(clause).any(|history| {
+                            history.start() <= whole.start()
+                                && history.end() >= whole.end()
+                                && !self
+                                    .required
+                                    .is_match(&clause[history.start()..whole.start()])
+                        })
                         || tail
                             .trim_start()
                             .to_ascii_lowercase()
@@ -378,6 +422,9 @@ impl Extractor {
                         "non_experience"
                     } else if self.recency.is_match(prefix) {
                         "recency"
+                    } else if !has_experience && !self.activity.is_match(tail) && !context_required
+                    {
+                        "non_experience"
                     } else if prefix
                         .split_whitespace()
                         .last()
@@ -389,9 +436,6 @@ impl Extractor {
                         "unsupported_expression"
                     } else if self.negated.is_match(clause) {
                         "not_required"
-                    } else if !has_experience && !self.activity.is_match(tail) && !context_required
-                    {
-                        "non_experience"
                     } else if section == "preferred" || self.preferred.is_match(prefix) {
                         "preferred"
                     } else if self.ceiling.is_match(prefix) && has_experience && !conditional {
@@ -400,6 +444,8 @@ impl Extractor {
                         "uncertain_context"
                     } else if conditional || or_branch || labelled_alternative {
                         "conditional"
+                    } else if self.approximate.is_match(prefix) {
+                        "approximate_experience"
                     } else {
                         "required"
                     };
@@ -456,6 +502,7 @@ impl Extractor {
                         evidence: snippet(clause, whole.start(), whole.end()),
                     });
                 }
+                pending_degree = None;
             }
             if quantities > 0 {
                 alternative_next = false;
@@ -490,6 +537,7 @@ impl Extractor {
                                 | "graduate"
                                 | "degree"
                                 | "education_substitution"
+                                | "no_degree"
                         )
                     })
             }) {
@@ -505,6 +553,8 @@ impl Extractor {
             "recency_constraint"
         } else if has("maximum_experience") {
             "experience_ceiling"
+        } else if has("approximate_experience") {
+            "experience_target"
         } else if self.experience.is_match(&plain) {
             "not_quantified"
         } else {
@@ -528,6 +578,119 @@ impl Extractor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn final_review_gap_controls() {
+        let parser = Extractor::default();
+        for (text, years) in [
+            ("Bring 2+ years experience in AI safety", 2),
+            ("Possess 4+ years research engineering experience", 4),
+            ("Possesses 4+ years software engineering experience", 4),
+            ("Extensive experience (8+ years) in software and AI, ideally in healthcare", 8),
+            ("Experienced professional (5+ yrs) with a strong background in software", 5),
+            ("Proven 12 years experience in project management", 12),
+            ("The ideal candidate will have 3+ years experience as an administrator", 3),
+            ("A professional with 3+ years experience in distributed systems", 3),
+            ("You should bring eight (8) to twelve (12) years of experience in engineering, ideally in consulting", 8),
+            ("· 3-7 years experience in construction, preferably on institutional projects", 3),
+            ("-2–5 years relevant experience", 2),
+            ("•1-8+ years in a NOC", 1),
+            ("-7+ years as a Project Management experience", 7),
+            ("MSc or BSc with 1-4 years relevant experience", 1),
+            ("Expert in Production AI Systems 7+ years in production ML, research engineering, or applied AI", 7),
+            ("Strong expertise in JavaScript (7+ years)", 7),
+            ("High proficiency in React.js (5+ years), solid background in software", 5),
+            ("Strong hands-on experience (8 yrs of exp) in Java", 8),
+            ("The successful applicant for this role will have 8+ years of relevant experience", 8),
+            ("Skilled .NET Developer with 7-12 years of experience", 7),
+            ("Have 5 years experience creating 3-year technical roadmaps and a 10-year data retention policy", 5),
+            ("Seasoned Expert: Bring a wealth of 15+ years in diverse construction roles", 15),
+            ("➤4+ years of progressive accounting experience", 4),
+            ("The candidate has 5 years experience in software", 5),
+            ("Field construction management experience (5-8 years, including supervisory skills)", 5),
+            ("(10+ Year Experience)", 10),
+            ("Have 5 years experience working for a company with over 30 years of industry experience", 5),
+        ] { assert_eq!(parser.extract(text).years, Some(years), "{text}"); }
+        let range = parser.extract("You should bring eight (8) to twelve (12) years of experience");
+        assert_eq!(range.requirements[0].maximum_months, Some(144.0));
+        for text in [
+            "Building on nearly 50 years of success, we deliver services",
+            "Drawing on more than 150 years experience, we lead our industry",
+            "For more than 75 years, we've been advancing our industry",
+            "For more than 90 years the firm has represented clients",
+            "For 175 years NYU Grossman School has led medical education",
+            "And for more than 90 years our innovative company has delivered",
+            "Shape the AI Roadmap: Co-develop the 12-month technical roadmap",
+            "LogScale offers up to 10 years retention",
+            "Mentorship Program through your first six months of employment",
+            "BUILD is Acuity's two-year rotational development program",
+            "This program consists of 3 rotations: 12 months-9 months-9 months duration",
+            "Funding secured within 3 years of appointment",
+            "QE Solar is a leading provider of services, with over 15 years operating experience",
+            "MTU Maintenance is a global network with over 35 years experience",
+            "Based on 50+ years learning science",
+            "We bring 8+ years of experience to our customers",
+            "For more than 100 years, Modine has solved thermal challenges",
+            "A construction industry leader for over 65 years, PC Construction delivers services",
+            "Asplundh Engineering Services brings over 100 years of expertise to customers",
+            "The Analyst Program is a 24-month developmental experience consisting of two 12-month rotations",
+            "A company with more than 100 years of making great things possible",
+            "Enerfab has 125 years of experience providing fabrication, construction, and industrial services",
+            "With over 78 years of industry experience, West Star Aviation stands as a leading provider",
+            "With over 20 years of experience, Caliber I.D delivers services",
+            "The organization is an IT outsourcing firm with over 30 years of experience serving businesses",
+            "Preferred Education, Experience, & Skills\nPossess 4+ years relevant experience",
+            "**Preferred Education, Experience, & Skills**\nPossess 4+ years relevant experience",
+        ] {
+            let result = parser.extract(text);
+            assert_eq!(result.years, None, "{text}");
+            assert_ne!(result.reason, "needs_review", "{text}");
+        }
+        for text in [
+            "MSc with 2 years experience OR BSc with 4 years experience",
+            "This position is open to a recent graduate or an EIT with 1-3 years of experience",
+            "Master's or equiv in Bus., Fin., Stats or rel. fld + 2 yrs of exp in data analytics; OR Bachelor's or equiv in Bus., Fin., Stats or rel. fld + 4 yrs of exp in data analytics",
+            "Bachelor's degree; plus 4 years of work experience. Or, some formal college and training without a Bachelor's degree; plus 8 years of work experience",
+            "Required Education, Experience, & Skills\nBachelor's degree\nplus 4 years of work experience\nOR\nAssociate's degree\nplus 6 years of work experience",
+        ] { let result=parser.extract(text); assert_eq!(result.years, None, "{text}"); assert_eq!(result.reason,"conditional_education", "{text}"); assert_eq!(result.requirements.iter().filter(|r| r.kind=="conditional").count(), if text.contains("recent graduate") {1} else {2}, "{text}"); }
+        let result=parser.extract("Bachelor's degree; plus 4 years of work experience. Or, some formal college and training without a Bachelor's degree; plus 8 years of work experience");
+        assert_eq!(
+            result
+                .requirements
+                .iter()
+                .map(|r| r.condition.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("bachelors"), Some("no_degree")]
+        );
+        assert_eq!(
+            parser
+                .extract("Bachelor's degree\nplus 4 years of work experience")
+                .years,
+            Some(4)
+        );
+        assert_eq!(
+            parser
+                .extract("Bachelor's or Master's degree\n8+ years of experience")
+                .years,
+            Some(8)
+        );
+        assert_eq!(parser.extract("Minimum 3 years relevant experience. Co-develop the 12-month technical roadmap").years,Some(3));
+        for text in [
+            "3 5 years’ experience in quality engineering",
+            "Have 8 10+ years experience",
+            "Qualifications:\n3 5 years experience",
+        ] {
+            assert_eq!(parser.extract(text).reason, "needs_review", "{text}");
+        }
+        for text in [
+            "Roughly 3–5 years software engineering experience",
+            "This role is calibrated for approximately 3 years relevant experience",
+            "Previous experience, usually six to 18 months in HR",
+        ] {
+            let result = parser.extract(text);
+            assert_eq!(result.years, None, "{text}");
+            assert_eq!(result.reason, "experience_target", "{text}");
+        }
+    }
     #[test]
     fn required_regressions() {
         let parser = Extractor::default();

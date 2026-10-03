@@ -40,7 +40,7 @@ async function main() {
     ['5 years of experience', null],
     ['No prior experience required.', null],
     ['Minimum 6 months of relevant experience', null],
-    ["Bachelor’s degree with 4+ years of relevant experience OR Associate’s degree with 6+ years of relevant experience", null],
+    ["Bachelor’s degree; plus 4+ years of relevant experience\nOR\nAssociate’s degree; plus 6+ years of relevant experience", null],
   ];
   try {
     assert.equal(Number((await client.query('SELECT count(*) FROM public.jobs WHERE id=ANY($1::uuid[])', [ids])).rows[0].count), 0);

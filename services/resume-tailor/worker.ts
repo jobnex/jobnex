@@ -85,15 +85,16 @@ export async function tick() {
 }
 
 async function main() {
+  const enabled = process.env.RESUME_GENERATION_ENABLED === "true";
   let stopping = false;
   const server = createServer((request, response) => {
     response.writeHead(request.url === "/health" ? 200 : 404, { "content-type": "application/json" });
-    response.end(JSON.stringify(request.url === "/health" ? { status: "ok" } : { error: "Not found" }));
+    response.end(JSON.stringify(request.url === "/health" ? { status: "ok", enabled } : { error: "Not found" }));
   });
   server.listen(Number(process.env.PORT || 8080), "0.0.0.0");
   const stop = () => { stopping = true; server.close(); };
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
-  while (!stopping) { await tick(); await new Promise(resolve => setTimeout(resolve, 2_000)); }
+  while (!stopping) { if (enabled) await tick(); await new Promise(resolve => setTimeout(resolve, 2_000)); }
   await pool.end();
 }
 if (process.argv[1]?.endsWith("worker.ts")) main().catch(error => { console.error(error); process.exitCode = 1; });

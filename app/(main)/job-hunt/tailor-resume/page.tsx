@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Download, FileUp, LoaderCircle, Sparkles } from "lucide-react";
 
@@ -9,6 +9,10 @@ type Resume = { id: string; markdown: string };
 type Preview = { matched: string[]; missing: string[]; sourceWordCount: number };
 
 export default function TailorResumePage() {
+  return <Suspense fallback={<main className="p-8 text-text-muted">Loading Resume Lab…</main>}><TailorResumeContent /></Suspense>;
+}
+
+function TailorResumeContent() {
   const search = useSearchParams(); const jobId = search?.get("jobId") || "";
   const [job, setJob] = useState<Job | null>(null); const [resume, setResume] = useState<Resume | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null); const [requestId, setRequestId] = useState("");

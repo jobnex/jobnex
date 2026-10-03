@@ -4,6 +4,8 @@ import { enqueueTailoring, isUuid, loadTailorJob, loadTailorResume } from "@/lib
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
+  if (process.env.RESUME_GENERATION_ENABLED !== "true")
+    return Response.json({ error: "Resume tailoring is temporarily unavailable" }, { status: 503 });
   try {
     const body = await request.json();
     if (!isUuid(body.jobId || "") || !isUuid(body.resumeId || "") || !isUuid(body.idempotencyKey || "")) throw new Error("Invalid tailoring request");

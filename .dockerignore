@@ -1,0 +1,15 @@
+.git
+.env*
+!.env.example
+node_modules
+.next
+coverage
+*.pem
+scratch
+gcp-resume/build-context
+gcp-resume/*.json
+**/__pycache__
+**/.venv
+**/node_modules
+**/output
+**/outputs

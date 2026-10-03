@@ -1,6 +1,6 @@
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1 NEON_AUTH_BASE_URL=https://example.invalid NEON_AUTH_COOKIE_SECRET=container-build-placeholder-secret-at-least-32-characters
+ENV NEXT_TELEMETRY_DISABLED=1 NEON_AUTH_BASE_URL=https://example.invalid NEON_AUTH_COOKIE_SECRET=container-build-placeholder-secret-at-least-32-characters DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?sslmode=require
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

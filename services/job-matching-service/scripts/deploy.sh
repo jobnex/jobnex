@@ -36,7 +36,7 @@ gcloud run deploy "${SERVICE_NAME}" \
     --memory 1Gi \
     --min-instances 0 \
     --max-instances 10 \
-    --concurrency 80 \
+    --set-secrets="DATABASE_URL=job-matching-service-database-url:latest" \
     --set-env-vars="NODE_ENV=production"
 
 echo "========================================================="

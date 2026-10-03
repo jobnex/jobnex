@@ -31,6 +31,12 @@ The reviewed Jobnex revision was built as `jobnex-pr4-b942ac0` and deployed to t
 
 Verification completed without exposing credentials: the private worker returned `200` with `{"status":"ok","enabled":false}` using an authenticated Cloud Run request; the public request-creation endpoint returned `401` for an anonymous request; and the public Job Board's Tailor Resume button navigated to the selected UUID and then the sign-in gate. AI generation has not been enabled and no user credit was consumed by these checks. The only remaining promotion gate is a signed-in candidate test through upload and preview; enable the flag on both services together only after that check succeeds.
 
+### Authenticated acceptance follow-up — 2026-10-03
+
+The authenticated candidate flow was exercised against a published Jobnex job using the repository's generic MIT résumé template. The application loaded the authoritative Neon job, extracted it into editable Markdown, stored the candidate-owned draft in `user_pref_resumes`, and displayed deterministic matches and gaps. The subsequent approved generation attempt returned `Insufficient credits` before a request or provider call could be made. Both services were immediately returned to `RESUME_GENERATION_ENABLED=false`; the worker health endpoint again reported `enabled:false` and no worker errors were logged.
+
+The final release gate is therefore explicit: add one disposable test credit to this candidate account through the supported credit path, repeat the single generation, and verify a completed request, one settled credit transaction, `resume_ai_calls` audit rows, and persisted generated Markdown before enabling the feature again.
+
 ## Deliberate boundaries
 
 - Existing PDF/R2 endpoints remain legacy functionality and are not invoked by this feature.

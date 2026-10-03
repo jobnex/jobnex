@@ -3,3 +3,4 @@ target
 .env*
 GATES*.md
 *.local.json
+*.local.cjs

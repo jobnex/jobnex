@@ -13,7 +13,7 @@ const recordPath=path.join(__dirname,'linux-build.local.json');
 const cloud=args=>spawnSync('rtk',['proxy','gcloud',...args,'--project=job-scout-508222'],{encoding:'utf8',windowsHide:true,cwd:__dirname,timeout:120000});
 if(process.argv[2]==='start') {
   const hash=digest();
-  const tag=`us-central1-docker.pkg.dev/job-scout-508222/job-repo/experience-enricher:v9-${hash.slice(0,12)}`;
+  const tag=`us-central1-docker.pkg.dev/job-scout-508222/job-repo/experience-enricher:v10-${hash.slice(0,12)}`;
   const result=cloud(['builds','submit','.','--config=cloudbuild.yaml',`--substitutions=_IMAGE=${tag}`,'--async','--format=value(id)']);
   if(result.status!==0) {console.error('Linux build submission failed');process.exit(1);}
   const id=result.stdout.trim();

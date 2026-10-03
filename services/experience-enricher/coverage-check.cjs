@@ -1,4 +1,4 @@
-// Read-only corpus comparison. Credentials stay in memory; reports contain counts only.
+// Read-only corpus comparison. Credentials stay in memory; optional change reports include source evidence.
 const { Client } = require('pg');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -16,6 +16,8 @@ async function main() {
   const sample = process.argv.includes('--sample');
   const clearedSample = process.argv.includes('--cleared-sample');
   const review = process.argv.includes('--review');
+  const changes = process.argv.includes('--changes') ? [] : null;
+  const remainingReviews = [];
   try {
     for (;;) {
       const rows = (await client.query(sample || clearedSample
@@ -35,6 +37,9 @@ async function main() {
         report.scanned++; report.previous += +previous; report.extracted += +known;
         report.newlyExtracted += +(known && !previous); report.cleared += +(!known && previous);
         report.exactMonthRequirements += +(entry.result.minimum_months !== null && !known);
+        if (changes && entry.result.years !== rows[i].experience_required)
+          changes.push({id:entry.id,previous:rows[i].experience_required,result:entry.result});
+        if (changes && entry.result.reason === 'needs_review') remainingReviews.push(entry);
         for (const mention of entry.result.requirements || []) report.mentionsByKind[mention.kind]=(report.mentionsByKind[mention.kind] || 0)+1;
         report.reasons[entry.result.reason] = (report.reasons[entry.result.reason] || 0)+1;
       });
@@ -49,6 +54,8 @@ async function main() {
       if (report.scanned % 10000 === 0) console.log(JSON.stringify({progress:report.scanned}));
     }
     if (!sample && !clearedSample) fs.writeFileSync(path.join(__dirname,review ? 'review-coverage.local.json' : 'coverage.local.json'),JSON.stringify(report,null,2));
+    if (changes) fs.writeFileSync(path.join(__dirname,'changes.local.json'),JSON.stringify(changes));
+    if (changes) fs.writeFileSync(path.join(__dirname,'corpus-review.local.json'),JSON.stringify(remainingReviews));
     console.log(JSON.stringify(report));
   } finally { await client.end(); }
 }

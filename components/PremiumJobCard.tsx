@@ -1,14 +1,13 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo } from "react";
 import { Job } from "@/types";
 import { useJobStore } from "@/store/useJobStore";
 import { Bookmark, Sparkles, Check, MapPin } from "lucide-react";
 import { getJobPostedTime } from "@/lib/utils";
 import { authClient } from "@/lib/auth/client";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useCreditStore } from "@/store/useCreditStore";
 
 interface PremiumJobCardProps {
   job: Job;
@@ -31,7 +30,6 @@ export const PremiumJobCard = memo(function PremiumJobCard({
   const isSaved = !!savedJobIdsMap[job.id];
   const { data: session } = authClient.useSession();
   const router = useRouter();
-  const pathname = usePathname();
 
   const handleTitleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -252,19 +250,13 @@ export const PremiumJobCard = memo(function PremiumJobCard({
               </button>
               <button
                 type="button"
-                onClick={async (e) => {
+                onClick={(e) => {
                   e.stopPropagation();
                   if (!session?.user) {
-                    router.push(`/auth?callbackUrl=${encodeURIComponent(pathname)}`);
+                    router.push(`/auth?callbackUrl=${encodeURIComponent(`/job-hunt/tailor-resume?jobId=${job.id}`)}`);
                     return;
                   }
-                  const { deductCredit } = useCreditStore.getState();
-                  const res = await deductCredit(job.id);
-                  if (res.success) {
-                    toast.success("Credit deducted! Tailoring resume...");
-                  } else {
-                    toast.error(res.error || "Failed to deduct credit");
-                  }
+                  router.push(`/job-hunt/tailor-resume?jobId=${encodeURIComponent(job.id)}`);
                 }}
                 className="inline-flex items-center justify-center gap-[0.35rem] p-[0.38rem_0.85rem] rounded-sm border-[1.5px] border-transparent bg-brand-lime text-[#111827] font-heading text-[0.85rem] font-semibold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:border-border-color hover:bg-white hover:text-[#111827] active:scale-[0.98] dark:hover:bg-white dark:hover:text-[#111827] dark:hover:border-black"
               >

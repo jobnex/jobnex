@@ -11,7 +11,7 @@ Updated application imported from `my-app(4).7z` on September 30, 2026.
 - `services/visa-parser-job/`: deployed Rust visa classifier and Node queue worker, build inputs, schema references, and sanitized Cloud Run/Scheduler references.
 - `gcp-resume/`: existing deployment scripts and integration overlays. Read `IMPORT_NOTES.md`; these are historical references requiring review before execution.
 
-Backend source is included, but the App 4 frontend's missing resume queue integration still needs restoration. Cloud services remain unchanged.
+The Tailor Resume queue integration is documented in [docs/TAILOR_RESUME.md](docs/TAILOR_RESUME.md), with the browser API contract in [endpoints.md](endpoints.md). Cloud services remain unchanged until the reviewed branch is deployed.
 
 ## Database plan
 

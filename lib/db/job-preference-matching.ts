@@ -954,9 +954,14 @@ export async function matchUserJobs(
   const validModes: MatchingMode[] = ["strict", "balanced", "broad"];
   const explicitMode = mode !== undefined ? mode : preferences?.mode;
 
-  const prefPayload: Record<string, unknown> = {
-    ...(preferences || {}),
-  };
+  const prefPayload: Record<string, unknown> = {};
+  if (preferences) {
+    for (const [key, value] of Object.entries(preferences)) {
+      if (value !== null && value !== undefined) {
+        prefPayload[key] = value;
+      }
+    }
+  }
 
   if (explicitMode !== undefined && explicitMode !== null && String(explicitMode).trim() !== "") {
     prefPayload.mode = validModes.includes(explicitMode as MatchingMode)

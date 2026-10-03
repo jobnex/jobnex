@@ -57,22 +57,48 @@ export async function GET(request: Request) {
       ? modeParam 
       : undefined;
 
-    let preferences: UserPreferencesInput | null = null;
-    if (country || seniority || domains || skills || cities || jobTypes || mode) {
-      preferences = {
-        country: country || null,
-        seniority: seniority || null,
-        domains: domains || null,
-        skills: skills || null,
-        cities: cities || null,
-        jobTypes: jobTypes || null,
-        mode: mode || null,
-      };
+    // Forward directly to GCP Cloud Run microservice if configured
+    const cloudRunUrl = process.env.CLOUDRUN_MATCHING_URL;
+    if (cloudRunUrl) {
+      try {
+        const targetUrl = new URL(`${cloudRunUrl}/api/jobs/matched`);
+        if (userId) targetUrl.searchParams.set("userId", userId);
+        if (cursor) targetUrl.searchParams.set("cursor", cursor);
+        if (limitParam) targetUrl.searchParams.set("limit", limitParam);
+        if (mode) targetUrl.searchParams.set("mode", mode);
+        if (country) targetUrl.searchParams.set("country", country);
+        if (seniority) targetUrl.searchParams.set("seniority", seniority);
+        if (domainsParam) targetUrl.searchParams.set("domains", domainsParam);
+        if (skillsParam) targetUrl.searchParams.set("skills", skillsParam);
+        if (citiesParam) targetUrl.searchParams.set("cities", citiesParam);
+        if (jobTypesParam) targetUrl.searchParams.set("jobTypes", jobTypesParam);
+
+        const cloudRes = await fetch(targetUrl.toString(), {
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+        });
+
+        if (cloudRes.ok) {
+          const cloudData = await cloudRes.json();
+          return NextResponse.json(cloudData);
+        }
+      } catch (err) {
+        console.warn("Cloud Run proxy forward failed, using local DB fallback:", err);
+      }
     }
+
+    const preferences: UserPreferencesInput = {};
+    if (country) preferences.country = country;
+    if (seniority) preferences.seniority = seniority;
+    if (domains) preferences.domains = domains;
+    if (skills) preferences.skills = skills;
+    if (cities) preferences.cities = cities;
+    if (jobTypes) preferences.jobTypes = jobTypes;
+    if (mode) preferences.mode = mode;
 
     const result = await matchUserJobs({
       userId,
-      preferences,
+      preferences: Object.keys(preferences).length > 0 ? preferences : null,
       cursor,
       limit,
       mode,
@@ -102,7 +128,15 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
 
     const userId = body.userId || user?.id || null;
-    const preferences: UserPreferencesInput = body.preferences || body;
+    const rawPreferences = body.preferences || body;
+    const preferences: UserPreferencesInput = {};
+    if (rawPreferences && typeof rawPreferences === "object") {
+      for (const [k, v] of Object.entries(rawPreferences)) {
+        if (v !== null && v !== undefined) {
+          (preferences as any)[k] = v;
+        }
+      }
+    }
     const cursor = body.cursor || null;
     const limit = typeof body.limit === "number" ? body.limit : 24;
     const rawMode = body.mode !== undefined ? body.mode : preferences?.mode;
@@ -110,9 +144,34 @@ export async function POST(request: Request) {
       ? rawMode
       : (rawMode !== undefined && rawMode !== null ? "balanced" : undefined);
 
+    // Forward directly to GCP Cloud Run microservice if configured
+    const cloudRunUrl = process.env.CLOUDRUN_MATCHING_URL;
+    if (cloudRunUrl) {
+      try {
+        const cloudRes = await fetch(`${cloudRunUrl}/api/jobs/matched`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            preferences: Object.keys(preferences).length > 0 ? preferences : undefined,
+            cursor,
+            limit,
+            mode,
+          }),
+          cache: "no-store",
+        });
+
+        if (cloudRes.ok) {
+          return NextResponse.json(await cloudRes.json());
+        }
+      } catch (err) {
+        console.warn("Cloud Run POST proxy failed, using local DB fallback:", err);
+      }
+    }
+
     const result = await matchUserJobs({
       userId,
-      preferences,
+      preferences: Object.keys(preferences).length > 0 ? preferences : null,
       cursor,
       limit,
       mode,

@@ -8,9 +8,13 @@ import { toast } from "sonner";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { JobDescriptionPanel } from "@/components/JobDescriptionPanel";
 import { useJobStore } from "@/store/useJobStore";
+import { authClient } from "@/lib/auth/client";
 import { Job } from "@/types";
 
 export default function JobHuntPage() {
+  const { data: sessionData } = authClient.useSession();
+  const userId = sessionData?.user?.id;
+
   const [jobsData, setJobsData] = useState<Job[]>([]);
   const [requestedJobIds, setRequestedJobIds] = useState<string[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -69,6 +73,9 @@ export default function JobHuntPage() {
       const url = new URL("/api/jobs/matched", window.location.origin);
       url.searchParams.set("limit", "24");
       url.searchParams.set("mode", "balanced");
+      if (userId) {
+        url.searchParams.set("userId", userId);
+      }
       if (cursorParam) {
         url.searchParams.set("cursor", cursorParam);
       }
@@ -100,12 +107,12 @@ export default function JobHuntPage() {
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     fetchApplications();
     fetchMatchedJobs();
-  }, [fetchApplications, fetchMatchedJobs]);
+  }, [fetchApplications, fetchMatchedJobs, userId]);
 
   const handleTabChange = useCallback((tabId: string) => {
     const nextTab = tabId as "jobs" | "requested";

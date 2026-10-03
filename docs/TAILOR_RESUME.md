@@ -23,6 +23,8 @@ The request id is also the generated resume id. A browser-supplied UUID idempote
 
 Deploy the Next web image as `job-hunt-web` and the worker image as `job-hunt-resume-worker` only after this branch is reviewed and the worker service configuration is verified. The worker exposes `/health` only for Cloud Run; it must remain private. The public service exposes browser routes listed in [endpoints.md](../endpoints.md).
 
+The repository root `Dockerfile` builds the standalone Next web service. Build the worker separately with `services/resume-tailor/Dockerfile`; both builds use the root context and are protected from local credentials by `.dockerignore`. In GCP, bind `DATABASE_URL`, `JOB_HUNT_SERVICE_SECRET`, `NEON_AUTH_COOKIE_SECRET`, `OPENROUTER_API_KEY`, and `JD_CACHE_HMAC_SECRET` from Secret Manager. The web service does not receive the OpenRouter or cache secret. Build first, deploy with generation disabled, verify health and authenticated browser routes, then enable the worker and web queue flag together.
+
 ## Deliberate boundaries
 
 - Existing PDF/R2 endpoints remain legacy functionality and are not invoked by this feature.

@@ -25,6 +25,12 @@ Deploy the Next web image as `job-hunt-web` and the worker image as `job-hunt-re
 
 The repository root `Dockerfile` builds the standalone Next web service. `cloudbuild.resume-worker.yaml` builds the worker from `services/resume-tailor/Dockerfile`; both builds use the root context and are protected from local credentials by `.dockerignore`. In GCP, bind `DATABASE_URL`, `JOB_HUNT_SERVICE_SECRET`, `NEON_AUTH_COOKIE_SECRET`, `OPENROUTER_API_KEY`, and `JD_CACHE_HMAC_SECRET` from Secret Manager. The web service does not receive the OpenRouter or cache secret. `RESUME_GENERATION_ENABLED` must be `true` on both services before queueing or worker polling can occur. Build first, deploy both with it `false`, verify health and authenticated browser routes, then enable it on both services together.
 
+### Staged deployment record — 2026-10-03
+
+The reviewed Jobnex revision was built as `jobnex-pr4-b942ac0` and deployed to the `job-scout-508222` GCP project in `us-east1`. `job-hunt-web` revision `job-hunt-web-00006-mlq` serves all public traffic; `job-hunt-resume-worker` revision `job-hunt-resume-worker-00010-q27` serves all worker traffic. Both run with `RESUME_GENERATION_ENABLED=false`.
+
+Verification completed without exposing credentials: the private worker returned `200` with `{"status":"ok","enabled":false}` using an authenticated Cloud Run request; the public request-creation endpoint returned `401` for an anonymous request; and the public Job Board's Tailor Resume button navigated to the selected UUID and then the sign-in gate. AI generation has not been enabled and no user credit was consumed by these checks. The only remaining promotion gate is a signed-in candidate test through upload and preview; enable the flag on both services together only after that check succeeds.
+
 ## Deliberate boundaries
 
 - Existing PDF/R2 endpoints remain legacy functionality and are not invoked by this feature.

@@ -93,6 +93,13 @@ Deployed both initially with `--no-traffic --tag=neondb-trial`. New private PDF 
 
 `cargo fmt -- --check` reports pre-existing formatting in `main.rs` and `store.rs`'s storage-verification code, outside the eligibility change. This check did not pass and is not concealed; production Rust tests and compilation did pass. The public connection still uses the existing owner role and some old clients disable certificate verification. Dedicated least-privilege roles and TLS hardening remain security work, not claims made by this release.
 
+### 10. Verify deployed service authentication independently
+
+**Why:** A health check only proves startup, not user/job access control.
+**How:** Read-only requests against the new serving PDF revision: valid operator IAM with no application token, then both tokens with a nonexistent synthetic user UUID. Do not create an application or résumé row for these checks.
+**Result:** Missing app token returned 401 (Service authentication required); nonexistent user returned 404 (Resume access not found). These prove those denial paths, not positive export or cross-user denial against a real retained artifact. GitHub reports no automated PR checks for PR #9; the cited checks are local commands and Cloud Build, not a green GitHub CI claim.
+**Usefulness:** Detects accidental exposure while explicitly keeping positive user acceptance and cross-user artifact testing unverified.
+
 ## Live endpoints and sequence
 
 Public origin: https://job-hunt-web-znsph25yja-ue.a.run.app

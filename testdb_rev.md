@@ -58,9 +58,40 @@ Public web, worker, and PDF backend use Secret Manager `job-hunt-profile-databas
 **Result:** `job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com` already has `roles/run.invoker`; no allUsers grant is needed. Anonymous public queue/download calls return 401; anonymous private PDF health returns 403.
 **Usefulness:** Existing authentication boundaries remain intact; runtime credentials stay in Secret Manager.
 
-### 7. Build, deploy, and retain a synthetic trial
+### 7. Build and deploy the isolated release
 
-**Status:** In progress. Record build IDs, image digests, revision/traffic changes, demo IDs, request/job linkage, provider usage, exact credit settlement, Markdown hashes, PDF integrity, and browser evidence below as they are verified. Never record credentials, cookies, OTPs, provider keys, connection strings, or real candidate résumé contents.
+**Why:** Verify production Linux builds and preserve a rollback target before sending live traffic.
+**How:** Commit `06ffca4908ef4fb29214c2cee02004272caa4550`, upload only the clean release source using `.gcloudignore`, then run:
+`gcloud builds submit . --project=job-scout-508222 --region=us-east1 --config=cloudbuild.neondb-integration.yaml --substitutions=_WEB_IMAGE=...:neondb-06ffca4,_PDF_IMAGE=...:neondb-06ffca4 --async`.
+Cloud Build's temporary source archive uses its existing build bucket; this is not résumé storage.
+**Result:** Build `a1a8cf91-b2fd-409c-af65-8d63814c7a09` succeeded at 2026-10-04 20:54:02 UTC (2026-10-05 in India). The Next.js production build and seven Rust release tests passed.
+
+| Service | New revision | Immutable image digest | Traffic |
+| --- | --- | --- | --- |
+| job-hunt-web | job-hunt-web-00013-teh | sha256:350274b4349503ed3c98340864b786fb1039108792c482061e0ba6338cd79a58 | 100% |
+| resume-pdf-backend | resume-pdf-backend-00003-rir | sha256:d95e3027260990070988b3704900077c89e4103163f470ca2f564d46ac0a05d1 | 100% |
+
+Deployed both initially with `--no-traffic --tag=neondb-trial`. New private PDF health returned 200 with operator IAM; new web page returned 200; anonymous new PDF bridge returned 401. Only then changed each service's traffic to its explicit new revision. Both still reference `job-hunt-profile-database-url:1`. Web received `RESUME_PDF_BACKEND_URL` and the existing service-token secret reference; no new IAM grants, database schema changes, or public PDF invocation were introduced. Worker image/config remains unchanged.
+
+**Usefulness:** The web uses the new private bridge, while rollback remains a revision-traffic operation. Healthy startup and 401 checks do not prove positive user generation/export.
+
+### 8. Prepare a safely isolated browser trial
+
+**Why:** Upload replaces the signed-in user's primary source résumé; never overwrite a real account for a demo.
+**How:** Create a one-page synthetic ProjectWise PDF from `tests/fixtures/projectwise-demo.md`, using `scripts/create-demo-resume.py`; render with bundled pypdfium2 and visually inspect. All companies, education and outcomes in this fixture are fake test data. Prepare a separate normal login for `jobnex-neondb-trial-20261005@example.com` (reserved example.com domain). Do not submit a job application.
+**Result:** Fixture creation and visual review passed. The PDF skill's artifact-marker script was not available on this Windows host; the documented fallback used the bundled PDF tools. The browser is at the normal email-code login; its Continue control states acceptance of Terms/Privacy. Requested action-time user confirmation before pressing it. No demo account, grant, upload or generation has been created yet.
+**Usefulness:** Protects the real account's draft/credits and avoids silently accepting legal terms. Live generation/export gates remain unchecked until this confirmation and test complete.
+
+### 9. Publish the right repository and reproducible checks
+
+**Why:** Earlier work was pushed to the wrong remote, and prior successful test rows were removed.
+**How:** Verify `origin=https://github.com/jobnex/jobnex.git` and active GitHub identity Jobnex. Push `codex/neondb-resume-integration` and open draft PR https://github.com/jobnex/jobnex/pull/9. Added fixture/evidence-checker commit `9ba8618`. Attach the PR to this Codex task.
+**Result:** Correct Jobnex draft PR is open; it is not merged. `scripts/check-neondb-trial.cjs` validates actual neondb identity and only the labelled demo account. Its acknowledged grant is idempotent; its completion assertions check retained generation, selected job/JD, AI-call audit, one settled credit, downloaded Markdown hash, and optional saved PDF key/content. Its presence is not evidence that those assertions have passed.
+**Usefulness:** Reviewable implementation and repeatable evidence without connection strings or credentials in Git.
+
+### Check limitations found during this release
+
+`cargo fmt -- --check` reports pre-existing formatting in `main.rs` and `store.rs`'s storage-verification code, outside the eligibility change. This check did not pass and is not concealed; production Rust tests and compilation did pass. The public connection still uses the existing owner role and some old clients disable certificate verification. Dedicated least-privilege roles and TLS hardening remain security work, not claims made by this release.
 
 ## Live endpoints and sequence
 
@@ -109,15 +140,15 @@ Earlier disposable successful worker output was cleaned up (see error_ref.md); t
 
 ## Completion gates
 
-- [ ] Public services still resolve to original neondb; staging remains separate.
+- [x] Public services still resolve to original neondb; staging remains separate.
 - [ ] Authenticated browser upload, review, request, polling and Markdown download pass.
 - [ ] Retained output links to the correct demo identity and authoritative job snapshot.
 - [ ] Exactly one demo credit consumed; usage audit exists; no expired running lease.
 - [ ] Downloaded Markdown hash matches database text.
 - [ ] Optional PDF preview/export/download works and saved Markdown/key matches it.
 - [ ] Anonymous/cross-user access denied; failed/refunded output denied.
-- [ ] Correct Jobnex branch/PR, deployment evidence, retrieval SQL and rollback documented.
+- [x] Correct Jobnex branch/PR, deployment evidence, retrieval SQL and rollback documented.
 
 ## Status
 
-Not complete until the checked live evidence is recorded. All trial account and résumé content is synthetic. User approved resuming implementation and live testing on 2026-10-05.
+Implementation is deployed; authenticated live acceptance is incomplete pending the demo login Terms confirmation. No trial credit has yet been granted or spent and no retained output exists from this new trial. User approved resuming implementation and live testing on 2026-10-05. Do not treat deployment/readiness checks as completed generation evidence.

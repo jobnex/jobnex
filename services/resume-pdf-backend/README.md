@@ -1,5 +1,9 @@
 # Rust resume PDF backend
 
+## Current Jobnex integration (2026-10-05)
+
+Revision `resume-pdf-backend-00003-rir` is deployed; public web revision `job-hunt-web-00013-teh` now has an authenticated bridge at `/api/resume/tailor/generated/{requestId}/pdf`. Both use original `neondb`. In addition to an owned application, an owned successful generation joined to its completed, consumed-credit request now grants user/job eligibility. This permits optional export before applying without inserting a fictional application. The exact generated-request bridge remains stricter than general saved-resume access: it always requires the owning completed generation. See root `testdb_rev.md` for build digests, checks, rollback and pending live acceptance evidence. PDF export is optional; generated Markdown remains the primary artifact.
+
 Backend-only cloud adaptation of the fixed Rust Resume Studio renderer. The running Windows app is preserved. This directory contains no UI and no AI agents. The reviewed service is deployed privately in GCP; see API_ENDPOINTS.md for usage and DEPLOYMENT.md for the release record. No production application or resume records were created by the deployment.
 
 ## Architecture
@@ -19,7 +23,7 @@ Authorization: Bearer <BACKEND_SERVICE_TOKEN>
 X-User-Id: <verified Neon Auth user UUID>
 ```
 
-Never expose BACKEND_SERVICE_TOKEN to a browser. Never forward a user-supplied X-User-Id without replacing it with the verified session identity. The service token is checked in constant time. The API confirms a matching public.applications row and an existing neon_auth.user identity for every user/job operation. All database reads and writes are scoped by both identifiers. R2 keys are constructed from parsed UUIDs, not accepted from request bodies.
+Never expose BACKEND_SERVICE_TOKEN to a browser. Never forward a user-supplied X-User-Id without replacing it with the verified session identity. The service token is checked in constant time. The API confirms an existing neon_auth.user identity and either an owned public.applications row or an owned successful generation joined to its completed, consumed-credit request for every user/job operation. All database reads and writes are scoped by both identifiers. R2 keys are constructed from parsed UUIDs, not accepted from request bodies.
 
 The Terraform load balancer terminates HTTPS. Cloud Run ingress is internal-and-load-balancing, blocking direct public run.app traffic. Cloud Run invocation IAM grants allUsers because this external load balancer does not mint an invocation ID token. Application-level service authentication remains required for every API route except /health. If your organization forbids allUsers bindings, use private Cloud Run IAM invocation from the trusted backend instead and remove the external load balancer resources, or design an IAP-aware integration. Do not make identity headers trusted merely because a request passed through a load balancer.
 

@@ -8,6 +8,16 @@ export type TailorResume = { id: string; markdown: string; parsed: Record<string
 
 export function isUuid(value: string) { return UUID.test(value); }
 
+export async function loadCompletedGeneration(userId: string, requestId: string) {
+  if (!isUuid(requestId)) return null;
+  const result = await pool.query(`SELECT g.id,g.job_id,g.resume_markdown,g.version
+    FROM resume_generations g JOIN resume_generation_requests r ON r.id=g.id AND r.user_id=g.user_id
+    WHERE g.id=$1 AND g.user_id=$2 AND g.job_id=r.job_id
+      AND r.status='completed' AND r.credit_state='consumed'
+      AND g.status IN ('completed','completed_with_estimates')`, [requestId, userId]);
+  return result.rows[0] as { id: string; job_id: string; resume_markdown: string; version: number } | undefined;
+}
+
 export async function loadTailorJob(jobId: string): Promise<TailorJob | null> {
   const result = await pool.query(`SELECT id, job_role_title, company_name, job_description, requirements
     FROM jobs WHERE id=$1 AND status='published'`, [jobId]);

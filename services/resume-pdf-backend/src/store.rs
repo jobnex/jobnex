@@ -54,11 +54,16 @@ impl Store {
     }
 
     fn access(client: &mut impl GenericClient, user: Uuid, job: Uuid) -> ApiResult<()> {
-        // Both the authenticated identity and its application must exist.
-        let row = client.query_opt("SELECT 1 FROM public.applications a JOIN neon_auth.\"user\" u ON u.id=$1 WHERE a.user_id::text=$2 AND a.job_id=$3 LIMIT 1",
+        // Completed generations permit export before applying; no fictional application.
+        let row = client.query_opt("SELECT 1 FROM neon_auth.\"user\" u WHERE u.id=$1 AND (
+            EXISTS (SELECT 1 FROM public.applications a WHERE a.user_id::text=$2 AND a.job_id=$3)
+            OR EXISTS (SELECT 1 FROM public.resume_generations g
+                JOIN public.resume_generation_requests r ON r.id=g.id AND r.user_id=g.user_id AND r.job_id=g.job_id
+                WHERE g.user_id=$2 AND g.job_id=$3 AND g.status IN ('completed','completed_with_estimates')
+                    AND r.status='completed' AND r.credit_state='consumed'))",
             &[&user, &user.to_string(), &job]).map_err(db_error)?;
         if row.is_none() {
-            return Err(ApiError::new(404, "Application not found"));
+            return Err(ApiError::new(404, "Resume access not found"));
         }
         Ok(())
     }

@@ -1,0 +1,9 @@
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+node_modules/
+.next/
+scratch/
+.env*
+!.env.example

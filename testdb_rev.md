@@ -79,7 +79,7 @@ Deployed both initially with `--no-traffic --tag=neondb-trial`. New private PDF 
 
 **Why:** Upload replaces the signed-in user's primary source résumé; never overwrite a real account for a demo.
 **How:** Create a one-page synthetic ProjectWise PDF from `tests/fixtures/projectwise-demo.md`, using `scripts/create-demo-resume.py`; render with bundled pypdfium2 and visually inspect. All companies, education and outcomes in this fixture are fake test data. Prepare a separate normal login for `jobnex-neondb-trial-20261005@example.com` (reserved example.com domain). Do not submit a job application.
-**Result:** Fixture creation and visual review passed. The PDF skill's artifact-marker script was not available on this Windows host; the documented fallback used the bundled PDF tools. The browser is at the normal email-code login; its Continue control states acceptance of Terms/Privacy. Requested action-time user confirmation before pressing it. No demo account, grant, upload or generation has been created yet.
+**Result at preparation time:** Fixture creation and visual review passed. The PDF skill's artifact-marker script was not available on this Windows host; the documented fallback used the bundled PDF tools. Browser Continue states acceptance of Terms/Privacy; action-time confirmation was requested before pressing it. The later normal authenticated API trial is recorded below; the browser click-through remains a separate uncompleted gate.
 **Usefulness:** Protects the real account's draft/credits and avoids silently accepting legal terms. Live generation/export gates remain unchecked until this confirmation and test complete.
 
 ### 9. Publish the right repository and reproducible checks
@@ -99,6 +99,48 @@ Deployed both initially with `--no-traffic --tag=neondb-trial`. New private PDF 
 **How:** Read-only requests against the new serving PDF revision: valid operator IAM with no application token, then both tokens with a nonexistent synthetic user UUID. Do not create an application or résumé row for these checks.
 **Result:** Missing app token returned 401 (Service authentication required); nonexistent user returned 404 (Resume access not found). These prove those denial paths, not positive export or cross-user denial against a real retained artifact. GitHub reports no automated PR checks for PR #9; the cited checks are local commands and Cloud Build, not a green GitHub CI claim.
 **Usefulness:** Detects accidental exposure while explicitly keeping positive user acceptance and cross-user artifact testing unverified.
+
+### 11. Repair the live authentication origin mismatch
+
+**Why:** Normal demo authentication returned 403 INVALID_ORIGIN before generation could start.
+**How:** Read Neon Auth trusted domains using the official Neon CLI. Only the older https://joberry-one.vercel.app domain was registered. Add exactly https://job-hunt-web-znsph25yja-ue.a.run.app to project broad-base-06154424, branch br-plain-morning-ayf71kf3; preserve the older domain. Do not disable origin checks or add a wildcard.
+**Result:** Normal public password sign-up/sign-in and session verification succeeded for two isolated synthetic identities. No JWT/session was forged. Runtime session data stays in ignored scratch files, not Git or this report.
+**Usefulness:** Restores legitimate authentication while preserving origin protection. Official procedure: https://neon.com/docs/auth/guides/configure-domains.
+
+### 12. Grant precisely one isolated trial credit
+
+**Why:** The new synthetic account had no test capacity; a real user's draft and wallet must remain untouched.
+**How:** Lock its wallet and atomically write a labelled +1 adjustment plus the wallet update. The first test-helper attempt wrote only the ledger; this schema has no automatic grant trigger, so the wallet stayed zero. Correct the helper and repair only that initial synthetic grant when no requests exist and its single known adjustment is the only ledger entry. Never replenish a spent/refunded account.
+**Result:** One test credit was available before enqueue. No ledger history was deleted or rewritten. This was a test-helper correction, not a billing-product change.
+**Usefulness:** Keeps the trial auditable and safe to rerun without repeatedly granting credits.
+
+### 13. Run and independently verify the live public API journey
+
+**How:** Use normal authenticated public requests: selected job, PDF upload/extraction, reviewed source PATCH, deterministic preview, enqueue, same-key repeat, polling, Markdown download, optional PDF preview/export/download. Read neondb independently afterward with scripts/check-neondb-trial.cjs --assert-complete --assert-pdf. No new generation is created on script resume once the checkpointed request ID exists.
+**Result on 2026-10-05:** All those API steps passed. Upload returned 200 and extracted 2,413 characters; queue returned 202; idempotent repeat returned the same request. Generation completed in about 54 seconds from request creation to finish. Four AI-call audit rows exist. Exactly one -1 resume_tailor transaction completed, credit_state is consumed, wallet balance is zero, and no synthetic request remains queued/running. The completed row retains a lease timestamp, but it is terminal, not stuck work.
+
+| Verified artifact | Retained identity/value |
+| --- | --- |
+| Synthetic owner | b51b9da7-06b4-47ca-b608-47e429db3d2e |
+| Uploaded source | 7aad01be-6c43-4706-962b-3e38a52ec75d |
+| Request/generated resume | 5a80ec07-e241-4f77-b164-42e09fe28cf5 |
+| Job | 1a8a3167-bf4a-5619-8167-b43d883e83e4; ProjectWise Administrator, Kimley-Horn |
+| Primary permanent output | neondb.public.resume_generations.resume_markdown |
+| Raw Markdown SHA-256 | 9c064943db27379c5f1027335c9e7ff612c95769e15d2a6b7918d391d168f52c |
+| Optional preview | d3f496eb-cad2-4998-b7b3-897d47101d11 |
+| Saved/export Markdown SHA-256 | a8374242c30d9d1f043e405245f9179a355ff234f444ea1a142bb8600d0327b1 |
+| PDF SHA-256 | 6968b1703a61b28f811b9468e0a90962d65d7d659a60441d890fb790ae7f537f |
+
+Downloaded Markdown is 2,648 bytes and its hash exactly equals the database text. The authoritative JD snapshot matches the selected job at verification time. The saved export is ready in user_job_resumes; its Markdown equals the generated text with outer whitespace trimmed, explaining the different hash without overwriting generation history. PDF download is 28,939 bytes with a valid %PDF- signature and the returned SHA-256. Its private R2 key is resumes/b51b9da7-06b4-47ca-b608-47e429db3d2e/1a8a3167-bf4a-5619-8167-b43d883e83e4/previews/d3f496eb-cad2-4998-b7b3-897d47101d11.pdf. Primary generated Markdown remains in neondb, not staging or GCS.
+
+**Usefulness:** Demonstrates actual production generation, persistence, linkage, exact download integrity and single-credit settlement, rather than inferring success from a health check. Synthetic records remain retained for authorized SQL inspection.
+
+### 14. Verify ownership and inspect output quality
+
+**How:** Request the actual retained output anonymously and under the second legitimately authenticated synthetic identity. Render the downloaded optional PDF with pypdfium2 and inspect its one page; compare generated Markdown with the reviewed synthetic fixture.
+**Result:** Anonymous Markdown access returned 401. The other identity received 404 for request polling, generated Markdown and that exact PDF preview. The PDF rendered legibly without visible clipping, but the AI Markdown itself incorrectly replaces Example Engineering with the role title in the first employer heading, expands the second historical role title, and folds Documented Outcomes into Education. These quality issues propagate into the PDF; successful generation/storage is not proof of factual fidelity. Failed/refunded artifact denial, browser click-through, stress/fault-injection tests and comprehensive security remain unverified here.
+**Next quality work:** Preserve employer names and historical titles as immutable source facts; add output validation against reviewed input and block or flag changed facts before delivery. Preserve section boundaries and regression-test the synthetic fixture. Do not alter the retained evidence silently or spend another credit just to mask the finding.
+**Usefulness:** Separates functional storage/access success from résumé correctness and exposes concrete remaining defects. No output-quality fix is claimed by this test-only report.
 
 ## Live endpoints and sequence
 
@@ -134,7 +176,7 @@ JOIN public.resume_generation_requests r
 JOIN public.jobs j ON j.id=g.job_id
 LEFT JOIN public.user_job_resumes s
   ON s.user_id::text=g.user_id AND s.job_id=g.job_id
-WHERE g.id='REPLACE_WITH_VERIFIED_TRIAL_REQUEST_UUID'::uuid;
+WHERE g.id='5a80ec07-e241-4f77-b164-42e09fe28cf5'::uuid;
 ```
 
 SQL operator credentials can read data beyond the web API; share this query with authorized team members only. `user_job_resumes` is the current saved document, not an immutable per-generation export record. If another generation or edit replaces it, do not assume it still matches an older generation without comparing text/hashes.
@@ -149,13 +191,16 @@ Earlier disposable successful worker output was cleaned up (see error_ref.md); t
 
 - [x] Public services still resolve to original neondb; staging remains separate.
 - [ ] Authenticated browser upload, review, request, polling and Markdown download pass.
-- [ ] Retained output links to the correct demo identity and authoritative job snapshot.
-- [ ] Exactly one demo credit consumed; usage audit exists; no expired running lease.
-- [ ] Downloaded Markdown hash matches database text.
-- [ ] Optional PDF preview/export/download works and saved Markdown/key matches it.
-- [ ] Anonymous/cross-user access denied; failed/refunded output denied.
+- [x] Authenticated live API upload, review, request, polling and Markdown download pass.
+- [x] Retained output links to the correct demo identity and authoritative job snapshot.
+- [x] Exactly one demo credit consumed; usage audit exists; no running trial remains.
+- [x] Downloaded Markdown hash matches database text.
+- [x] Optional PDF preview/export/download works and saved Markdown/key matches it.
+- [x] Anonymous and cross-user access denied for the actual retained artifact.
+- [ ] Failed/refunded output denial verified against actual artifacts.
+- [ ] Generated output preserves source employer/role facts and section boundaries.
 - [x] Correct Jobnex branch/PR, deployment evidence, retrieval SQL and rollback documented.
 
 ## Status
 
-Implementation is deployed; authenticated live acceptance is incomplete pending the demo login Terms confirmation. No trial credit has yet been granted or spent and no retained output exists from this new trial. User approved resuming implementation and live testing on 2026-10-05. Do not treat deployment/readiness checks as completed generation evidence.
+Implementation is deployed and the authenticated live API trial passed on 2026-10-05. One synthetic credit was consumed; generated Markdown is retained in the intended original neondb, with an exact database/download hash match. Optional PDF export and actual cross-user denial passed. Full browser acceptance remains incomplete pending the login Terms confirmation, and concrete AI factual/section-quality issues were found. This is not a claim of 100% correctness or zero errors. User approved resuming implementation and live testing on 2026-10-05.

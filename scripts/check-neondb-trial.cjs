@@ -21,7 +21,17 @@ async function main() {
       await db.query('INSERT INTO wallets(user_id,balance) VALUES($1,0) ON CONFLICT(user_id) DO NOTHING', [user.id]);
       await db.query('SELECT 1 FROM wallets WHERE user_id=$1 FOR UPDATE', [user.id]);
       const prior = await db.query('SELECT id FROM credit_transactions WHERE user_id=$1 AND reference_id=$2', [user.id, grantReference]);
-      if (!prior.rowCount) await db.query("INSERT INTO credit_transactions(user_id,amount,transaction_type,status,reference_id,metadata) VALUES($1,1,'adjustment','completed',$2,$3)", [user.id, grantReference, JSON.stringify({kind:'retained_neondb_demo_credit', synthetic:true})]);
+      if (!prior.rowCount) {
+        await db.query("INSERT INTO credit_transactions(user_id,amount,transaction_type,status,reference_id,metadata) VALUES($1,1,'adjustment','completed',$2,$3)", [user.id, grantReference, JSON.stringify({kind:'retained_neondb_demo_credit', synthetic:true})]);
+        await db.query('UPDATE wallets SET balance=balance+1,updated_at=now() WHERE user_id=$1',[user.id]);
+      } else {
+        // Repair only this initial synthetic grant: the old helper wrote its ledger
+        // but omitted the wallet update. Never replenish a spent/refunded account.
+        await db.query(`UPDATE wallets w SET balance=1,updated_at=now() WHERE w.user_id=$1 AND w.balance=0
+          AND NOT EXISTS(SELECT 1 FROM resume_generation_requests r WHERE r.user_id=$1)
+          AND (SELECT count(*) FROM credit_transactions c WHERE c.user_id=$1)=1
+          AND EXISTS(SELECT 1 FROM credit_transactions c WHERE c.user_id=$1 AND c.reference_id=$2 AND c.amount=1 AND c.status='completed')`,[user.id,grantReference]);
+      }
       await db.query('COMMIT');
     }
     const wallet = (await db.query('SELECT balance FROM wallets WHERE user_id=$1', [user.id])).rows[0];

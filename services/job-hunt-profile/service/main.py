@@ -63,6 +63,13 @@ def read_profile(user_id: str) -> dict:
     return {"preferences": row[0], "resume_details": row[1]} if row else {"preferences": {}, "resume_details": {}}
 
 
+def save_resume_content(conn, user_id: str, details: dict):
+    conn.execute(
+        "UPDATE user_pref_resumes SET content=%s, updated_at=now() WHERE user_id=%s",
+        (json.dumps(details, ensure_ascii=False), user_id),
+    )
+
+
 @app.get("/profile")
 def get_profile(
     x_user_id: str = Header(default=""), x_timestamp: str = Header(default=""), x_signature: str = Header(default="")
@@ -104,6 +111,8 @@ def save_profile(
              update.preferences is not None, update.resume_details is not None,
              update.resume_details is not None, update.preferences is not None, update.resume_details is not None),
         )
+        if update.resume_details is not None:
+            save_resume_content(conn, user_id, details)
     return read_profile(user_id)
 
 
@@ -147,6 +156,7 @@ def upload_resume(
                  resume_details_updated_at = now(), updated_at = now()""",
             (user_id, Jsonb(pending_preferences({}, preferences)), Jsonb(details)),
         )
+        save_resume_content(conn, user_id, details)
     return read_profile(user_id)
 
 
@@ -232,4 +242,5 @@ def import_r2_resume(user: str, data: dict):
             ON CONFLICT(user_id) DO UPDATE SET preferences={PENDING_UPDATE},resume_details=EXCLUDED.resume_details,
             active_resume_id=EXCLUDED.active_resume_id,resume_details_created_at=COALESCE(user_job_preferences.resume_details_created_at,now()),resume_details_updated_at=now(),updated_at=now()""",
             (user, Jsonb(pending_preferences({}, preferences)), Jsonb(details), user))
+        save_resume_content(conn, user, details)
     return read_profile(user)

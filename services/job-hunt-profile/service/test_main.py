@@ -6,15 +6,63 @@ import unittest
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 from docx import Document
 
 from fastapi import HTTPException
 
 from service.main import authenticated_user, convert, build_preferences, apply_overrides, health
 from service.confirmation import pending_preferences
+from service import main
 
 
 class AuthenticationTest(unittest.TestCase):
+    def test_resume_content_mirrors_details_and_rejects_stale_upload(self):
+        details = {"text": "Python engineer", "header": {"name": "Test é"}}
+        current = {"preferences": {}, "resume_details": {}}
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = ("user_pref_resumes/test/current.docx",)
+        data = {"downloadUrl": "https://example.invalid", "fileName": "resume.docx",
+                "objectKey": "user_pref_resumes/test/current.docx"}
+        with tempfile.TemporaryDirectory() as directory:
+            parsed = Path(directory) / "parsed.json"
+            parsed.write_text(json.dumps(details), encoding="utf-8")
+            opener = MagicMock()
+            opener.open.return_value.__enter__.return_value.read.return_value = b"test resume"
+            with patch.object(main.psycopg, "connect") as connect, \
+                 patch.object(main, "read_profile", return_value=current), \
+                 patch.object(main, "convert", return_value=parsed), \
+                 patch.object(main, "build_preferences", return_value={}), \
+                 patch.object(main, "apply_overrides", return_value={}), \
+                 patch.object(main.urllib.request, "build_opener", return_value=opener), \
+                 patch.dict(os.environ, {"DATABASE_URL": "test-only"}):
+                connect.return_value.__enter__.return_value = conn
+                main.import_r2_resume("test", data)
+                calls = conn.execute.call_args_list
+                saved_details = calls[-2].args[1][2].obj
+                self.assertEqual(json.loads(calls[-1].args[1][0]), saved_details)
+                self.assertEqual(calls[-1].args[1][1], "test")
+                conn.reset_mock()
+                conn.execute.return_value.fetchone.return_value = ("newer.docx",)
+                with self.assertRaises(HTTPException) as error:
+                    main.import_r2_resume("test", data)
+                self.assertEqual(error.exception.status_code, 409)
+                self.assertEqual(conn.execute.call_count, 1)
+                with patch.object(main, "authenticated_user", return_value="test"):
+                    conn.reset_mock()
+                    main.save_profile(main.ProfileUpdate(resume_details=details))
+                    self.assertEqual(json.loads(conn.execute.call_args.args[1][0]), details)
+                    conn.reset_mock()
+                    main.save_profile(main.ProfileUpdate(preferences={}))
+                    self.assertEqual(conn.execute.call_count, 1)
+                    conn.reset_mock()
+                    upload = MagicMock()
+                    upload.filename = "resume.docx"
+                    upload.file.read.return_value = b"test resume"
+                    main.upload_resume(upload)
+                    self.assertEqual(json.loads(conn.execute.call_args.args[1][0]),
+                                     conn.execute.call_args_list[-2].args[1][2].obj)
+
     def test_confirmation_baseline_and_timestamp_survive_automated_updates(self):
         baseline = {"skills": ["SQL"]}
         existing = {"skills": ["SQL"], "isConfirmed": True, "confirmedAt": "2026-09-01", "lastConfirmedPreferences": baseline}

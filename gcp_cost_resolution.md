@@ -97,3 +97,9 @@ Live anonymous contract smoke: login returns 200; job, upload, correction, previ
 - [ ] Guaranteed worker zero-instance observation versus five-minute recovery choice (see qualification above).
 
 No claim of 100% correctness or exact dollar savings. Fresh upload/PDF/cross-user regression tests remain part of authenticated acceptance; existing PDF services were not modified. Review Cloud Monitoring billable_instance_time separately from instance residency. Subsequent comparison must begin after the cutover around 2026-10-06 06:31 UTC and use a complete 24-hour window.
+
+## Step 8 — final deployment verification and GitHub handoff
+
+Verified root traffic: web `job-hunt-web-00016-g5t`, worker `job-hunt-resume-worker-00018-4rn`, 100% each, generation enabled, CPU throttling true, no minimum-instance annotations (default zero). Cloud Scheduler authenticated recovery succeeded at 2026-10-06 06:32:46 UTC, HTTP 200 in 0.306s, with successful Scheduler status. Rust service and former revision now return NOT_FOUND. Removing the service also removes its revision resources; recover using the preserved image and manifest, not an old revision traffic switch.
+
+Committed implementation as `e68df5d` and pushed only to `https://github.com/jobnex/jobnex.git`, branch `codex/on-demand-tailoring`. Draft PR https://github.com/jobnex/jobnex/pull/10 is stacked onto existing integration PR 9 (`codex/neondb-resume-integration`) to avoid mixing the preceding integration changes into this review. Merge/rebase order: integration PR first, then retarget this PR to main. No merge was performed. The original local `ai-job-portal/gcs_gcp.md` gained a retirement notice; that unrelated repository was not pushed.

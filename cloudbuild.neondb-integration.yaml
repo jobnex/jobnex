@@ -1,0 +1,11 @@
+steps:
+  - id: web
+    name: gcr.io/cloud-builders/docker
+    args: [build, -t, $_WEB_IMAGE, .]
+    waitFor: ['-']
+  - id: pdf
+    name: gcr.io/cloud-builders/docker
+    args: [build, -t, $_PDF_IMAGE, services/resume-pdf-backend]
+    waitFor: ['-']
+images: [$_WEB_IMAGE, $_PDF_IMAGE]
+timeout: 1800s

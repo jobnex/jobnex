@@ -48,9 +48,9 @@ async function recordUsage(request: RequestRow, auditPath: string) {
   for (const usage of audit.usage || []) {
     const reserved = usage.input_tokens + usage.output_tokens + (usage.cache_read_tokens || 0) + (usage.cache_write_tokens || 0);
     await pool.query(`INSERT INTO resume_ai_calls
-      (request_id,user_id,provider,model,stage,status,reserved_tokens,input_tokens,output_tokens,cost_usd,raw_usage,response_id,finished_at)
-      VALUES($1,$2,'openrouter',$3,$4,'completed',$5,$6,$7,$8,$9,$10,now())`,
-      [request.id, request.user_id, usage.model, usage.stage, reserved, usage.input_tokens, usage.output_tokens,
+      (id,request_id,user_id,provider,model,stage,status,reserved_tokens,input_tokens,output_tokens,cost_usd,raw_usage,response_id,finished_at)
+      VALUES($1,$2,$3,'openrouter',$4,$5,'reported',$6,$7,$8,$9,$10,$11,now())`,
+      [crypto.randomUUID(), request.id, request.user_id, usage.model, usage.stage, reserved, usage.input_tokens, usage.output_tokens,
         usage.provider_cost_usd ?? usage.estimated_cost_usd, JSON.stringify(usage), usage.request_id || null]);
   }
 }
@@ -72,7 +72,7 @@ export async function tick() {
   try {
     const resume = join(folder, "resume.md"), jd = join(folder, "job.txt"), output = join(folder, "tailored.md");
     await Promise.all([writeFile(resume, request.source_text), writeFile(jd, request.job_description)]);
-    const code = await run(process.env.RESUME_PYTHON || "python", ["-m", "low_risk_agent.cli", "--resume", resume, "--jd", jd,
+    const code = await run(process.env.RESUME_PYTHON || "python", ["-m", "low_risk_agent", "--resume", resume, "--jd", jd,
       "--tenant-id", request.user_id, "--job-id", request.job_id, "--base-resume-id", request.base_resume_id,
       "--generation-id", request.id, "--summary", request.include_summary ? "yes" : "no", "--out", output], folder);
     if (code === 2) return void await release(request, "needs_review", "needs_review");

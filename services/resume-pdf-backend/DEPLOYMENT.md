@@ -1,5 +1,9 @@
 # Rust resume backend deployment record
 
+## Update: 2026-10-05 public Jobnex bridge
+
+The historical October 1 record below is preserved. Current PDF revision is `resume-pdf-backend-00003-rir`, receiving 100% traffic; image digest `sha256:d95e3027260990070988b3704900077c89e4103163f470ca2f564d46ac0a05d1`. Current web revision `job-hunt-web-00013-teh` invokes it privately. Cloud Build `a1a8cf91-b2fd-409c-af65-8d63814c7a09` passed the production builds and seven Rust tests. Existing IAM and database secret are preserved; no schema migration was made. Eligibility now also accepts an owned successful generation with a completed, consumed-credit request. Full authenticated browser generation/export remains pending the demo login confirmation; see root `testdb_rev.md`, not the old isolated PDF test, for that acceptance status.
+
 Release date: October 1, 2026, America/New_York (October 2 UTC).
 
 ## Actual deployment

@@ -1,0 +1,16 @@
+{
+  "displayName": "Jobnex resume dispatch exhausted",
+  "combiner": "OR",
+  "enabled": true,
+  "conditions": [{
+    "displayName": "Automatic dispatch attempts exhausted",
+    "conditionThreshold": {
+      "filter": "resource.type = \"cloud_run_revision\" AND metric.type = \"logging.googleapis.com/user/jobnex_resume_dispatch_exhausted\"",
+      "comparison": "COMPARISON_GT",
+      "thresholdValue": 0,
+      "duration": "0s",
+      "aggregations": [{"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_DELTA", "crossSeriesReducer": "REDUCE_SUM"}]
+    }
+  }],
+  "documentation": {"mimeType": "text/markdown", "content": "Inspect resume_dispatch_outbox queued requests with attempts >= 10. Repair dispatch configuration before resetting attempts. Never reserve a second credit or blindly rerun a running/expired paid AI attempt. See gcp_cost_resolution.md."}
+}

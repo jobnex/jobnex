@@ -11,6 +11,11 @@ The public Cloud Run service is `job-hunt-web`; the private worker is
 `job-hunt-resume-worker`. This document describes the routes that the Jobnex
 application must expose when the Tailor Resume integration is complete.
 
+The on-demand cost correction preserves every public route and response contract below.
+Cloud Tasks invokes private worker `POST /internal/process` with `{requestId}`;
+an authenticated five-minute recovery schedule invokes `POST /internal/recover`.
+Neither internal route is called by browsers. See `gcp_cost_resolution.md` for rollout evidence.
+
 ## Browser flow
 
 ```text

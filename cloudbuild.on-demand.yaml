@@ -1,0 +1,11 @@
+steps:
+  - id: worker
+    name: gcr.io/cloud-builders/docker
+    args: [build, -f, services/resume-tailor/Dockerfile, -t, $_WORKER_IMAGE, .]
+    waitFor: ['-']
+  - id: web
+    name: gcr.io/cloud-builders/docker
+    args: [build, -t, $_WEB_IMAGE, .]
+    waitFor: ['-']
+images: [$_WORKER_IMAGE, $_WEB_IMAGE]
+timeout: 1800s

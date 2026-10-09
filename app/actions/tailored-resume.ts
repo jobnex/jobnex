@@ -119,7 +119,7 @@ export async function getExistingTailoredResume(jobId: string) {
  * Pre-flight deterministic skill-gap and match analysis before reserving a credit.
  * Step 4 from project_docs/new_endpoints.md:
  * GET /api/resume/tailor/resumes/{resumeId}/preview?jobId={jobId}
- * 
+ *
  * Non-blocking: Even if this skill-gap service fails, returns 4xx/5xx, or times out,
  * Service 2 (the tailoring engine) remains fully available to request.
  */

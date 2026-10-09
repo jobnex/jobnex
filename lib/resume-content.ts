@@ -28,7 +28,9 @@ export function resumeMarkdown(details: Details, edited = false): string {
     for (const entry of education) lines.push([entry.college, entry.degree, entry.field].map(text).filter(Boolean).join(" | "), [entry.startDate, entry.endDate].map(text).filter(Boolean).join(" – "));
   } else if (!("educationHistory" in details) && text(details.education)) lines.push("", "## Education", text(details.education));
   const experience = list(details.experienceHistory ?? details.experience);
-  if (experience.length) {
+  const extractedExperience = text(details.experience_text) || text(details.experience);
+  if (!("experienceHistory" in details) && extractedExperience) lines.push("", "## Experience", extractedExperience);
+  else if (experience.length) {
     lines.push("", "## Experience");
     for (const entry of experience) {
       const role = text(entry.role ?? entry.title);

@@ -26,7 +26,9 @@ def markdown_from(details, edited=False):
     elif "educationHistory" not in details and text(details.get("education")):
         lines.extend(["", "## Education", text(details["education"])])
     experience = details.get("experienceHistory", details.get("experience", [])) or []
-    if isinstance(experience, list) and experience:
+    if "experienceHistory" not in details and text(details.get("experience_text") or (experience if isinstance(experience,str) else "")):
+        lines.extend(["", "## Experience", text(details.get("experience_text") or experience)])
+    elif isinstance(experience, list) and experience:
         lines.extend(["", "## Experience"])
         for entry in experience:
             role = text(entry.get("role") or entry.get("title"))

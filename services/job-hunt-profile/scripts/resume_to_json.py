@@ -85,7 +85,7 @@ def resume_details(text: str) -> dict:
 
     for line in text.splitlines():
         stripped = line.strip()
-        label = stripped.lstrip("# ").rstrip(": ").upper()
+        label = re.sub(r"\s+", " ", stripped.lstrip("# ").rstrip(": ")).upper()
         known = HEADINGS.get(label)
         # Markdown headings can name extra sections. Plain uppercase employer names
         # are not treated as headings.

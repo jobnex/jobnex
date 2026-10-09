@@ -8,6 +8,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { pendingPreferences, confirmedPreferences } from "@/lib/preferences-confirmation";
 import { preferenceWrite } from "@/lib/db/preferences-confirmation";
+import { normalizeResume, resumeMarkdown } from "@/lib/resume-content";
 
 const EducationEntrySchema = z.object({
   id: z.string().default(() => Math.random().toString(36).substring(2, 9)),
@@ -249,6 +250,8 @@ async function persistPreferences(input: unknown, confirm: boolean): Promise<Sav
             title: cleanPreferences.resumeFileName || "Primary Resume",
             fileName: cleanPreferences.resumeFileName || "Uploaded_Resume.pdf",
             fileKey: cleanPreferences.resumeFileKey,
+          content: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${cleanPreferences.resumeFileKey} THEN NULL ELSE ${userPrefResumes.content} END`,
+          parsedData: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${cleanPreferences.resumeFileKey} THEN '{}'::jsonb ELSE ${userPrefResumes.parsedData} END`,
             fileUrl: cleanPreferences.resumeFileKey,
             isPrimary: true,
             updatedAt: now,
@@ -348,13 +351,18 @@ export async function saveResumeDetails(
 
     const now = new Date();
 
-    // Atomic Upsert: Replaces resume_details for the user without touching preferences
-    const [saved] = await db
+    // Lock the owned base resume before preferences, matching profile extraction lock order.
+    const saved = await db.transaction(async (tx) => {
+      const [resume] = await tx.select().from(userPrefResumes).where(eq(userPrefResumes.userId, user.id)).for("update");
+      const [current] = await tx.select().from(userJobPreferences).where(eq(userJobPreferences.userId, user.id)).for("update");
+      const details = normalizeResume({ ...(current?.resumeDetails || {}), ...cleanResumeDetails }, true);
+      const [record] = await tx
       .insert(userJobPreferences)
       .values({
         userId: user.id,
         preferences: {},
-        resumeDetails: cleanResumeDetails,
+        resumeDetails: details,
+        activeResumeId: resume?.id ?? null,
         resumeDetailsCreatedAt: now,
         resumeDetailsUpdatedAt: now,
         createdAt: now,
@@ -363,13 +371,19 @@ export async function saveResumeDetails(
       .onConflictDoUpdate({
         target: userJobPreferences.userId,
         set: {
-          resumeDetails: sql`${userJobPreferences.resumeDetails} || ${JSON.stringify(cleanResumeDetails)}::jsonb`,
+          resumeDetails: details,
+          activeResumeId: resume?.id ?? null,
           resumeDetailsCreatedAt: sql`COALESCE(${userJobPreferences.resumeDetailsCreatedAt}, ${now})`,
           resumeDetailsUpdatedAt: now,
           updatedAt: now,
         },
       })
       .returning();
+      if (resume) await tx.update(userPrefResumes).set({
+        content: resumeMarkdown(details), parsedData: details, updatedAt: now,
+      }).where(eq(userPrefResumes.id, resume.id));
+      return record;
+    });
 
     revalidatePath("/job-hunt/manage");
     revalidatePath("/job-hunt");

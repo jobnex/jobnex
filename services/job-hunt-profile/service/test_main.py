@@ -39,9 +39,10 @@ class AuthenticationTest(unittest.TestCase):
                 connect.return_value.__enter__.return_value = conn
                 main.import_r2_resume("test", data)
                 calls = conn.execute.call_args_list
-                saved_details = calls[-2].args[1][2].obj
-                self.assertEqual(json.loads(calls[-1].args[1][0]), saved_details)
-                self.assertEqual(calls[-1].args[1][1], "test")
+                saved_details = calls[-3].args[1][2].obj
+                self.assertEqual(calls[-2].args[1][0], saved_details["compiler_payload"]["markdown"])
+                self.assertEqual(calls[-2].args[1][1].obj, saved_details)
+                self.assertEqual(calls[-2].args[1][2], "test")
                 conn.reset_mock()
                 conn.execute.return_value.fetchone.return_value = ("newer.docx",)
                 with self.assertRaises(HTTPException) as error:
@@ -51,7 +52,9 @@ class AuthenticationTest(unittest.TestCase):
                 with patch.object(main, "authenticated_user", return_value="test"):
                     conn.reset_mock()
                     main.save_profile(main.ProfileUpdate(resume_details=details))
-                    self.assertEqual(json.loads(conn.execute.call_args.args[1][0]), details)
+                    mirror = conn.execute.call_args_list[-2].args[1]
+                    self.assertEqual(mirror[0], mirror[1].obj["compiler_payload"]["markdown"])
+                    self.assertEqual(mirror[2], "test")
                     conn.reset_mock()
                     main.save_profile(main.ProfileUpdate(preferences={}))
                     self.assertEqual(conn.execute.call_count, 1)
@@ -60,8 +63,8 @@ class AuthenticationTest(unittest.TestCase):
                     upload.filename = "resume.docx"
                     upload.file.read.return_value = b"test resume"
                     main.upload_resume(upload)
-                    self.assertEqual(json.loads(conn.execute.call_args.args[1][0]),
-                                     conn.execute.call_args_list[-2].args[1][2].obj)
+                    self.assertEqual(conn.execute.call_args_list[-2].args[1][1].obj,
+                                     conn.execute.call_args_list[-3].args[1][2].obj)
 
     def test_confirmation_baseline_and_timestamp_survive_automated_updates(self):
         baseline = {"skills": ["SQL"]}

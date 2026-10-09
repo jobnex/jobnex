@@ -46,10 +46,23 @@ export async function saveResumePayloadLocallyServer(req: CompileRequest): Promi
     include_base64: true, destination_endpoint: parsed.data.destination_endpoint ?? "", updatedAt: new Date().toISOString(),
     markdown: parsed.data.markdown };
   try {
-    await resumePool.query(`INSERT INTO user_job_preferences(user_id,preferences,resume_details)
+    const client = await resumePool.connect();
+    try {
+    await client.query("BEGIN");
+    const owned = await client.query("SELECT id FROM user_pref_resumes WHERE user_id=$1 FOR UPDATE", [user.id]);
+    const saved = await client.query(`INSERT INTO user_job_preferences(user_id,preferences,resume_details)
       VALUES($1,'{}',jsonb_build_object('compiler_payload',$2::jsonb)) ON CONFLICT(user_id) DO UPDATE
-      SET resume_details=jsonb_set(user_job_preferences.resume_details,'{compiler_payload}',$2::jsonb),updated_at=now()`,
+      SET resume_details=jsonb_set(user_job_preferences.resume_details,'{compiler_payload}',$2::jsonb),updated_at=now()
+      RETURNING resume_details`,
       [user.id, JSON.stringify(payload)]);
+    if (owned.rows[0]) {
+      await client.query("UPDATE user_pref_resumes SET content=$1,parsed_data=$2,updated_at=now() WHERE id=$3 AND user_id=$4",
+        [payload.markdown, JSON.stringify(saved.rows[0].resume_details), owned.rows[0].id, user.id]);
+      await client.query("UPDATE user_job_preferences SET active_resume_id=$1 WHERE user_id=$2", [owned.rows[0].id, user.id]);
+    }
+    await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
     return { success: true, payload };
   } catch { return { success: false, error: "Resume storage is unavailable" }; }
 }

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from psycopg.types.json import Jsonb
 from dotenv import load_dotenv
 from service.confirmation import pending_preferences, PENDING_UPDATE
+from service.resume_content import normalize, markdown_from
 
 sys.path.insert(0, os.environ.get("RESUME_SCRIPTS_DIR") or str(Path(__file__).resolve().parents[1]))
 from scripts.resume_json_to_preferences import apply_overrides, build_preferences
@@ -64,10 +65,12 @@ def read_profile(user_id: str) -> dict:
 
 
 def save_resume_content(conn, user_id: str, details: dict):
-    conn.execute(
-        "UPDATE user_pref_resumes SET content=%s, updated_at=now() WHERE user_id=%s",
-        (json.dumps(details, ensure_ascii=False), user_id),
-    )
+    row = conn.execute(
+        "UPDATE user_pref_resumes SET content=%s, parsed_data=%s, updated_at=now() WHERE user_id=%s RETURNING id",
+        (markdown_from(details), Jsonb(details), user_id),
+    ).fetchone()
+    if row:
+        conn.execute("UPDATE user_job_preferences SET active_resume_id=%s WHERE user_id=%s", (row[0], user_id))
 
 
 @app.get("/profile")
@@ -94,7 +97,7 @@ def save_profile(
         except (ValueError, KeyError) as error:
             raise HTTPException(400, str(error)) from error
     if update.resume_details is not None:
-        details = details | update.resume_details
+        details = normalize(details | update.resume_details, edited=True)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         conn.execute(
             f"""INSERT INTO user_job_preferences
@@ -137,6 +140,7 @@ def upload_resume(
         except Exception as error:
             raise HTTPException(400, f"Could not read resume: {error}") from error
     details["source_file"] = Path(file.filename or "resume").name
+    details = normalize(details)
     current = read_profile(user_id)
     inferred["resumeFileName"] = details["source_file"]
     inferred["resumeUploaded"] = True
@@ -231,7 +235,11 @@ def import_r2_resume(user: str, data: dict):
         for entry in entries:
             lines.extend(["### " + entry.get("title", ""), "**" + entry.get("company", "") + "** | " + entry.get("dates", "")])
             lines.extend("- " + item for item in entry.get("bullets", []))
+    for field in ("projects", "certifications", "awards", "publications", "volunteering", "languages", "training", "research", "leadership", "achievements", "additional_information"):
+        value = details.get(field)
+        if isinstance(value, str) and value.strip(): lines.extend(["", "## " + field.replace("_", " ").title(), value])
     details["compiler_payload"] = {"markdown": "\n".join(lines), "templateId": preferences.get("selectedTemplateId", "mit-capd")}
+    details = normalize(details)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         # Ignore a stale extraction if the user already uploaded a newer resume.
         active = conn.execute("SELECT file_key FROM user_pref_resumes WHERE user_id=%s FOR UPDATE", (user,)).fetchone()

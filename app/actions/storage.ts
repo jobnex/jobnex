@@ -11,7 +11,7 @@ import { r2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
 import { getCurrentUser } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { userPrefResumes, userJobPreferences } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
 import { preferenceWrite } from "@/lib/db/preferences-confirmation";
@@ -334,6 +334,8 @@ export async function commitResumeUpload({
           title: cleanFileName,
           fileName: cleanFileName,
           fileKey: objectKey,
+          content: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN NULL ELSE ${userPrefResumes.content} END`,
+          parsedData: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN '{}'::jsonb ELSE ${userPrefResumes.parsedData} END`,
           fileSize: fileSize || null,
           fileUrl: objectKey,
           isPrimary: true,

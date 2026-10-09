@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "@/lib/db";
+import { resumeText } from "@/lib/resume-content";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -7,6 +8,16 @@ export type TailorJob = { id: string; title: string; company: string; descriptio
 export type TailorResume = { id: string; markdown: string; parsed: Record<string, unknown>; fileName: string | null };
 
 export function isUuid(value: string) { return UUID.test(value); }
+
+export async function loadCompletedGeneration(userId: string, requestId: string) {
+  if (!isUuid(requestId)) return null;
+  const result = await pool.query(`SELECT g.id,g.job_id,g.resume_markdown,g.version
+    FROM resume_generations g JOIN resume_generation_requests r ON r.id=g.id AND r.user_id=g.user_id
+    WHERE g.id=$1 AND g.user_id=$2 AND g.job_id=r.job_id
+      AND r.status='completed' AND r.credit_state='consumed'
+      AND g.status IN ('completed','completed_with_estimates')`, [requestId, userId]);
+  return result.rows[0] as { id: string; job_id: string; resume_markdown: string; version: number } | undefined;
+}
 
 export async function loadTailorJob(jobId: string): Promise<TailorJob | null> {
   const result = await pool.query(`SELECT id, job_role_title, company_name, job_description, requirements
@@ -17,10 +28,11 @@ export async function loadTailorJob(jobId: string): Promise<TailorJob | null> {
 }
 
 export async function loadTailorResume(userId: string, resumeId: string): Promise<TailorResume | null> {
-  const result = await pool.query(`SELECT id, content, parsed_data, file_name FROM user_pref_resumes
-    WHERE id=$1 AND user_id=$2`, [resumeId, userId]);
+  const result = await pool.query(`SELECT r.id, r.content, r.parsed_data, r.file_name FROM user_pref_resumes r
+    JOIN user_job_preferences p ON p.user_id=r.user_id AND p.active_resume_id=r.id
+    WHERE r.id=$1 AND r.user_id=$2`, [resumeId, userId]);
   const row = result.rows[0];
-  return row && { id: row.id, markdown: row.content || "", parsed: row.parsed_data || {}, fileName: row.file_name };
+  return row && { id: row.id, markdown: resumeText(row.content, row.parsed_data), parsed: row.parsed_data || {}, fileName: row.file_name };
 }
 
 const STOP_WORDS = new Set("about after also and are as at be by can company for from have in into is its job more must not of on or our role that the their this to use using we with you your years".split(" "));
@@ -63,6 +75,7 @@ export async function enqueueTailoring(userId: string, jobId: string, resume: Ta
       (id,user_id,job_id,base_resume_id,idempotency_key,source_text,job_description,include_summary,status,credit_state,credit_cost)
       VALUES($1,$2,$3,$4,$5,$6,$7,true,'queued','held',1)`,
       [id, userId, jobId, resume.id, idempotencyKey, resume.markdown, job.rows[0].job_description]);
+    await client.query(`INSERT INTO resume_dispatch_outbox(request_id) VALUES($1)`, [id]);
     await client.query("COMMIT");
     return { id, status: "queued", credit_state: "held", duplicate: false };
   } catch (error) {

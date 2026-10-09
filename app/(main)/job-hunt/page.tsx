@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { JobGrid } from "@/components/JobGrid";
 import { AnimatedTabs } from "@/components/AnimatedTabs";
-import { Search, Filter, Plus, RefreshCw, X, Loader2 } from "lucide-react";
+import { Search, Filter, Plus, RefreshCw, X } from "lucide-react";
 import { getCuratedPartition, jobsData } from "@/data/jobs";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { JobDescriptionPanel } from "@/components/JobDescriptionPanel";
@@ -18,13 +18,6 @@ export default function JobHuntPage() {
   const [direction, setDirection] = useState<"left" | "right">("right");
   const [curatedJdJob, setCuratedJdJob] = useState<Job | null>(null);
   const scrollPosRef = useRef<number>(0);
-
-  // Live matched jobs state
-  const [matchedJobs, setMatchedJobs] = useState<Job[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
 
   const { closeJd } = useJobStore();
 
@@ -42,70 +35,6 @@ export default function JobHuntPage() {
       window.scrollTo({ top: 0, behavior: "instant" });
     }
   }, [curatedJdJob]);
-
-  // Fetch live personalized jobs from /api/jobs/matched
-  const fetchMatchedJobs = useCallback(async (cursorParam?: string | null) => {
-    const isInitial = !cursorParam;
-    if (isInitial) {
-      setIsLoading(true);
-    } else {
-      setIsLoadingMore(true);
-    }
-
-    try {
-      const url = new URL("/api/jobs/matched", window.location.origin);
-      url.searchParams.set("limit", "24");
-      url.searchParams.set("mode", "balanced");
-      if (cursorParam) {
-        url.searchParams.set("cursor", cursorParam);
-      }
-
-      const res = await fetch(url.toString(), {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP error ${res.status}`);
-      }
-
-      const data = await res.json();
-      const newJobs: Job[] = data.jobs || [];
-
-      if (isInitial) {
-        // Fallback to static partition if database returned 0 (e.g. fresh onboarding)
-        if (newJobs.length === 0) {
-          const { standardJobs } = getCuratedPartition(jobsData);
-          setMatchedJobs(standardJobs);
-        } else {
-          setMatchedJobs(newJobs);
-        }
-      } else {
-        setMatchedJobs(prev => {
-          const existingIds = new Set(prev.map(j => j.id));
-          const deduped = newJobs.filter(j => !existingIds.has(j.id));
-          return [...prev, ...deduped];
-        });
-      }
-
-      setNextCursor(data.nextCursor || null);
-      setHasMore(Boolean(data.hasMore));
-    } catch (error) {
-      console.error("Failed to load live curated jobs, falling back to cached partition:", error);
-      if (isInitial) {
-        const { standardJobs } = getCuratedPartition(jobsData);
-        setMatchedJobs(standardJobs);
-      }
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  }, []);
-
-  // Initial load on mount
-  useEffect(() => {
-    fetchMatchedJobs();
-  }, [fetchMatchedJobs]);
 
   const handleTabChange = useCallback((tabId: string) => {
     const nextTab = tabId as "jobs" | "requested";
@@ -135,18 +64,17 @@ export default function JobHuntPage() {
     }
   }, []);
 
-  // Filter jobs based on active search
-  const filteredStandardJobs = useMemo(() => {
-    if (!debouncedSearchQuery) return matchedJobs;
+  const jobs = useMemo(() => {
+    if (!debouncedSearchQuery) return jobsData;
     const q = debouncedSearchQuery.toLowerCase();
-    return matchedJobs.filter(
+    return jobsData.filter(
       (job) => job.jobRoleTitle.toLowerCase().includes(q) || job.company.toLowerCase().includes(q)
     );
-  }, [matchedJobs, debouncedSearchQuery]);
+  }, [debouncedSearchQuery]);
 
-  const { requestedJobs } = useMemo(() => getCuratedPartition(jobsData), []);
+  const { standardJobs, requestedJobs } = useMemo(() => getCuratedPartition(jobs), [jobs]);
 
-  const displayedJobs = activeTab === "jobs" ? filteredStandardJobs : requestedJobs;
+  const displayedJobs = activeTab === "jobs" ? standardJobs : requestedJobs;
 
   return (
     <div className="p-4 sm:p-8 flex flex-col gap-6 h-full">
@@ -198,13 +126,8 @@ export default function JobHuntPage() {
                <Plus className="w-[16px] h-[16px]" strokeWidth={2.5} />
                <span>Add Job</span>
              </button>
-             <button 
-               onClick={() => fetchMatchedJobs()}
-               disabled={isLoading}
-               title="Refresh live recommendations"
-               className="inline-flex items-center gap-2 px-4 py-[0.65rem] rounded-md font-bold text-[0.88rem] border-[1.5px] border-brand-dark text-brand-dark bg-transparent hover:bg-brand-dark/5 transition-all hover:-translate-y-[1px] cursor-pointer active:translate-y-[1px] disabled:opacity-50 dark:border-brand-lime dark:text-brand-lime dark:hover:bg-brand-lime/10"
-             >
-               <RefreshCw className={`w-[16px] h-[16px] ${isLoading ? "animate-spin" : ""}`} strokeWidth={2.5} />
+             <button className="inline-flex items-center gap-2 px-4 py-[0.65rem] rounded-md font-bold text-[0.88rem] border-[1.5px] border-brand-dark text-brand-dark bg-transparent hover:bg-brand-dark/5 transition-all hover:-translate-y-[1px] cursor-pointer active:translate-y-[1px] dark:border-brand-lime dark:text-brand-lime dark:hover:bg-brand-lime/10">
+               <RefreshCw className="w-[16px] h-[16px]" strokeWidth={2.5} />
                <span>Fetch Jobs</span>
              </button>
           </div>
@@ -214,7 +137,7 @@ export default function JobHuntPage() {
           activeTab={activeTab} 
           onTabChange={handleTabChange}
           tabs={[
-            { id: "jobs", label: "Jobs", count: displayedJobs.length },
+            { id: "jobs", label: "Jobs", count: standardJobs.length },
             { id: "requested", label: "Requested", count: requestedJobs.length }
           ]} 
         />
@@ -241,30 +164,8 @@ export default function JobHuntPage() {
               isPremium={true}
               variant={activeTab === "jobs" ? "emerald" : "purple"}
               isRequested={activeTab === "requested"}
-              isLoading={isLoading && matchedJobs.length === 0}
-              skeletonCount={12}
               onSelectJob={handleSelectJob}
             />
-
-            {/* Keyset Infinite Scroll Load More */}
-            {activeTab === "jobs" && hasMore && (
-              <div className="flex justify-center items-center pt-8 pb-4">
-                <button
-                  onClick={() => fetchMatchedJobs(nextCursor)}
-                  disabled={isLoadingMore}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold border-[1.5px] border-border-color bg-bg-card text-text-primary shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all active:translate-y-0 cursor-pointer disabled:opacity-50 dark:bg-[#151720] dark:border-[#2B3042] dark:hover:border-[#ACEE5F]"
-                >
-                  {isLoadingMore ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-brand-dark dark:text-brand-lime" />
-                      <span>Loading more recommendations...</span>
-                    </>
-                  ) : (
-                    <span>Load More Jobs</span>
-                  )}
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>

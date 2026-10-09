@@ -1,15 +1,9 @@
 import { createHmac } from "node:crypto";
 import { getCurrentUser } from "@/lib/auth/server";
 import { pool } from "@/lib/db";
+import { normalizeResume, resumeMarkdown } from "@/lib/resume-content";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-
-function markdownFrom(details: Record<string, unknown>) {
-  const payload = details.compiler_payload as { markdown?: unknown } | undefined;
-  if (typeof payload?.markdown === "string" && payload.markdown.trim()) return payload.markdown.trim();
-  const text = typeof details.text === "string" ? details.text.trim() : "";
-  return text ? `# Resume\n\n${text}` : "";
-}
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -31,14 +25,19 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(60_000), cache: "no-store" });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.detail || "Could not read this resume");
-    const details = (result.resume_details || {}) as Record<string, unknown>;
-    const markdown = markdownFrom(details);
+    const details = normalizeResume((result.resume_details || {}) as Record<string, unknown>);
+    const markdown = resumeMarkdown(details);
     if (!markdown) throw new Error("No readable resume text was found");
-    const saved = await pool.query(`INSERT INTO user_pref_resumes(user_id,title,file_name,file_size,is_primary,content,parsed_data,updated_at)
+    const saved = await pool.query(`WITH saved AS (INSERT INTO user_pref_resumes(user_id,title,file_name,file_size,is_primary,content,parsed_data,updated_at)
       VALUES($1,'Primary resume',$2,$3,true,$4,$5,now())
       ON CONFLICT(user_id) DO UPDATE SET file_name=EXCLUDED.file_name,file_size=EXCLUDED.file_size,
         content=EXCLUDED.content,parsed_data=EXCLUDED.parsed_data,updated_at=now()
-      RETURNING id,content,parsed_data,file_name`, [user.id, file.name, file.size, markdown, JSON.stringify(details)]);
+      RETURNING id,user_id,content,parsed_data,file_name), selected AS (
+      INSERT INTO user_job_preferences(user_id,preferences,resume_details,active_resume_id)
+      SELECT user_id,'{}'::jsonb,parsed_data,id FROM saved
+      ON CONFLICT(user_id) DO UPDATE SET active_resume_id=EXCLUDED.active_resume_id,
+        resume_details=EXCLUDED.resume_details,updated_at=now() RETURNING user_id)
+      SELECT saved.* FROM saved JOIN selected USING(user_id)`, [user.id, file.name, file.size, markdown, JSON.stringify(details)]);
     const row = saved.rows[0];
     return Response.json({ resume: { id: row.id, markdown: row.content, details: row.parsed_data, fileName: row.file_name } });
   } catch (error) {

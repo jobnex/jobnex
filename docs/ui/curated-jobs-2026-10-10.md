@@ -101,3 +101,10 @@ constitute pixel-level browser sign-off.
 Curated page returned HTTP 200 with the new controls. All nine source/archive hashes match the
 current original files. Source-backup links follow in the publication record.
 - No resume worker/model configuration was changed by this release.
+
+## Immutable GitHub collection
+
+- Source snapshot commit: [`538e4fe8041b8c57e1b290ee683a650bf83eb9d5`](https://github.com/jobnex/jobnex/commit/538e4fe8041b8c57e1b290ee683a650bf83eb9d5).
+- [Production code and local verification references](https://github.com/jobnex/jobnex/tree/538e4fe8041b8c57e1b290ee683a650bf83eb9d5/docs/ui/source-snapshots/2026-10-10-curated-jobs).
+- [Original-filename ZIP](https://github.com/jobnex/jobnex/blob/538e4fe8041b8c57e1b290ee683a650bf83eb9d5/docs/ui/curated-jobs-code-2026-10-10.zip).
+- GitHub is the code backup and integration handoff. The Cloud Run release is verified independently above.

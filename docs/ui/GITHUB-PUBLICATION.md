@@ -25,3 +25,12 @@ Publishing or merging this documentation backup does not deploy those changes.
 
 No environment files, credentials or private resume artifacts were included.
 The original working checkout's uncommitted implementation changes were preserved.
+
+
+## Curated Jobs release
+
+Source snapshot commit: [538e4fe8041b8c57e1b290ee683a650bf83eb9d5](https://github.com/jobnex/jobnex/commit/538e4fe8041b8c57e1b290ee683a650bf83eb9d5).
+Collect six production source files plus three verification references from [this immutable snapshot](https://github.com/jobnex/jobnex/tree/538e4fe8041b8c57e1b290ee683a650bf83eb9d5/docs/ui/source-snapshots/2026-10-10-curated-jobs)
+or [the ZIP](https://github.com/jobnex/jobnex/blob/538e4fe8041b8c57e1b290ee683a650bf83eb9d5/docs/ui/curated-jobs-code-2026-10-10.zip). See [curated-jobs-2026-10-10.md](curated-jobs-2026-10-10.md).
+Cloud Run revision job-hunt-web-curated-fresh-1010 serves 100% production traffic and the neondb-trial tag.
+SQL, read-only live matching, TypeScript, rendered controls, production build and staged API checks passed.

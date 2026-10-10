@@ -1,5 +1,7 @@
 # Two resumes per user — staged release record
 
+> Superseded staging record: production rollout completed. Current state and final worker revision are in [live release evidence](resume-two-per-user-live-2026-10-10.md).
+
 **Status: tested and staged at zero traffic; production DB migration and promotion await explicit approval.**
 
 Complete change list and rollback: [handoff](../ui-team-resume-two-per-user.md).

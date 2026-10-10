@@ -8,6 +8,7 @@ process.env.DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused";
 async function main() {
   const { pool, processRequest } = await import("../services/resume-tailor/worker");
   const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+  const sourceHash = (text: string) => hash(text.replace(/\r\n?/g, "\n"));
   type Generation = { status: string; resume_markdown: string; source_hash: string; job_hash: string; audit_json: Record<string, unknown> };
   let row = fixture(), generation: Generation | null = null;
   let wallet = 2, transaction = "pending", refunds = 0, calls = 0;
@@ -47,8 +48,8 @@ async function main() {
   const agent = (status: string, mutate?: (saved: Generation) => void, crash = false) => async (_command: string, args: string[]) => {
     calls++;
     const markdown = "# Synthetic tailored résumé";
-    generation = { status, resume_markdown: markdown, source_hash: hash(row.source_text), job_hash: hash(row.job_description.replace(/\s+/gu, " ").trim()),
-      audit_json: { status, resume_markdown: markdown, source_hash: hash(row.source_text), job_hash: hash(row.job_description.replace(/\s+/gu, " ").trim()),
+    generation = { status, resume_markdown: markdown, source_hash: sourceHash(row.source_text), job_hash: hash(row.job_description.replace(/\s+/gu, " ").trim()),
+      audit_json: { status, resume_markdown: markdown, source_hash: sourceHash(row.source_text), job_hash: hash(row.job_description.replace(/\s+/gu, " ").trim()),
         error: status === "needs_review" ? "experience.roles" : null,
         usage: [{ model: "mock", stage: "mock", input_tokens: 2, output_tokens: 3, estimated_cost_usd: 0 }] } };
     mutate?.(generation);
@@ -76,6 +77,9 @@ async function main() {
   }
   reset(); await processRequest(row.id, agent("needs_review", undefined, true));
   assert.equal(row.status, "needs_review"); assert.equal(row.credit_state, "consumed"); assert.equal(wallet, 2); assert.equal(refunds, 0);
+  reset(); row.source_text = "# Windows résumé\r\nExperience\rAdditional details";
+  await processRequest(row.id, agent("needs_review"));
+  assert.equal(row.credit_state, "consumed", "Match Python's CRLF/CR newline handling");
   reset(); await processRequest(row.id, async () => { calls++; throw new Error("mock_no_output"); });
   assert.equal(row.status, "failed"); assert.equal(wallet, 3); assert.equal(refunds, 1);
   reset(); await processRequest(row.id, agent("needs_review", () => { row.lease_token = "new-owner"; }));

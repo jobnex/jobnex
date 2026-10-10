@@ -82,7 +82,8 @@ async function recoverOutput(request: RequestRow) {
       || audit.status !== generation.status
       || !Array.isArray(audit.usage) || !audit.usage.length
       || audit.source_hash !== generation.source_hash || audit.job_hash !== generation.job_hash
-      || generation.source_hash !== createHash("sha256").update(request.source_text).digest("hex")
+      // Python read_text uses universal newlines before computing the source hash.
+      || generation.source_hash !== createHash("sha256").update(request.source_text.replace(/\r\n?/g, "\n")).digest("hex")
       || generation.job_hash !== createHash("sha256").update(request.job_description.normalize("NFC").replace(/\s+/gu, " ").trim()).digest("hex")) return false;
   // The persisted agent audit is authoritative; retries never invoke AI again.
   await recordUsage(request, audit.usage);

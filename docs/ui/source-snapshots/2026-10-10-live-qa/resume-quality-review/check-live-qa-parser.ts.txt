@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import {parseResumeMarkdown} from "../archive-review-20261008/app-source/my-app/lib/resume-parser";
+
+const parsed=parseResumeMarkdown(`# Avery Doe
+## Skills
+Backend: Python, Dis-
+tributed Systems
+Data: SQL, Data
+Pipelines
+## Experience
+### Engineer
+**Alpha** | Boston | 2024 – Present
+- Built APIs.
+### Analyst | Beta | Remote | 2020 – 2024
+- Built dashboards.
+`);
+assert.equal(parsed.skills.length,2);
+assert.equal(parsed.skills[0].items,"Python, Distributed Systems");
+assert.equal(parsed.skills[1].items,"SQL, Data Pipelines");
+assert.equal(parsed.experience.length,2);
+assert.equal(parsed.experience[0].role,"Engineer");
+assert.equal(parsed.experience[0].company,"Alpha");
+assert.equal(parsed.experience[0].location,"Boston");
+assert.equal(parsed.experience[0].duration,"2024 – Present");
+assert.equal(parsed.experience[1].company,"Beta");
+assert.equal(parsed.experience[1].bullets.length,1);
+console.log("PASS: wrapped skills and separate employer/date lines");

@@ -208,3 +208,8 @@ See [resume-reliability-2026-10-10.md](resume-reliability-2026-10-10.md) for the
 ## Reasoning-budget follow-up
 
 See [resume-token-budget-2026-10-10.md](resume-token-budget-2026-10-10.md) for the subsequent deployed worker fix. Gemini writing uses low reasoning and a 32000 completion ceiling; fitting failures retain prior drafts as needs_review. Collect the five worker/test files from source-snapshots/2026-10-10-token-budget or resume-token-budget-code-2026-10-10.zip.
+
+
+## Real-test follow-up
+
+See [resume-live-qa-2026-10-10.md](resume-live-qa-2026-10-10.md) for parser, complete skill preservation and review fixes exposed by real paid tests. Collect the ten code/test files from source-snapshots/2026-10-10-live-qa or resume-live-qa-code-2026-10-10.zip. The UI change is confined to the shared resume parser; backend fixes are a separate worker release.

@@ -11,7 +11,7 @@ async function main() {
   const sourceHash = (text: string) => hash(text.replace(/\r\n?/g, "\n"));
   type Generation = { status: string; resume_markdown: string; source_hash: string; job_hash: string; audit_json: Record<string, unknown> };
   let row = fixture(), generation: Generation | null = null;
-  let wallet = 2, transaction = "pending", refunds = 0, calls = 0;
+  let wallet = 2, transaction = "pending", refunds = 0, calls = 0, capacityFull = false;
   const usage = new Set<string>();
   function fixture() {
     return { id: randomUUID(), user_id: "synthetic-user", job_id: randomUUID(), base_resume_id: randomUUID(),
@@ -25,10 +25,11 @@ async function main() {
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(text)) return result();
     if (text.startsWith("SELECT pg_advisory_xact_lock")) return result();
     if (text.startsWith("UPDATE resume_generation_requests SET status='running'")) {
-      if (row.status !== "queued" || row.credit_state !== "held" || values[1] !== row.id) return result();
+      if (capacityFull || row.status !== "queued" || row.credit_state !== "held" || values[1] !== row.id) return result();
       row.status = "running"; row.lease_token = String(values[0]); return result([{ ...row }]);
     }
     if (text.startsWith("UPDATE resume_generation_requests SET status=$1")) {
+      assert.match(text, /running_slot=NULL/);
       assert.match(text, /lease_token=\$4 AND status='running' AND credit_state='held'/);
       if (values[2] !== row.id || values[3] !== row.lease_token || row.status !== "running" || row.credit_state !== "held") return result();
       row.status = String(values[0]); row.credit_state = text.includes("credit_state='consumed'") ? "consumed" : "released";
@@ -85,7 +86,14 @@ async function main() {
   assert.equal(row.status, "failed"); assert.equal(wallet, 3); assert.equal(refunds, 1);
   reset(); await processRequest(row.id, agent("needs_review", () => { row.lease_token = "new-owner"; }));
   assert.equal(row.credit_state, "held"); assert.equal(transaction, "pending"); assert.equal(wallet, 2);
+  reset(); capacityFull = true;
+  await assert.rejects(processRequest(row.id, agent("completed")), /request_busy/);
+  assert.equal(row.status, "queued"); assert.equal(row.credit_state, "held");
+  assert.equal(calls, 0); assert.equal(refunds, 0); assert.equal(wallet, 2);
+  capacityFull = false;
+  await processRequest(row.id, agent("completed"));
+  assert.equal(row.credit_state, "consumed"); assert.equal(calls, 1);
   await pool.end();
-  console.log("PASS: completed/review settlement, duplicate delivery, empty/mismatched output refunds, saved-output crash recovery, and lease fencing; no DB or AI calls");
+  console.log("PASS: completed/review settlement, duplicate delivery, output refunds, crash recovery, lease fencing, and queued capacity deferral without AI/refund; no DB or AI calls");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

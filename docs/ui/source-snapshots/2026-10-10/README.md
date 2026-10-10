@@ -18,3 +18,5 @@ Reviewable copies are under docs/ui/source-snapshots/2026-10-10.
 This publication does not deploy the pending A4/delete changes.
 SHA-256 digests in manifest.json identify the exact collected file contents.
 No secrets, environment files, private resumes or dependencies are included.
+
+TypeScript/TSX source snapshots use a .txt suffix to avoid being included in the application TypeScript build. Remove that suffix when integrating, or use the ZIP, which retains the original file names.

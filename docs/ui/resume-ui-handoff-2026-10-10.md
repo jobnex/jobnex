@@ -203,3 +203,8 @@ Supporting engineering reports:
 ## Reliability release follow-up
 
 See [resume-reliability-2026-10-10.md](resume-reliability-2026-10-10.md) for the deployed timeout/schema recovery and failure/retry UI. Collect its 13 changed source files from source-snapshots/2026-10-10-reliability or resume-reliability-code-2026-10-10.zip. Earlier immutable collection links still identify the previous heading release.
+
+
+## Reasoning-budget follow-up
+
+See [resume-token-budget-2026-10-10.md](resume-token-budget-2026-10-10.md) for the subsequent deployed worker fix. Gemini writing uses low reasoning and a 32000 completion ceiling; fitting failures retain prior drafts as needs_review. Collect the five worker/test files from source-snapshots/2026-10-10-token-budget or resume-token-budget-code-2026-10-10.zip.

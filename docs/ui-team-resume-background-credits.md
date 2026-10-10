@@ -89,6 +89,26 @@ Local checks passed: TypeScript in the Git checkout and running frontend; scoped
 
 The GCP build uses committed source without `.env` files. The affected services are `job-hunt-web` and `job-hunt-resume-worker`, in `job-scout-508222` / `us-east1`. Profile service, queue limits, database target, service accounts, secrets, and worker IAM must remain unchanged. Stage new immutable images with zero production traffic, verify readiness and tagged health/authentication behavior, then promote verified revisions to 100%. Preserve the existing `neondb-trial` web tag and remove temporary validation tags.
 
-Final live revisions, image digests, build ID, browser evidence, and rollback commands are recorded in the accompanying release document after verification.
+Final live revisions, image digests, build IDs, browser evidence, and rollback commands are recorded in the [verified release document](releases/resume-background-credit-fix-2026-10-10.md).
 
 The earlier PR #11 was merged before this follow-up. Publish this change as a separate PR. The separate UI team's deployment still needs these frontend changes integrated; updating Cloud Run backend services does not update an independently hosted frontend.
+
+## Read-only DB verification
+
+This query checks the saved TensorWave output and UI mirror without exposing the resume body or changing credits. Replace the request ID for another owned request. The casts are intentional: the service tables use text user IDs while the UI mirror stores UUIDs.
+
+```sql
+SELECT r.id, r.status AS request_status, r.credit_state,
+       g.status AS generation_status,
+       length(g.resume_markdown) AS markdown_chars,
+       m.status AS ui_mirror_status,
+       (m.markdown = g.resume_markdown) AS mirror_matches,
+       w.balance AS wallet_balance
+FROM resume_generation_requests r
+JOIN resume_generations g ON g.id = r.id AND g.user_id = r.user_id
+JOIN wallets w ON w.user_id = r.user_id
+LEFT JOIN user_job_resumes m
+  ON m.user_id::text = r.user_id::text
+ AND m.job_id::text = r.job_id::text
+WHERE r.id = 'e4419957-2141-4b08-9524-b50d4e242eaf';
+```

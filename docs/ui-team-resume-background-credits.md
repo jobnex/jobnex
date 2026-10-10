@@ -61,7 +61,7 @@ Service origins, API paths, HTTP methods, and POST field names do not change. No
 4. Raw Markdown download uses the same endpoint without `format=json`. A review draft sets `X-Resume-Review-Required: true`.
 5. Existing generated PDF GET/POST routes keep their request contract. PDF export does not charge another generation credit. Review status is still visible in the UI.
 6. `listResumeRequests()` is an authenticated Next.js server action. It reads owned metadata only, not resume bodies for other users. Client state rejects responses for a different signed-in user and hides a previous account's cached rows and preview after a session switch.
-7. `getResumeRequestStatus()` now includes `needs_review` in its result status. A loaded review draft carries Markdown, credit state, and review reason. Its optional `user_job_resumes` mirror is saved as `needs_review`, not `ready`. An approved output is mirrored as `ready`.
+7. `getResumeRequestStatus()` now includes `needs_review` in its result status. A loaded review draft carries Markdown, credit state, and review reason. Its optional `user_job_resumes` mirror is saved as `draft`, because that table's existing constraint allows only `draft` and `ready`. The authoritative request and generation retain `needs_review`. An approved output is mirrored as `ready`.
 8. The legacy `tailorResumeForJob()` helper now returns acceptance and request ID immediately. There are no current callers in this checkout. Any external caller must use background status rather than expecting Markdown within 30 seconds.
 
 On accepted submission, dispatch `resume-requests-changed` to wake the tracker immediately. Refresh credits from the server. Do not call a client debit action: the request transaction already reserves the credit.

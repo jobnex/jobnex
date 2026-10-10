@@ -80,16 +80,22 @@ async function main() {
   assert.equal(snapshot, ownSnapshot, 'Reject a response for a different signed-in account');
   cleanup();
   for (const status of ['queued', 'running', 'completed', 'needs_review', 'failed']) {
+    let mirroredStatus;
     const actions = load('app/actions/tailored-resume.ts', {
       '@/lib/auth/server': { getCurrentUser: async () => ({ id: 'user-A' }) },
       'next/headers': { cookies: async () => ({ toString: () => 'synthetic-session' }) },
+      '@/lib/db': { db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
+        insert: () => ({ values: async value => { mirroredStatus = value.status; assert.ok(['draft', 'ready'].includes(value.status), 'Existing DB constraint must be respected'); } }) } },
+      '@/lib/db/schema': { userJobResumes: { userId: 'user_id', jobId: 'job_id' } },
+      'drizzle-orm': { and() {}, eq() {} },
     }, { process: { env: {} }, AbortSignal, fetch: async url => new Response(JSON.stringify(
       url.includes('/generated/') ? { generation: { resume_markdown: '# Synthetic draft', status } }
-        : { request: { status, credit_state: status === 'failed' ? 'released' : 'consumed', error_code: 'experience.roles' } }
+        : { request: { status, job_id: 'synthetic-job', credit_state: status === 'failed' ? 'released' : 'consumed', error_code: 'experience.roles' } }
     ), { status: 200 }) });
     const result = await actions.getResumeRequestStatus('synthetic-request');
     assert.equal(result.status, status === 'completed' ? 'succeeded' : status);
-    if (status === 'needs_review') { assert.equal(result.markdown, '# Synthetic draft'); assert.equal(result.creditState, 'consumed'); assert.equal(result.reviewReason, 'experience.roles'); }
+    if (status === 'needs_review') { assert.equal(result.markdown, '# Synthetic draft'); assert.equal(result.creditState, 'consumed'); assert.equal(result.reviewReason, 'experience.roles'); assert.equal(mirroredStatus, 'draft'); }
+    if (status === 'completed') assert.equal(mirroredStatus, 'ready');
     if (status === 'failed') assert.equal(result.success, false);
   }
   console.log('PASS: actual modal acceptance/error handling; 30 active background ticks, outage/reload/account isolation; queued/running/completed/review/failed action outcomes');

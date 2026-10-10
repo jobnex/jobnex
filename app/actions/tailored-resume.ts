@@ -488,7 +488,7 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
             if (existing) {
               await db
                 .update(userJobResumes)
-                .set({ markdown, status: rawStatus === "needs_review" ? "needs_review" : "ready", updatedAt: new Date() })
+                .set({ markdown, status: rawStatus === "needs_review" ? "draft" : "ready", updatedAt: new Date() })
                 .where(eq(userJobResumes.id, existing.id));
             } else {
               await db.insert(userJobResumes).values({
@@ -497,7 +497,7 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
                 markdown,
                 templateId: "modern-ivy",
                 theme: 3,
-                status: rawStatus === "needs_review" ? "needs_review" : "ready",
+                status: rawStatus === "needs_review" ? "draft" : "ready",
               });
             }
           } catch (syncErr) {

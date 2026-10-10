@@ -118,6 +118,7 @@ GitHub collection branch: [docs/resume-ui-handoff-20261010](https://github.com/j
 
 Reviewable source files: [source-snapshots/2026-10-10](https://github.com/jobnex/jobnex/tree/docs/resume-ui-handoff-20261010/docs/ui/source-snapshots/2026-10-10).
 The same three folders (production-web, local-app and profile-service) are unpacked there.
+TypeScript/TSX source snapshots use a .txt suffix to avoid being included in the application TypeScript build. Remove that suffix when integrating, or use the ZIP, which retains the original file names.
 Use this branch's latest handoff snapshot rather than assuming an earlier PR contains these follow-up fixes.
 The ZIP is available in the branch at docs/ui/resume-ui-code-handoff-2026-10-10.zip.
 The publication record in docs/ui/GITHUB-PUBLICATION.md identifies the verified commit and draft PR after publication.

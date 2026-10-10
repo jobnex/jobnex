@@ -1,0 +1,15 @@
+{
+  "local-app/lib/resume-failure.ts": "e26f313d47b621caf31940be3b7a537ba1310551a9c60f3db7245022c7e5c5f3",
+  "local-app/app/actions/resume-applications.ts": "f5b2d2acc08ffe32e840b698e7152431b1ca7baddbe6fc224fe65a7478be11d9",
+  "local-app/app/actions/tailored-resume.ts": "b181995b204743e1e5a97b3a6b0d96027d47fa547f05bcdc65697e091f3f0abd",
+  "local-app/app/(main)/job-hunt/applications/page.tsx": "41167ad47c9d4fb7dfb3bd99b7249d6f26d5f35760d96f1f9b943fb31b147102",
+  "local-app/components/BackgroundResumeTasks.tsx": "31779cc260bd66df8ffb16298fee0b78e2625c14a4d727a33ab77607862b50ad",
+  "production-web/lib/resume-failure.ts": "e26f313d47b621caf31940be3b7a537ba1310551a9c60f3db7245022c7e5c5f3",
+  "production-web/app/actions/resume-applications.ts": "f5b2d2acc08ffe32e840b698e7152431b1ca7baddbe6fc224fe65a7478be11d9",
+  "production-web/app/actions/tailored-resume.ts": "b181995b204743e1e5a97b3a6b0d96027d47fa547f05bcdc65697e091f3f0abd",
+  "production-web/app/(main)/job-hunt/applications/page.tsx": "41167ad47c9d4fb7dfb3bd99b7249d6f26d5f35760d96f1f9b943fb31b147102",
+  "production-web/components/BackgroundResumeTasks.tsx": "31779cc260bd66df8ffb16298fee0b78e2625c14a4d727a33ab77607862b50ad",
+  "resume-agent/src/low_risk_agent/llm.py": "e36a57ef11961218db9eaef8364ecf564f44ddbd267751e5e975c0cef210f69a",
+  "resume-agent/src/low_risk_agent/models.py": "1912ba29331249faabcd58ae4fae15209be4057df3e3fe3e1aee5cad780ced67",
+  "resume-agent/tests/test_llm.py": "1019725f92031de6d37d154d680e7c3d2b6a715933ab1febc3bf4b929c9645df"
+}

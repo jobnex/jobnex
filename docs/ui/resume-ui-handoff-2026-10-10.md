@@ -198,3 +198,8 @@ Supporting engineering reports:
 - `resume-quality-review/contact-fix-report.md`
 - `resume-quality-review/heading-fix-report.md`
 - `resume-quality-review/gemini-migration-report.md`
+
+
+## Reliability release follow-up
+
+See [resume-reliability-2026-10-10.md](resume-reliability-2026-10-10.md) for the deployed timeout/schema recovery and failure/retry UI. Collect its 13 changed source files from source-snapshots/2026-10-10-reliability or resume-reliability-code-2026-10-10.zip. Earlier immutable collection links still identify the previous heading release.

@@ -1,0 +1,23 @@
+{
+  "production-web/components/ResumeSheet.tsx": "cfdb95e6f3d25281f0f0909c4ecfcd576f4ed878339fbbd46d61221086e96710",
+  "production-web/lib/resume-parser.ts": "1907485cfe1a398b20b1c8afcff48fcb809630226ee497dc186dfd0c3a469c96",
+  "production-web/lib/resume-contacts.ts": "d7d3e1acf58a67ff07bf16f97e91b7ec1a9de47ff1ec06a779039229fd2eaa2f",
+  "production-web/lib/resume-content.ts": "15572da5025bb2a57fb6cbe7cb91b4d9735055169f444b8ada8fa374a5c6ccd4",
+  "production-web/app/actions/preferences.ts": "ae48327420340cda741a2474f5435963138ae60e1061f3d3e929a3616198cd91",
+  "production-web/lib/db/schema/preferences.ts": "d6c13a2ee750a3e6b9ad5d3d03d84d864378c4661c3f2b2016c70a57f5e2c2fd",
+  "local-app/components/A4ResumePages.tsx": "bcdf0fb68219a2560c97541c2651c59d4748670bb75dc002b98505ef74fe2a77",
+  "local-app/components/ResumeSheet.tsx": "8171f8d672530b0528b7a8b528b0f68a771254d3cd11a5091702d9c3bfe547ad",
+  "local-app/components/ResumeModal.tsx": "4a2ba0c83fe1b0a8d07d2b7db66f6b9dec7c3a3842f580c15373c9acd732fbeb",
+  "local-app/lib/resume-parser.ts": "1907485cfe1a398b20b1c8afcff48fcb809630226ee497dc186dfd0c3a469c96",
+  "local-app/lib/resume-contacts.ts": "d7d3e1acf58a67ff07bf16f97e91b7ec1a9de47ff1ec06a779039229fd2eaa2f",
+  "local-app/lib/resume-content.ts": "15572da5025bb2a57fb6cbe7cb91b4d9735055169f444b8ada8fa374a5c6ccd4",
+  "local-app/app/actions/preferences.ts": "f23b7492d053f22c60e26f65fe61fa529f7557dcd87faa00997d6167399c9b01",
+  "local-app/lib/db/schema/preferences.ts": "d6c13a2ee750a3e6b9ad5d3d03d84d864378c4661c3f2b2016c70a57f5e2c2fd",
+  "local-app/app/actions/storage.ts": "2470437d86f74ff1bae3c6d7fbcdc7eecf6171789dd767a1a8b04863e5a01c47",
+  "local-app/data/resume-templates.ts": "f4604edb3a0cdba7b172cc0f6e2f61faf063adfd5dfc82fb991d69ce92482d2f",
+  "profile-service/scripts/resume_to_json.py": "54be165abc4d24988e4ba3e8034fd32d661641526a45c672ac8796fba61da3e2",
+  "profile-service/service/contacts.py": "12f41aad828c8aa46bda2ad5c3fe900714e0b794563ad022e29f8dcf4e5d2102",
+  "profile-service/service/resume_content.py": "01c8004d6650a7dd737a3f6e7614ca941ae6456f1687dc6bc2cfc16517426d0d",
+  "profile-service/service/main.py": "06a9c360c3cae5f1ccf6e1999550fe3b138d79c7d697387d86b101a610305773",
+  "profile-service/Dockerfile": "82527f033eab624cc46e0a97d5d128f3b6461d55a151b0b96f03be8ded0922ae"
+}

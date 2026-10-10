@@ -142,7 +142,7 @@ export default function ApplicationsPage() {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
   const currentUser = useRef(userId);
-  currentUser.current = userId;
+  useEffect(() => { currentUser.current = userId; }, [userId]);
   const [snapshot, setSnapshot] = useState<{userId: string | null, applications: ResumeApplication[]}>({userId: null, applications: []});
   const [loadError, setLoadError] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);

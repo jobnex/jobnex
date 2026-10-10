@@ -43,11 +43,11 @@ async function release(request: RequestRow, status: "failed" | "needs_review", e
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
 
-async function complete(request: RequestRow) {
+async function complete(request: RequestRow, status: "completed" | "needs_review", errorCode: string | null) {
   const client = await pool.connect();
   try { await client.query("BEGIN");
-    const completed = await client.query(`UPDATE resume_generation_requests SET status='completed',credit_state='consumed',finished_at=now()
-      WHERE id=$1 AND lease_token=$2 AND status='running' AND credit_state='held' RETURNING id`, [request.id, request.lease_token]);
+    const completed = await client.query(`UPDATE resume_generation_requests SET status=$1,credit_state='consumed',error_code=$2,finished_at=now()
+      WHERE id=$3 AND lease_token=$4 AND status='running' AND credit_state='held' RETURNING id`, [status, errorCode, request.id, request.lease_token]);
     if (completed.rows[0]) await client.query(`UPDATE credit_transactions SET status='completed' WHERE user_id=$1 AND reference_id=$2 AND status='pending'`, [request.user_id, request.id]);
     await client.query("COMMIT");
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
@@ -72,19 +72,22 @@ function usageId(requestId: string, index: number) {
 }
 
 async function recoverOutput(request: RequestRow) {
-  const result = await pool.query(`SELECT resume_markdown,audit_json,source_hash,job_hash FROM resume_generations
+  const result = await pool.query(`SELECT status,resume_markdown,audit_json,source_hash,job_hash FROM resume_generations
     WHERE id=$1 AND user_id=$2 AND job_id=$3 AND base_resume_id=$4
-      AND status IN ('completed','completed_with_estimates')`,
+      AND status IN ('completed','completed_with_estimates','needs_review')`,
     [request.id, request.user_id, request.job_id, request.base_resume_id]);
   const generation = result.rows[0];
   const audit = generation?.audit_json;
   if (!generation?.resume_markdown?.trim() || !audit || audit.resume_markdown !== generation.resume_markdown
+      || audit.status !== generation.status
       || !Array.isArray(audit.usage) || !audit.usage.length
       || audit.source_hash !== generation.source_hash || audit.job_hash !== generation.job_hash
+      || generation.source_hash !== createHash("sha256").update(request.source_text).digest("hex")
       || generation.job_hash !== createHash("sha256").update(request.job_description.normalize("NFC").replace(/\s+/gu, " ").trim()).digest("hex")) return false;
   // The persisted agent audit is authoritative; retries never invoke AI again.
   await recordUsage(request, audit.usage);
-  await complete(request);
+  const status = generation.status === "needs_review" ? "needs_review" : "completed";
+  await complete(request, status, status === "needs_review" ? String(audit.error || "needs_review").slice(0, 120) : null);
   return true;
 }
 
@@ -113,7 +116,11 @@ export async function processRequest(requestId: string, agent = run) {
     const code = await agent(process.env.RESUME_PYTHON || "python", ["-m", "low_risk_agent", "--resume", resume, "--jd", jd,
       "--tenant-id", request.user_id, "--job-id", request.job_id, "--base-resume-id", request.base_resume_id,
       "--generation-id", request.id, "--summary", request.include_summary ? "yes" : "no", "--out", output], folder);
-    if (code === 2) return void await release(request, "needs_review", "needs_review");
+    if (code === 2) {
+      // A persisted review draft is billable, but remains explicitly unapproved.
+      if (!await recoverOutput(request)) await release(request, "needs_review", "no_verified_review_output");
+      return true;
+    }
     await readFile(output, "utf8"); // Agent already persisted this exact generation ID; verify output was produced before charging.
     if (!await recoverOutput(request)) throw new Error("persisted_output_unverified");
   } catch (error) {

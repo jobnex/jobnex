@@ -23,6 +23,7 @@ interface ResumeModalProps {
   initialMode?: "view" | "edit";
   initialMarkdown?: string;
   templateId?: string;
+  reviewWarning?: string;
 }
 
 export function ResumeModal({
@@ -31,6 +32,7 @@ export function ResumeModal({
   initialMode = "view",
   initialMarkdown,
   templateId,
+  reviewWarning,
 }: ResumeModalProps) {
   const store = useResumeStore();
 
@@ -178,6 +180,8 @@ export function ResumeModal({
           if (mode === "view") onClose();
         }}
       />
+
+      {reviewWarning && <p role="alert" className="no-print absolute bottom-5 left-5 right-5 z-[120] rounded-lg border border-amber-400 bg-amber-950 p-3 text-sm text-amber-100">{reviewWarning}</p>}
 
       {/* Top Floating Bar: Title + Active Template Indicator (Hidden on Print) */}
       <div className="no-print absolute top-5 left-6 z-[110] flex items-center gap-3 animate-in slide-in-from-top-4 fade-in duration-300">

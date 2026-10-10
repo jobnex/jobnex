@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth/server";
-import { isUuid, loadCompletedGeneration } from "@/lib/resume-tailoring";
+import { isUuid, loadAvailableGeneration } from "@/lib/resume-tailoring";
 import { callResumePdfBackend, exportResumePdf } from "@/lib/resume-pdf-backend";
 import { z } from "zod";
 
@@ -13,8 +13,8 @@ export async function POST(request: Request, { params }: Context) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401, headers: noStore });
   const { requestId } = await params;
-  const generation = await loadCompletedGeneration(user.id, requestId);
-  if (!generation) return Response.json({ error: "Completed resume not found" }, { status: 404, headers: noStore });
+  const generation = await loadAvailableGeneration(user.id, requestId);
+  if (!generation) return Response.json({ error: "Resume draft not ready" }, { status: 404, headers: noStore });
   const text = await request.text();
   if (Buffer.byteLength(text) > 256_000) return Response.json({ error: "Resume too large" }, { status: 413, headers: noStore });
   let raw: unknown;
@@ -36,8 +36,8 @@ export async function GET(request: Request, { params }: Context) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401, headers: noStore });
   const { requestId } = await params;
-  const generation = await loadCompletedGeneration(user.id, requestId);
-  if (!generation) return Response.json({ error: "Completed resume not found" }, { status: 404, headers: noStore });
+  const generation = await loadAvailableGeneration(user.id, requestId);
+  if (!generation) return Response.json({ error: "Resume draft not ready" }, { status: 404, headers: noStore });
   const previewId = new URL(request.url).searchParams.get("previewId");
   if (previewId && !isUuid(previewId)) return Response.json({ error: "Invalid preview" }, { status: 400, headers: noStore });
   try {

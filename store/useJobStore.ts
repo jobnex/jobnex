@@ -3,6 +3,10 @@ import { Job } from "@/types";
 import { toggleSavedJobAction } from "@/app/actions/jobs";
 
 export interface JobState {
+  isTailorModalOpen: boolean;
+  tailoringJob: Job | null;
+  openTailorModal: (job: Job) => void;
+  closeTailorModal: () => void;
   // Shared
   location: string;
   setLocation: (location: string) => void;
@@ -73,6 +77,10 @@ export interface JobState {
 }
 
 export const useJobStore = create<JobState>((set) => ({
+  isTailorModalOpen: false,
+  tailoringJob: null,
+  openTailorModal: (job) => set({ isTailorModalOpen: true, tailoringJob: job }),
+  closeTailorModal: () => set({ isTailorModalOpen: false, tailoringJob: null }),
   // Shared
   location: "United States",
   setLocation: (location) => {

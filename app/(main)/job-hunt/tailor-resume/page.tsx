@@ -28,6 +28,7 @@ function TailorResumeContent() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [requestId, setRequestId] = useState(search?.get("requestId") || "");
   const [status, setStatus] = useState("");
+  const [creditState, setCreditState] = useState("");
   const [generated, setGenerated] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
   const [template, setTemplate] = useState("mit-capd");
@@ -52,13 +53,18 @@ function TailorResumeContent() {
         const body = await readJson(await fetch(`/api/resume/tailor/requests/${requestId}`, { signal: controller.signal }));
         if (body.request.job_id !== jobId) throw new Error("This request belongs to another job. Open it from its original job link.");
         setStatus(body.request.status);
-        if (body.request.status === "completed") {
+        setCreditState(body.request.credit_state);
+        setError("");
+        if (["completed", "needs_review"].includes(body.request.status)) {
           const result = await readJson(await fetch(`/api/resume/tailor/generated/${requestId}?format=json`, { signal: controller.signal }));
           setGenerated(result.generation.resume_markdown);
         }
         if (!terminal.includes(body.request.status)) timer = setTimeout(poll, 2500);
       } catch (error) {
-        if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Could not check generation; reload to retry.");
+        if (!controller.signal.aborted) {
+          setError(error instanceof Error ? error.message : "Could not check generation; retrying.");
+          timer = setTimeout(poll, 4000);
+        }
       }
     }
     poll();
@@ -107,6 +113,7 @@ function TailorResumeContent() {
         body: JSON.stringify({ jobId, resumeId: resume.id, idempotencyKey: idempotencyKey.current }) }));
       const id = body.request.id;
       setRequestId(id); setStatus(body.request.status);
+      window.dispatchEvent(new Event("resume-requests-changed"));
       const url = new URL(window.location.href); url.searchParams.set("requestId", id); window.history.replaceState(null, "", url);
     } catch (error) { setError(error instanceof Error ? error.message : "Could not start tailoring"); }
     finally { setBusy(false); }
@@ -153,7 +160,7 @@ function TailorResumeContent() {
       </aside></div>}
     {requestId && <div className="space-y-4 rounded-xl border border-border-subtle bg-bg-card p-5">
       <p role="status" className="font-semibold">Generation: {status || "checking"}</p>
-      {status === "completed" && <><a href={`/api/resume/tailor/generated/${requestId}`} className={buttonStyle}><Download className="h-4 w-4" aria-hidden="true"/>Download Markdown</a>
+      {["completed", "needs_review"].includes(status) && generated && <><a href={`/api/resume/tailor/generated/${requestId}`} className={buttonStyle}><Download className="h-4 w-4" aria-hidden="true"/>Download Markdown</a>
         <p className="text-sm text-text-muted">Your generated Markdown is saved. Optional PDF export uses the version you review below and does not spend another credit.</p>
         <label htmlFor="generated-markdown" className="block font-semibold">Review generated Markdown for PDF export</label>
         <textarea id="generated-markdown" value={generated} onChange={event => { setGenerated(event.target.value); setPdfUrl(""); }} disabled={busy}
@@ -166,7 +173,9 @@ function TailorResumeContent() {
           {pdfUrl && <a href={pdfUrl} className={buttonStyle}><Download className="h-4 w-4" aria-hidden="true"/>Download PDF</a>}</div>
         {pdfUrl && <p role="status">PDF saved for this candidate and job. Download uses the exact exported preview.</p>}
       </>}
-      {["failed", "needs_review"].includes(status) && <><p className="text-sm text-text-muted">No credit was consumed. Review the resume and retry.</p><button onClick={retry} className={buttonStyle}>Review and try again</button></>}
+      {status === "needs_review" && <p role="alert" className="rounded border border-amber-500 p-3 text-amber-700 dark:text-amber-300">Needs review: check the saved draft against your original experience before using it.</p>}
+      {terminal.includes(status) && <p className="text-sm text-text-muted">{creditState === "consumed" ? "1 credit charged for the saved draft." : creditState === "released" ? "Credit refunded for this request." : "Check credit status in Resume generations."}</p>}
+      {status === "failed" && <button onClick={retry} className={buttonStyle}>Review and try again</button>}
     </div>}
   </section>;
 }

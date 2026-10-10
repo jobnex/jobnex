@@ -9,14 +9,16 @@ export type TailorResume = { id: string; markdown: string; parsed: Record<string
 
 export function isUuid(value: string) { return UUID.test(value); }
 
-export async function loadCompletedGeneration(userId: string, requestId: string) {
+export async function loadAvailableGeneration(userId: string, requestId: string) {
   if (!isUuid(requestId)) return null;
-  const result = await pool.query(`SELECT g.id,g.job_id,g.resume_markdown,g.version
+  const result = await pool.query(`SELECT g.id,g.job_id,g.resume_markdown,g.version,g.status,
+      g.audit_json->>'error' AS review_reason
     FROM resume_generations g JOIN resume_generation_requests r ON r.id=g.id AND r.user_id=g.user_id
-    WHERE g.id=$1 AND g.user_id=$2 AND g.job_id=r.job_id
-      AND r.status='completed' AND r.credit_state='consumed'
-      AND g.status IN ('completed','completed_with_estimates')`, [requestId, userId]);
-  return result.rows[0] as { id: string; job_id: string; resume_markdown: string; version: number } | undefined;
+    WHERE g.id=$1 AND g.user_id=$2 AND g.job_id=r.job_id AND g.base_resume_id=r.base_resume_id
+      AND ((r.status='completed' AND r.credit_state='consumed' AND g.status IN ('completed','completed_with_estimates'))
+        OR (r.status='needs_review' AND r.credit_state IN ('consumed','released') AND g.status='needs_review'))
+      AND length(trim(g.resume_markdown))>0`, [requestId, userId]);
+  return result.rows[0] as { id: string; job_id: string; resume_markdown: string; version: number; status: string; review_reason: string | null } | undefined;
 }
 
 export async function loadTailorJob(jobId: string): Promise<TailorJob | null> {

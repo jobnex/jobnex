@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, pool } from "@/lib/db";
 import { jobs, userJobPreferences, userJobResumes } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getCredits } from "@/app/actions/credits";
@@ -30,6 +30,7 @@ export interface TailoringPreviewResult {
     id: string;
     markdown: string;
     updatedAt: string;
+    status?: string;
   };
 }
 
@@ -42,10 +43,12 @@ export interface TailoringInitiateResult {
 
 export interface TailoringStatusResult {
   success: boolean;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "needs_review" | "failed";
   markdown?: string;
   error?: string;
   stageMessage?: string;
+  reviewReason?: string;
+  creditState?: string;
 }
 
 /**
@@ -87,6 +90,18 @@ export async function getExistingTailoredResume(jobId: string) {
   try {
     const user = await getCurrentUser();
     if (!user) return { exists: false };
+
+    const generated = await pool.query(`SELECT g.id,g.resume_markdown,g.status,g.created_at
+      FROM resume_generations g JOIN resume_generation_requests r ON r.id=g.id AND r.user_id=g.user_id
+      WHERE g.user_id=$1 AND g.job_id=$2 AND g.job_id=r.job_id AND g.base_resume_id=r.base_resume_id
+        AND ((r.status='completed' AND r.credit_state='consumed' AND g.status IN ('completed','completed_with_estimates'))
+          OR (r.status='needs_review' AND r.credit_state IN ('consumed','released') AND g.status='needs_review'))
+        AND length(trim(g.resume_markdown))>0 ORDER BY r.created_at DESC LIMIT 1`, [user.id, jobId]);
+    if (generated.rows[0]) {
+      const draft = generated.rows[0];
+      return { exists: true, resume: { id: draft.id, markdown: draft.resume_markdown, status: draft.status,
+        templateId: "modern-ivy", theme: 3, updatedAt: draft.created_at.toISOString() } };
+    }
 
     const [existing] = await db
       .select()
@@ -417,7 +432,7 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
       };
     }
 
-    if (rawStatus === "completed" || rawStatus === "succeeded") {
+    if (["completed", "succeeded", "needs_review"].includes(rawStatus)) {
       // Step 8: Fetch generated Markdown as JSON
       let markdown = "";
 
@@ -473,7 +488,7 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
             if (existing) {
               await db
                 .update(userJobResumes)
-                .set({ markdown, updatedAt: new Date() })
+                .set({ markdown, status: rawStatus === "needs_review" ? "needs_review" : "ready", updatedAt: new Date() })
                 .where(eq(userJobResumes.id, existing.id));
             } else {
               await db.insert(userJobResumes).values({
@@ -482,7 +497,7 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
                 markdown,
                 templateId: "modern-ivy",
                 theme: 3,
-                status: "ready",
+                status: rawStatus === "needs_review" ? "needs_review" : "ready",
               });
             }
           } catch (syncErr) {
@@ -492,7 +507,9 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
 
         return {
           success: true,
-          status: "succeeded",
+          status: rawStatus === "needs_review" ? "needs_review" : "succeeded",
+          creditState: request.credit_state,
+          reviewReason: rawStatus === "needs_review" ? request.error_code || "Review this draft against your source resume before using it." : undefined,
           markdown,
           stageMessage: "Tailoring complete! Loading customized resume...",
         };
@@ -501,7 +518,8 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
       return {
         success: false,
         status: "failed",
-        error: "Generation completed but Markdown content was not returned by the service.",
+        error: rawStatus === "needs_review" ? "Review required, but no saved draft is available. Check the credit status in Resume generations." : "Generated Markdown could not be loaded. Retry opening the saved draft.",
+        creditState: request.credit_state,
       };
     }
 
@@ -517,29 +535,36 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
   }
 }
 
-/**
- * Direct tailored resume action for backwards compatibility or synchronous execution.
- */
+/** Accepts work; the durable background tracker retrieves its eventual result. */
 export async function tailorResumeForJob(jobId: string) {
-  const initRes = await initiateTailoringRequest(jobId);
-  if (!initRes.success || !initRes.requestId) {
-    return { success: false, error: initRes.error || "Failed to initiate tailoring" };
-  }
+  return initiateTailoringRequest(jobId);
+}
 
-  // Poll for completion (up to 30 seconds with 2.5s cadence)
-  const startTime = Date.now();
-  while (Date.now() - startTime < 30000) {
-    await new Promise((r) => setTimeout(r, 2500));
-    const statusRes = await getResumeRequestStatus(initRes.requestId);
-    if (statusRes.status === "succeeded" && statusRes.markdown) {
-      return { success: true, markdown: statusRes.markdown };
-    }
-    if (statusRes.status === "failed") {
-      return { success: false, error: statusRes.error || "Tailoring failed on background worker" };
-    }
-  }
+export interface ResumeRequestSummary {
+  id: string;
+  job_id: string;
+  title: string;
+  company: string;
+  status: string;
+  credit_state: string;
+  has_draft: boolean;
+  error_code: string | null;
+}
 
-  return { success: false, error: "Tailoring request timed out. Please check back shortly." };
+/** Restore the signed-in user's durable requests after navigation or reload. */
+export async function listResumeRequests(): Promise<{ userId: string | null; requests: ResumeRequestSummary[] }> {
+  const user = await getCurrentUser();
+  if (!user) return { userId: null, requests: [] };
+  const result = await pool.query(`SELECT r.id,r.job_id,j.job_role_title AS title,j.company_name AS company,
+      r.status,r.credit_state,r.error_code,
+      COALESCE(length(trim(g.resume_markdown))>0 AND
+        ((r.status='completed' AND r.credit_state='consumed' AND g.status IN ('completed','completed_with_estimates'))
+          OR (r.status='needs_review' AND g.status='needs_review' AND r.credit_state IN ('consumed','released'))),false) AS has_draft
+    FROM resume_generation_requests r LEFT JOIN jobs j ON j.id=r.job_id
+    LEFT JOIN resume_generations g ON g.id=r.id AND g.user_id=r.user_id AND g.job_id=r.job_id
+    WHERE r.user_id=$1
+    ORDER BY (r.status IN ('queued','running')) DESC,r.created_at DESC LIMIT 20`, [user.id]);
+  return { userId: user.id, requests: result.rows };
 }
 
 /**

@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { 
-  Download, X, Edit3, FileText, Check, 
-  ZoomIn, ZoomOut, AlertTriangle, Printer, 
-  Code2, Eye, Sparkles, Layers, ChevronDown 
+import { createPortal } from "react-dom";
+import {
+  Download, X, Edit3, FileText, Check,
+  ZoomIn, ZoomOut, AlertTriangle, Printer,
+  Code2, Eye, Sparkles, ChevronDown
 } from "lucide-react";
 import { ResumeSheet } from "@/components/ResumeSheet";
 import { useResumeStore } from "@/store/useResumeStore";
-import { 
-  RESUME_TEMPLATES, 
-  ResumeTemplate, 
-  TypstThemeId, 
-  getTemplateById 
+import {
+  RESUME_TEMPLATES,
+  ResumeTemplate,
+  getTemplateById
 } from "@/data/resume-templates";
 import { downloadMarkdownFile } from "@/lib/resumeApi";
 import { toast } from "sonner";
@@ -39,10 +39,10 @@ export function ResumeModal({
   const [mode, setMode] = useState<"view" | "visual-edit" | "raw-edit">(
     initialMode === "edit" ? "visual-edit" : "view"
   );
-  
+
   // Working state during modal session
   const [currentTemplateId, setCurrentTemplateId] = useState<string>(
-    templateId || store.selectedTemplateId
+    getTemplateById(templateId || store.selectedTemplateId).id
   );
   const [currentMarkdown, setCurrentMarkdown] = useState<string>(
     initialMarkdown || store.resumeMarkdown
@@ -53,15 +53,16 @@ export function ResumeModal({
   const [zoom, setZoom] = useState<number>(1);
   const [isOverflowing, setIsOverflowing] = useState<boolean>(false);
   const [isTemplateMenuOpen, setIsTemplateMenuOpen] = useState<boolean>(false);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   const templateMenuRef = useRef<HTMLDivElement>(null);
 
   // Active template derived from modal's working templateId
   const activeTemplate: ResumeTemplate = getTemplateById(currentTemplateId);
 
-  // Initialize/reset on modal open
-  useEffect(() => {
-    if (isOpen) {
-      const activeTmpl = templateId || store.selectedTemplateId;
+  // Reset the working document when this modal opens, before painting it.
+  if (!prevIsOpen && isOpen) {
+      setPrevIsOpen(true);
+      const activeTmpl = getTemplateById(templateId || store.selectedTemplateId).id;
       const initialMd = initialMarkdown || store.resumeMarkdown;
       setCurrentTemplateId(activeTmpl);
       setCurrentMarkdown(initialMd);
@@ -69,6 +70,12 @@ export function ResumeModal({
       setMode(initialMode === "edit" ? "visual-edit" : "view");
       setZoom(1);
       setIsTemplateMenuOpen(false);
+  } else if (prevIsOpen && !isOpen) {
+      setPrevIsOpen(false);
+  }
+
+  useEffect(() => {
+    if (isOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
@@ -76,7 +83,7 @@ export function ResumeModal({
     return () => {
       document.body.style.overflow = "";
     };
-  }, [isOpen, initialMode, initialMarkdown, templateId, store.selectedTemplateId, store.resumeMarkdown]);
+  }, [isOpen]);
 
   // Handle escape key
   useEffect(() => {
@@ -106,7 +113,7 @@ export function ResumeModal({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isTemplateMenuOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const handleSave = async () => {
     try {
@@ -139,37 +146,48 @@ export function ResumeModal({
     window.print();
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] font-sans print:p-0">
+  return createPortal(
+    <div data-resume-print-root className="fixed inset-0 z-[100] font-sans print:p-0">
       {/* Print-specific style sheet for exact 8.5in x 11in vector PDF generation */}
       <style jsx global>{`
         @media print {
-          @page {
-            size: letter portrait;
-            margin: 0;
-          }
-          body {
+          @page { size: letter portrait; margin: 0; }
+          html, body {
             margin: 0 !important;
             padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            background: white !important;
           }
-          .no-print,
-          .no-print * {
-            display: none !important;
-          }
-          .print-only-sheet {
+          body > :not([data-resume-print-root]) { display: none !important; }
+          [data-resume-print-root], .resume-workspace, .print-only-sheet,
+          .resume-sheet-root, .pseudo-pdf-container {
             display: block !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
+            position: static !important;
             width: 8.5in !important;
-            height: 11in !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
             margin: 0 !important;
             padding: 0 !important;
+            overflow: visible !important;
             transform: none !important;
+            transition: none !important;
             box-shadow: none !important;
           }
+          .no-print, .no-print * { display: none !important; }
+          .resume-paper {
+            min-height: 0 !important;
+            max-height: none !important;
+            height: auto !important;
+            overflow: visible !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            print-color-adjust: exact;
+          }
+          .resume-paper h1, .resume-paper h2, .resume-paper h3 { break-after: avoid; }
+          .resume-paper li { break-inside: avoid; }
         }
       `}</style>
 
@@ -250,7 +268,7 @@ export function ResumeModal({
 
       {/* Top Floating Controls & Action Buttons (Hidden on Print) */}
       <div className="no-print absolute top-5 right-6 z-[110] flex items-center gap-3 animate-in slide-in-from-right-4 fade-in duration-300">
-        
+
         {/* Mode Switcher Tabs */}
         <div className="flex items-center bg-[#151720] border border-[#2B3042] rounded-md p-0.5 text-xs text-white">
           <button
@@ -382,13 +400,13 @@ export function ResumeModal({
         <div className="no-print absolute top-[4.5rem] left-1/2 -translate-x-1/2 z-[115] px-4 py-2 bg-amber-500/90 text-black font-semibold text-xs rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
           <AlertTriangle className="w-4 h-4 text-black shrink-0" />
           <span>
-            <strong>Page Budget Exceeded:</strong> Content extends beyond the 1-page boundary. Typst will generate a 2-page document. Shorten bullet points to maintain a single-page ATS resume.
+            <strong>Page Budget Exceeded:</strong> Content extends beyond the one-page preview. PDF export includes the full resume. Shorten content if you need one page.
           </span>
         </div>
       )}
 
       {/* Main Document / Editor Workspace */}
-      <div className="absolute inset-0 pt-24 pb-20 overflow-y-auto custom-scrollbar flex justify-center z-[105] print:p-0 print:m-0 print:static print:overflow-visible">
+      <div className="resume-workspace absolute inset-0 pt-24 pb-20 overflow-y-auto custom-scrollbar flex justify-center z-[105] print:p-0 print:m-0 print:static print:overflow-visible">
         {mode === "raw-edit" ? (
           /* Split / Raw Markdown Mode */
           <div className="w-full max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
@@ -449,6 +467,7 @@ export function ResumeModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

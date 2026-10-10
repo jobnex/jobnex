@@ -67,36 +67,13 @@ export const RESUME_TEMPLATES: ResumeTemplate[] = [
     themeId: 5,
     themeName: "Classic Executive (Sourabh Bajaj)",
   },
-  {
-    id: "contemporary-compact",
-    name: "Contemporary Compact",
-    category: "Design & Frontend",
-    description: "Polished modern layout with compact section blocks ideal for product designers and UI engineers.",
-    badge: "Modern",
-    fileName: "hmhyxvxfspsw.pdf",
-    filePath: "",
-    thumbnailUrl: "",
-    tags: ["Modern", "Designer", "Clean"],
-    themeId: 3,
-    themeName: "Modern Clean (Compact)",
-  },
-  {
-    id: "standard-overleaf",
-    name: "Standard Academic",
-    category: "General & Academic",
-    description: "Traditional single-column academic format with clear horizontal rules and distinguished sections.",
-    badge: "Classic",
-    fileName: "Untitled.pdf",
-    filePath: "",
-    thumbnailUrl: "",
-    tags: ["Academic", "Standard", "Single Page"],
-    themeId: 2,
-    themeName: "Standard Academic ATS",
-  },
+
 ];
 
 export function getTemplateById(id: string): ResumeTemplate {
-  return RESUME_TEMPLATES.find((t) => t.id === id) || RESUME_TEMPLATES[0];
+  // Older saved selections remain readable; these were duplicate theme aliases.
+  const canonicalId = id === "contemporary-compact" ? "modern-ivy" : id === "standard-overleaf" ? "mit-capd" : id;
+  return RESUME_TEMPLATES.find((t) => t.id === canonicalId) || RESUME_TEMPLATES[0];
 }
 
 export function getThemeForTemplate(id: string): TypstThemeId {

@@ -2,7 +2,7 @@
 
 ## Requested behavior
 
-One user can run up to two resume generations simultaneously. Additional accepted requests remain queued with their own one-credit holds. The shared queue and worker capacity remain four globally. Requests for different jobs must no longer return an unrelated active request. Repeated clicks for the same active job or idempotency key return the existing request without another charge.
+One user can run up to two resume generations simultaneously. Additional accepted requests remain queued with their own one-credit holds. Shared worker capacity scales on demand across users rather than stopping at four. Requests for different jobs must no longer return an unrelated active request. Repeated clicks for the same active job or idempotency key return the existing request without another charge.
 
 ## Database target and exact changes
 
@@ -30,7 +30,11 @@ No UI components, endpoint paths, request payloads or model templates change. Th
 
 ## Queue behavior and limits
 
-Existing queue `resume-tailoring`: four concurrent dispatches and one launch per second. Existing worker: one request per instance, service and revision maximum four, minimum zero. Per-user slot limits stop a user from occupying all four workers with paid AI work. A third dispatched task for that user returns promptly and retries with the existing queue backoff, making capacity available to other tasks. This retains the managed queue rather than adding a custom scheduler.
+The previous queue allowed four concurrent dispatches and the worker service/revision maximums were four. The revised demand-based proposal removes that artificial four-worker ceiling. Each isolated worker still handles one request, minimum instances remain zero, and managed Cloud Tasks dispatches queued work. Per-user DB slots limit each user to two running resumes; they do not limit the number of registered users. A third dispatched task for one user returns promptly and retries with the existing queue backoff, making capacity available to other tasks. This retains the managed queue rather than adding a custom scheduler.
+
+Regional quota verified in `us-east1`: 20,000 milli-vCPU. Current worker uses one vCPU and 1 GiB, so the proposal is up to twenty workers with twenty concurrent dispatches and ten launches per second. Twenty is a quota-aware capacity maximum, not an idle reservation and not an unlimited simultaneous-user guarantee. Excess work waits in the queue when user slots, available workers, provider limits or platform capacity are exhausted. Raising capacity further requires quota/cost planning. Neon reported 901 maximum connections and thirteen current connections during inspection; worker Node pools allow at most three each, with separate short-lived Python connections and other service traffic.
+
+The request for quota supporting one hundred workers was rejected by automatic approval review before execution. The twenty-worker update was also rejected before execution pending explicit maximum capacity and monthly budget authorization. At this document revision, these rejected actions did not change GCP quota, worker capacity or production DB. See the final live release record for approved capacity and rollout results; do not infer production activation from this proposal.
 
 Cloud Tasks does not guarantee strict ordering or strict tenant fairness. Capacity deferrals can add backoff delay even when a slot later becomes free. Existing recovery redispatches due queued work without another credit hold. This is bounded multi-user concurrency, not a promise of a strict round-robin scheduler or identical generation latency.
 
@@ -38,11 +42,11 @@ Cloud Tasks does not guarantee strict ordering or strict tenant fairness. Capaci
 
 Neon migration was prepared on temporary branch `br-lingering-firefly-ayce6n56`, migration ID `8fe0954c-e0e9-423a-8127-e43e1ae7c5f4`. The temporary branch has the replacement indexes and check constraint. A transactional synthetic SQL check accepted three queued rows for one user, accepted two running slots, rejected a duplicate slot and slot 3, kept the third request queued using the actual claim predicate, and reused a released slot. Synthetic rows rolled back; the branch retained thirteen requests and zero active requests.
 
-Admission, worker isolation and settlement checks pass without AI or production DB writes. TypeScript and scoped lint accompany publication. Production schema and runtime remain on the earlier behavior until the coordinated rollout is approved and completed. Source publication alone does not activate this feature.
+Admission, worker isolation and settlement checks pass without AI or production DB writes. The updated isolation check runs twelve synthetic users concurrently, verifying there is no global four-user gate in worker code. TypeScript and scoped lint accompany publication. Production schema and runtime remain on the earlier behavior until the coordinated rollout is approved and completed. Source publication alone does not activate this feature.
 
 ## Required coordinated rollout
 
-Stage new web and worker images at zero traffic and verify health/authentication and unchanged runtime bindings. Before applying the production migration, pause the queue. Ensure no request is running; otherwise let existing workers settle first. Apply the migration atomically, promote the new worker before allowing it to claim work, then promote the new web admission. Resume the queue. The old web may safely accept conservative single-active requests into the paused queue during this window; new dispatch waits for resume. Verify two-per-user slots, four global limits, request endpoints and worker private access. Record source/build IDs, immutable images, revisions, traffic and timestamps in release evidence.
+Stage new web and worker images at zero traffic and verify health/authentication and unchanged runtime bindings. Before applying the production migration, pause the queue. Ensure no request is running; otherwise let existing workers settle first. Apply the migration atomically, promote the new worker before allowing it to claim work, then promote the new web admission. Configure the approved demand-based dispatch/instance ceilings before resuming the queue. The old web may safely accept conservative single-active requests into the paused queue during this window; new dispatch waits for resume. Verify two-per-user slots, approved scaling limits, request endpoints and worker private access. Record source/build IDs, immutable images, revisions, traffic and timestamps in release evidence.
 
 Old worker code cannot clear or assign `running_slot`, so it must not process requests against the migrated schema. Do not resume the queue before the new worker is promoted. Old web admission remains conservative while staged; durable requests accepted during the pause retain their normal credit hold and wait for the new worker.
 

@@ -6,7 +6,8 @@ process.env.DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused";
 
 async function main() {
   const { pool, processRequest } = await import("../services/resume-tailor/worker");
-  const rows = Array.from({ length: 4 }, () => ({ id: randomUUID(), user_id: randomUUID(), job_id: randomUUID(),
+  const userCount = 12;
+  const rows = Array.from({ length: userCount }, () => ({ id: randomUUID(), user_id: randomUUID(), job_id: randomUUID(),
     base_resume_id: randomUUID(), source_text: "# Synthetic resume", job_description: "Synthetic job", include_summary: true,
     status: "queued", credit_state: "held", lease_token: "" }));
   const saved = new Map<string, object>();
@@ -52,9 +53,9 @@ async function main() {
       const row = rows.find(row => row.id === id)!;
       assert.equal(args[args.indexOf("--tenant-id") + 1], row.user_id);
       folders.add(folder);
-      if (++entered === 4) unlock();
+      if (++entered === userCount) unlock();
       await barrier;
-      assert.equal(entered, 4, "Four independent users must enter the agent before any completes");
+      assert.equal(entered, userCount, "Every independent user must enter the agent before any completes");
       const markdown = "# Draft " + id;
       const audit = { status: "completed", resume_markdown: markdown, source_hash: hash(row.source_text), job_hash: hash(row.job_description),
         usage: [{ model: "mock", stage: "mock", input_tokens: 1, output_tokens: 1, estimated_cost_usd: 0 }] };
@@ -63,12 +64,12 @@ async function main() {
       return 0;
     };
     await Promise.all(rows.map(row => processRequest(row.id, agent)));
-    assert.equal(folders.size, 4);
-    assert.equal(charged.size, 4);
+    assert.equal(folders.size, userCount);
+    assert.equal(charged.size, userCount);
     assert(rows.every(row => row.status === "completed" && row.credit_state === "consumed"));
     await Promise.all(rows.map(row => processRequest(row.id, agent)));
-    assert.equal(entered, 4, "Duplicate delivery must not repeat agent work");
-    console.log("PASS: four users overlap; isolated tenant IDs, folders, outputs and credit settlement; duplicate delivery does not rerun; no DB or AI calls");
+    assert.equal(entered, userCount, "Duplicate delivery must not repeat agent work");
+    console.log("PASS: twelve users overlap without a global four-user code limit; isolated tenants, folders, outputs and settlement; duplicates do not rerun; no DB or AI calls");
   } finally { clearTimeout(timer); await pool.end(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

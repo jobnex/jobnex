@@ -32,7 +32,7 @@ function run(command: string, args: string[], cwd: string) {
 async function release(request: RequestRow, status: "failed" | "needs_review", errorCode: string) {
   const client = await pool.connect();
   try { await client.query("BEGIN");
-    const released = await client.query(`UPDATE resume_generation_requests SET status=$1,credit_state='released',error_code=$2,finished_at=now()
+    const released = await client.query(`UPDATE resume_generation_requests SET status=$1,running_slot=NULL,credit_state='released',error_code=$2,finished_at=now()
       WHERE id=$3 AND lease_token=$4 AND status='running' AND credit_state='held' RETURNING id`, [status, errorCode.slice(0, 120), request.id, request.lease_token]);
     if (!released.rows[0]) { await client.query("COMMIT"); return; }
     await client.query(`UPDATE wallets SET balance=balance+1,updated_at=now() WHERE user_id=$1`, [request.user_id]);
@@ -46,7 +46,7 @@ async function release(request: RequestRow, status: "failed" | "needs_review", e
 async function complete(request: RequestRow, status: "completed" | "needs_review", errorCode: string | null) {
   const client = await pool.connect();
   try { await client.query("BEGIN");
-    const completed = await client.query(`UPDATE resume_generation_requests SET status=$1,credit_state='consumed',error_code=$2,finished_at=now()
+    const completed = await client.query(`UPDATE resume_generation_requests SET status=$1,running_slot=NULL,credit_state='consumed',error_code=$2,finished_at=now()
       WHERE id=$3 AND lease_token=$4 AND status='running' AND credit_state='held' RETURNING id`, [status, errorCode, request.id, request.lease_token]);
     if (completed.rows[0]) await client.query(`UPDATE credit_transactions SET status='completed' WHERE user_id=$1 AND reference_id=$2 AND status='pending'`, [request.user_id, request.id]);
     await client.query("COMMIT");
@@ -95,9 +95,18 @@ async function recoverOutput(request: RequestRow) {
 async function claim(requestId: string): Promise<RequestRow | null> {
   const client = await pool.connect(); const lease = randomUUID();
   try { await client.query("BEGIN");
+    // Serialize claims for one user only. Release the lock before starting AI work.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended('resume-running:' || user_id,0))
+      FROM resume_generation_requests WHERE id=$1`, [requestId]);
     const result = await client.query(`UPDATE resume_generation_requests SET status='running',
-      lease_token=$1,lease_expires_at=now()+interval '15 minutes'
-      WHERE id=$2 AND status='queued' AND credit_state='held' RETURNING *`, [lease, requestId]);
+      lease_token=$1,lease_expires_at=now()+interval '15 minutes',
+      running_slot=(SELECT slot FROM generate_series(1,2) slot WHERE NOT EXISTS
+        (SELECT 1 FROM resume_generation_requests busy WHERE busy.user_id=resume_generation_requests.user_id
+          AND busy.status='running' AND busy.running_slot=slot) ORDER BY slot LIMIT 1)
+      WHERE id=$2 AND status='queued' AND credit_state='held' AND EXISTS
+        (SELECT 1 FROM generate_series(1,2) slot WHERE NOT EXISTS
+          (SELECT 1 FROM resume_generation_requests busy WHERE busy.user_id=resume_generation_requests.user_id
+            AND busy.status='running' AND busy.running_slot=slot)) RETURNING *`, [lease, requestId]);
     await client.query("COMMIT"); return result.rows[0] || null;
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
@@ -106,7 +115,7 @@ export async function processRequest(requestId: string, agent = run) {
   const request = await claim(requestId);
   if (!request) {
     const result = await pool.query(`SELECT status FROM resume_generation_requests WHERE id=$1`, [requestId]);
-    if (result.rows[0]?.status === 'running') throw new Error("request_busy");
+    if (['queued', 'running'].includes(result.rows[0]?.status)) throw new Error("request_busy");
     if (!result.rows[0]) throw new Error("request_missing");
     return false;
   }

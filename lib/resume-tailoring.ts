@@ -63,10 +63,13 @@ export async function enqueueTailoring(userId: string, jobId: string, resume: Ta
     if (!job.rows[0]) throw new Error("Job is unavailable");
     await client.query(`INSERT INTO wallets(user_id,balance) VALUES($1,0) ON CONFLICT(user_id) DO NOTHING`, [userId]);
     const wallet = await client.query(`SELECT balance FROM wallets WHERE user_id=$1 FOR UPDATE`, [userId]);
-    // The database permits one queued/running request per candidate. Check it while
-    // holding the wallet lock so two browser tabs cannot reserve two credits.
+    // Recheck after the per-user wallet lock: a concurrent tab may have committed
+    // this key while we waited. Distinct jobs may queue with separate credit holds.
+    const retried = await client.query(`SELECT id,status,credit_state FROM resume_generation_requests
+      WHERE user_id=$1 AND idempotency_key=$2`, [userId, idempotencyKey]);
+    if (retried.rows[0]) { await client.query("COMMIT"); return { ...retried.rows[0], duplicate: true }; }
     const active = await client.query(`SELECT id,status,credit_state FROM resume_generation_requests
-      WHERE user_id=$1 AND status IN ('queued','running') FOR UPDATE`, [userId]);
+      WHERE user_id=$1 AND job_id=$2 AND status IN ('queued','running') FOR UPDATE`, [userId, jobId]);
     if (active.rows[0]) { await client.query("COMMIT"); return { ...active.rows[0], duplicate: true }; }
     if ((wallet.rows[0]?.balance ?? 0) < 1) throw new Error("Insufficient credits");
     const id = randomUUID();

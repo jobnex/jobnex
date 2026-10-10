@@ -23,6 +23,7 @@ async function main() {
     const text = sql.replace(/\s+/g, " ");
     const result = (rows: unknown[] = []) => ({ rows, rowCount: rows.length });
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(text)) return result();
+    if (text.startsWith("SELECT pg_advisory_xact_lock")) return result();
     if (text.startsWith("UPDATE resume_generation_requests SET status='running'")) {
       if (row.status !== "queued" || row.credit_state !== "held" || values[1] !== row.id) return result();
       row.status = "running"; row.lease_token = String(values[0]); return result([{ ...row }]);

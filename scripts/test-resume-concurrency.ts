@@ -17,6 +17,7 @@ async function main() {
     const text = sql.replace(/\s+/g, " ");
     const result = (data: unknown[] = []) => ({ rows: data, rowCount: data.length });
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(text)) return result();
+    if (text.startsWith("SELECT pg_advisory_xact_lock")) return result();
     if (text.startsWith("UPDATE resume_generation_requests SET status='running'")) {
       const row = rows.find(row => row.id === values[1]);
       if (!row || row.status !== "queued") return result();

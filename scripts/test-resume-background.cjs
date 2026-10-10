@@ -50,7 +50,8 @@ async function main() {
   }
 
   let response = { userId: 'user-A', requests: [{ id: 'request', title: 'Role', company: 'Company', status: 'running', credit_state: 'held', has_draft: false }] };
-  let timer, effect, snapshot, errors = 0, reads = 0, toasts = 0;
+  let timer, effect, snapshot, errors = 0, reads = 0, toasts = 0, clock = 0;
+  class MockDate extends Date { static now() { return clock; } }
   function mount() {
     let stateIndex = 0;
     const module = load('components/BackgroundResumeTasks.tsx', {
@@ -61,14 +62,14 @@ async function main() {
       '@/app/actions/tailored-resume': { listResumeRequests: async () => { reads++; if (response instanceof Error) throw response; return response; } },
       '@/store/useCreditStore': { useCreditStore: { getState: () => ({ fetchCredits: async () => {} }) } },
       sonner: { toast: { success() { toasts++; }, warning() { toasts++; }, error() { toasts++; } } },
-    }, { window: { addEventListener() {}, removeEventListener() {} }, setTimeout: callback => { timer = callback; return 1; }, clearTimeout() {} });
+    }, { Date: MockDate, window: { addEventListener() {}, removeEventListener() {} }, setTimeout: (callback, delay) => { timer = () => { clock += delay; callback(); }; return 1; }, clearTimeout() {} });
     module.BackgroundResumeTasks(); return effect();
   }
   let cleanup = mount(); await flush();
   assert.equal(snapshot.requests[0].status, 'running');
   // A long run is still observed after many ticks; no elapsed-time terminal status.
   for (let i = 0; i < 30; i++) { timer(); await flush(); }
-  assert.equal(reads, 31); assert.equal(snapshot.requests[0].status, 'running');
+  assert.equal(clock, 120000); assert.equal(reads, 31); assert.equal(snapshot.requests[0].status, 'running');
   const saved = response; response = new Error('Transient outage'); timer(); await flush();
   assert.equal(errors, 1); assert.equal(snapshot.requests[0].status, 'running'); assert.equal(typeof timer, 'function');
   response = { userId: 'user-A', requests: [{ ...saved.requests[0], status: 'needs_review', credit_state: 'consumed', has_draft: true }] };
@@ -78,6 +79,19 @@ async function main() {
   const ownSnapshot = snapshot; response = { userId: 'other-user', requests: [{ id: 'private' }] }; timer(); await flush();
   assert.equal(snapshot, ownSnapshot, 'Reject a response for a different signed-in account');
   cleanup();
-  console.log('PASS: actual modal closes only after acceptance; background survives 30 active ticks, transient outage, review completion and remount; account mismatch excluded');
+  for (const status of ['queued', 'running', 'completed', 'needs_review', 'failed']) {
+    const actions = load('app/actions/tailored-resume.ts', {
+      '@/lib/auth/server': { getCurrentUser: async () => ({ id: 'user-A' }) },
+      'next/headers': { cookies: async () => ({ toString: () => 'synthetic-session' }) },
+    }, { process: { env: {} }, AbortSignal, fetch: async url => new Response(JSON.stringify(
+      url.includes('/generated/') ? { generation: { resume_markdown: '# Synthetic draft', status } }
+        : { request: { status, credit_state: status === 'failed' ? 'released' : 'consumed', error_code: 'experience.roles' } }
+    ), { status: 200 }) });
+    const result = await actions.getResumeRequestStatus('synthetic-request');
+    assert.equal(result.status, status === 'completed' ? 'succeeded' : status);
+    if (status === 'needs_review') { assert.equal(result.markdown, '# Synthetic draft'); assert.equal(result.creditState, 'consumed'); assert.equal(result.reviewReason, 'experience.roles'); }
+    if (status === 'failed') assert.equal(result.success, false);
+  }
+  console.log('PASS: actual modal acceptance/error handling; 30 active background ticks, outage/reload/account isolation; queued/running/completed/review/failed action outcomes');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

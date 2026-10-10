@@ -1,5 +1,7 @@
 # UI team handoff: base resume synchronization
 
+Follow-up: [background generation and draft credit settlement](ui-team-resume-background-credits.md) documents the later popup, tracking, review-access, and billing changes. Use that document for the current generation lifecycle.
+
 Prepared: 2026-10-09. Scope: the resume content fixes, frontend integration, deployment status, and remaining integration steps.
 
 ## 1. What the team needs to do

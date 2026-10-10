@@ -213,3 +213,8 @@ See [resume-token-budget-2026-10-10.md](resume-token-budget-2026-10-10.md) for t
 ## Real-test follow-up
 
 See [resume-live-qa-2026-10-10.md](resume-live-qa-2026-10-10.md) for parser, complete skill preservation and review fixes exposed by real paid tests. Collect the ten code/test files from source-snapshots/2026-10-10-live-qa or resume-live-qa-code-2026-10-10.zip. The UI change is confined to the shared resume parser; backend fixes are a separate worker release.
+
+
+## Curated Jobs follow-up
+
+See [curated-jobs-2026-10-10.md](curated-jobs-2026-10-10.md) for the new date/sort controls, live production feed, refresh, pagination and empty/error states. Collect six production source files and three local verification references from source-snapshots/2026-10-10-curated-jobs or curated-jobs-code-2026-10-10.zip.

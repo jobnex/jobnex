@@ -65,12 +65,12 @@
       "imageDigest": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/resume-pdf-compiler@sha256:7c052239462410bf57b75ade06c15efb9f2d6ad6cb872b41d5e09f5e0ad636e1"
     },
     "job-hunt-web": {
-      "readyRevision": "job-hunt-web-app-fixes-core-1011",
+      "readyRevision": "job-hunt-web-app-fixes-v3-1011",
       "url": "https://job-hunt-web-znsph25yja-ue.a.run.app",
       "traffic": [
         {
           "percent": 100,
-          "revisionName": "job-hunt-web-app-fixes-core-1011",
+          "revisionName": "job-hunt-web-app-fixes-v3-1011",
           "tag": "app-fixes-qa",
           "url": "https://app-fixes-qa---job-hunt-web-znsph25yja-ue.a.run.app"
         },
@@ -88,17 +88,17 @@
       "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web:app-fixes-20261010",
       "conditions": [
         {
-          "lastTransitionTime": "2026-10-11T04:24:30.109156Z",
+          "lastTransitionTime": "2026-10-11T04:44:23.435550Z",
           "status": "True",
           "type": "Ready"
         },
         {
-          "lastTransitionTime": "2026-10-11T04:17:34.529841Z",
+          "lastTransitionTime": "2026-10-11T04:42:02.124680Z",
           "status": "True",
           "type": "ConfigurationsReady"
         },
         {
-          "lastTransitionTime": "2026-10-11T04:24:30.061936Z",
+          "lastTransitionTime": "2026-10-11T04:44:23.338618Z",
           "status": "True",
           "type": "RoutesReady"
         }
@@ -109,7 +109,7 @@
   "web_build": {
     "id": "098a6f8f-a56b-4fca-863b-d0b66d49584f",
     "status": "SUCCESS",
-    "promotion": "core_security_ui_live_at_100_percent; full_storage_pdf_access_pending_explicit_approval"
+    "promotion": "web_rollout_before_scope_clarification; restoration_pending_explicit_recovery_approval"
   },
   "profile_build": {
     "id": "65c9cff3-8f5e-44c9-8b2a-4ee87aaefd0f",
@@ -210,20 +210,10 @@
   },
   "langsmith": "Worker model and existing tracing unchanged; no artificial provider trace or paid generation.",
   "remaining_owner_decisions": [
-    "Approve web runtime Secret Accessor on exactly three existing compiler/R2 secrets",
+    "Approve restoration of prior UI traffic and removal of the task's unused web secret grants",
+    "UI team integrates, verifies authenticated flows and deploys its own frontend",
     "Configure the public support contact address"
   ],
-  "approval_block": {
-    "recipient": "job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com",
-    "role": "roles/secretmanager.secretAccessor",
-    "scope": "individual existing secrets only",
-    "resources": [
-      "resume-pdf-compiler-secret",
-      "resume-pdf-backend-r2-access-key",
-      "resume-pdf-backend-r2-secret-key"
-    ],
-    "grants_applied": false
-  },
   "live_http_smoke": {
     "url": "https://job-hunt-web-znsph25yja-ue.a.run.app",
     "checks": [
@@ -376,6 +366,60 @@
     "met": 13,
     "unmet": 1,
     "abandoned": 0,
-    "unmet_gate": "root G5: full production storage/PDF configuration and authenticated acceptance, pending explicit scoped secret access approval"
+    "unmet_gate": "root G5: backend is deployed/verified; scope correction restoring prior UI requires explicit recovery approval"
+  },
+  "deployment_scope": "backend_only; frontend integration and deployment owned by UI team",
+  "secret_configuration_verification": {
+    "revision": "job-hunt-web-app-fixes-v3-1011",
+    "recipient": "job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com",
+    "secret_refs": {
+      "RESUME_COMPILER_SECRET": {
+        "key": "latest",
+        "name": "resume-pdf-compiler-secret"
+      },
+      "R2_ACCESS_KEY_ID": {
+        "key": "latest",
+        "name": "resume-pdf-backend-r2-access-key"
+      },
+      "R2_SECRET_ACCESS_KEY": {
+        "key": "latest",
+        "name": "resume-pdf-backend-r2-secret-key"
+      }
+    },
+    "configuration_verified": true,
+    "imageDigest": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web@sha256:24576fc6f70cbc889c60dc8740e44be84e6c8614a44c467e69b263207d8c4d0c",
+    "authenticated_export_test": "not_performed; frontend staging acceptance belongs to UI team after backend-only scope clarification"
+  },
+  "secret_grants": [
+    {
+      "secret": "resume-pdf-compiler-secret",
+      "recipient": "serviceAccount:job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com",
+      "role": "roles/secretmanager.secretAccessor",
+      "verified": true
+    },
+    {
+      "secret": "resume-pdf-backend-r2-access-key",
+      "recipient": "serviceAccount:job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com",
+      "role": "roles/secretmanager.secretAccessor",
+      "verified": true
+    },
+    {
+      "secret": "resume-pdf-backend-r2-secret-key",
+      "recipient": "serviceAccount:job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com",
+      "role": "roles/secretmanager.secretAccessor",
+      "verified": true
+    }
+  ],
+  "rollback_approval": {
+    "status": "pending; automatic approval review rejected rollback/access removal without explicit specific authorization",
+    "ui_revision_to_restore": "job-hunt-web-curated-fresh-1010",
+    "web_tag_to_remove": "app-fixes-qa",
+    "recipient": "job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com",
+    "secret_grants_to_remove": [
+      "resume-pdf-compiler-secret",
+      "resume-pdf-backend-r2-access-key",
+      "resume-pdf-backend-r2-secret-key"
+    ],
+    "backend_changes": "none; deployed backend retained"
   }
 }

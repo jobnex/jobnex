@@ -3,6 +3,8 @@
 Release work started October 10 and finalized October 11, 2026 (America/New_York). Audience: UI developers and production maintainers.
 This supplements and supersedes the deployment/integration status in the earlier resume UI handoffs. Earlier documents remain historical records.
 
+**October 11 localhost readiness update:** Customer PDF export is currently blocked by an API integration mismatch. Local base/export routes are proxy adapters to the earlier GCP web API; free base creation targets a missing upstream route. See [the detailed localhost review](customer-readiness-local-2026-10-11.md). Use the production-web server implementations and configure the UI team's server runtime, rather than treating the local proxy files as a standalone backend. Backend/compiler test success alone does not clear customer release.
+
 ## Deployment ownership and current status
 
 User clarified on October 11: deploy only backend services to GCP. The UI team owns frontend integration and production UI deployment. This document and source bundle are the frontend deliverables; do not treat the web build records as authorization to deploy a UI.

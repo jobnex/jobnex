@@ -1,0 +1,219 @@
+{
+  "prepared_date": "2026-10-11",
+  "release_id": "app-fixes-20261010",
+  "production": {
+    "job-hunt-profile": {
+      "readyRevision": "job-hunt-profile-app-fixes-v2-1010",
+      "url": "https://job-hunt-profile-znsph25yja-ue.a.run.app",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "job-hunt-profile-app-fixes-v2-1010",
+          "tag": "app-fixes-qa",
+          "url": "https://app-fixes-qa---job-hunt-profile-znsph25yja-ue.a.run.app"
+        }
+      ],
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile:app-fixes-v2-20261010",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-10-11T04:07:03.211966Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastTransitionTime": "2026-10-11T03:55:05.372331Z",
+          "status": "True",
+          "type": "ConfigurationsReady"
+        },
+        {
+          "lastTransitionTime": "2026-10-11T04:07:03.185529Z",
+          "status": "True",
+          "type": "RoutesReady"
+        }
+      ]
+    },
+    "resume-pdf-compiler": {
+      "readyRevision": "resume-pdf-compiler-app-fixes-1010",
+      "url": "https://resume-pdf-compiler-znsph25yja-ue.a.run.app",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "resume-pdf-compiler-app-fixes-1010",
+          "tag": "app-fixes-qa",
+          "url": "https://app-fixes-qa---resume-pdf-compiler-znsph25yja-ue.a.run.app"
+        }
+      ],
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/resume-pdf-compiler:app-fixes-20261010",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-10-11T04:08:50.985780Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastTransitionTime": "2026-10-11T03:27:26.140395Z",
+          "status": "True",
+          "type": "ConfigurationsReady"
+        },
+        {
+          "lastTransitionTime": "2026-10-11T04:08:50.953919Z",
+          "status": "True",
+          "type": "RoutesReady"
+        }
+      ]
+    },
+    "job-hunt-web": {
+      "readyRevision": "job-hunt-web-curated-fresh-1010",
+      "url": "https://job-hunt-web-znsph25yja-ue.a.run.app",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "job-hunt-web-curated-fresh-1010",
+          "tag": "curated-qa",
+          "url": "https://curated-qa---job-hunt-web-znsph25yja-ue.a.run.app"
+        },
+        {
+          "revisionName": "job-hunt-web-curated-fresh-1010",
+          "tag": "neondb-trial",
+          "url": "https://neondb-trial---job-hunt-web-znsph25yja-ue.a.run.app"
+        }
+      ],
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web@sha256:e1f5ce7b20e65d4f2fb4ad9491a39bcfe0ce83cbb2a6d9cb0302cfed5e18db6a",
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-10-10T23:03:01.681899Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastTransitionTime": "2026-10-10T23:01:42.294861Z",
+          "status": "True",
+          "type": "ConfigurationsReady"
+        },
+        {
+          "lastTransitionTime": "2026-10-10T23:03:01.649459Z",
+          "status": "True",
+          "type": "RoutesReady"
+        }
+      ]
+    }
+  },
+  "web_build": {
+    "id": "098a6f8f-a56b-4fca-863b-d0b66d49584f",
+    "status": "SUCCESS",
+    "promotion": "blocked_pending_explicit_secret_access_approval"
+  },
+  "profile_build": {
+    "id": "65c9cff3-8f5e-44c9-8b2a-4ee87aaefd0f",
+    "status": "SUCCESS"
+  },
+  "compiler_build": {
+    "id": "5a7e8e94-6fa7-4bd6-852f-947bfbe67580",
+    "status": "SUCCESS"
+  },
+  "previous_revisions": {
+    "job-hunt-web": "job-hunt-web-curated-fresh-1010",
+    "job-hunt-profile": "job-hunt-profile-heading-fix-1010",
+    "resume-pdf-compiler": "resume-pdf-compiler-00001-2n7"
+  },
+  "verification": {
+    "local_types": "passed",
+    "production_types": "passed_after_joined_row_and_nullable_response_correction",
+    "local_lint": "passed",
+    "production_lint": "passed",
+    "four_template_resume_and_api_regressions": "passed_both_trees",
+    "shared_ui_ssr": "passed_both_trees_with_inert_test_environment",
+    "profile_contact_tests": 14,
+    "profile_contact_tests_result": "passed",
+    "session_keyset_admission_negative_and_positive_controls": "passed",
+    "admission_concurrency_fixture": "passed",
+    "curated_readonly_sql_regressions": "passed",
+    "browser_mobile_all_four_templates": {
+      "width": 390,
+      "height": 844,
+      "pages_each": 2,
+      "controls_reachable": true,
+      "complete_projects": true
+    },
+    "real_compiler_and_R2_exports": 4,
+    "a4_pdf_checks": [
+      {
+        "file": "minimalist-exec.pdf",
+        "pages": 2,
+        "a4": true,
+        "text_chars": 7027
+      },
+      {
+        "file": "mit-capd.pdf",
+        "pages": 2,
+        "a4": true,
+        "text_chars": 7037
+      },
+      {
+        "file": "modern-ivy.pdf",
+        "pages": 2,
+        "a4": true,
+        "text_chars": 7037
+      },
+      {
+        "file": "tech-specialist.pdf",
+        "pages": 2,
+        "a4": true,
+        "text_chars": 7031
+      }
+    ],
+    "saved_draft_opens": "verified_in_authenticated_local_ui",
+    "curated_latest_24h_and_requested_history": "verified_in_authenticated_local_ui",
+    "no_real_save_delete_or_paid_generation_test": true
+  },
+  "data_preservation": {
+    "credits_available": 4,
+    "owned_active_requests": 0,
+    "active_readable_base_count": 1,
+    "saved_finished_drafts": 8,
+    "finished_requests_missing_output": 0,
+    "latest_request_unchanged": true,
+    "paid_generation_tests_started": 0
+  },
+  "source_bundle": {
+    "files": 309,
+    "zip": "app-fixes-source-20261010.zip",
+    "sha256": "62cecacba3ea3be1c870b73973edc13762a9a3ccd3da3622a5d71432b2f564f2"
+  },
+  "dependencies": {
+    "next": "16.3.8",
+    "eslint_config_next": "16.3.8",
+    "shadcn_cli": "removed; original stylesheet and MIT license kept locally",
+    "runtime_audit": {
+      "critical": 0,
+      "high": 0,
+      "moderate": 2,
+      "packages": [
+        "@tailwindcss/typography",
+        "postcss-selector-parser"
+      ]
+    },
+    "full_audit": {
+      "critical": 0,
+      "high": 5,
+      "moderate": 6
+    },
+    "remaining_advisories": "CSS selector parsing is trusted build-time use; braces findings are in ESLint tooling; esbuild findings are in drizzle-kit dev tooling. No forced downgrade of Next.js or migration CLI was applied."
+  },
+  "langsmith": "Worker model and existing tracing unchanged; no artificial provider trace or paid generation.",
+  "remaining_owner_decisions": [
+    "Approve web runtime Secret Accessor on exactly three existing compiler/R2 secrets",
+    "Configure the public support contact address"
+  ],
+  "approval_block": {
+    "recipient": "job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com",
+    "role": "roles/secretmanager.secretAccessor",
+    "scope": "individual existing secrets only",
+    "resources": [
+      "resume-pdf-compiler-secret",
+      "resume-pdf-backend-r2-access-key",
+      "resume-pdf-backend-r2-secret-key"
+    ],
+    "grants_applied": false
+  }
+}

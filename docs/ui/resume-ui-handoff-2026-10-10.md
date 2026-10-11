@@ -1,3 +1,5 @@
+> Updated release: see [app reliability and production handoff](app-fixes-handoff-2026-10-10.md) for the current code bundle, production status, and integration contracts. This earlier document is historical.
+
 # Resume UI handoff — 10 October 2026
 
 Audience: UI team and production UI maintainers.

@@ -1,0 +1,1859 @@
+{
+  "release": "app-fixes-20261010",
+  "files": [
+    {
+      "tree": "production-web",
+      "path": ".gcloudignore",
+      "bytes": 34,
+      "sha256": "ea5e3924a71c110f67794ef73aaf8462202e92f7e467c69aa9ee92c6f68711a7"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/favicon.ico",
+      "bytes": 25931,
+      "sha256": "2b8ad2d33455a8f736fc3a8ebf8f0bdea8848ad4c0db48a2833bd0f9cd775932"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/globals.css",
+      "bytes": 10437,
+      "sha256": "5fb1f8f64e8ec99d9630c0e87127e93299eb09cd49c7605c49db2ddae68b228f"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/layout.tsx",
+      "bytes": 1318,
+      "sha256": "8c33fb83424852efd6adfed4b1f47391d9c6c5dc344a43db17e64887a7a61ac6"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/shadcn-tailwind.css",
+      "bytes": 17823,
+      "sha256": "745a2b7495ad7839b3c8e90ea013c7b0ea3cede6b1ac966b45a8e6b8d1a9b63d"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/template.tsx",
+      "bytes": 675,
+      "sha256": "bcd50674f210a62c39bd7f2a8fd86d5f6e892f065e01ca7a6bcca7c176b24fa7"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(auth)/layout.tsx",
+      "bytes": 331,
+      "sha256": "bd2722b063d2a20fb9587d81dc0a6915ec2d9255047585f148fb1f7299f3513e"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/layout.tsx",
+      "bytes": 692,
+      "sha256": "6b3670352e6517b0ab210051fa50bed3f96cfc9252a3ed774cb108130200adcf"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/page.tsx",
+      "bytes": 8896,
+      "sha256": "7e6c20f041cf114931eafbc5188cc07a2898dd9696973f2fbe413e5f0e236215"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/credits.ts",
+      "bytes": 3372,
+      "sha256": "07cc194d511d5048815acfd2a380cb5fd41e02aab9abec0537553b45f11f731d"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/jobs.ts",
+      "bytes": 1744,
+      "sha256": "d9e0be08ba0028b81ab9c5d2da589eefaad1ad941f7b2847c1e3186ea4b759b1"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/locations.ts",
+      "bytes": 925,
+      "sha256": "7f1863059804cdb3b87664968c8278ef3156dae69f9da33860ee1cd038d4c1dc"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/preferences.ts",
+      "bytes": 15641,
+      "sha256": "c81b574a8e20ccc92aaa4a437b5f171d37800a3b31ba522aea564891db598c68"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/profile.ts",
+      "bytes": 2034,
+      "sha256": "9229cca3a8ee0e366ed27fae79a6b03ea5c8e81cb97bb2757c5842d93238a010"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/recommendations.ts",
+      "bytes": 4679,
+      "sha256": "193b53b5b6af3da7ef8a68d266c89345f47d80d921ec3ed20b3e05f67e4088ab"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/resume-applications.ts",
+      "bytes": 2890,
+      "sha256": "f5b2d2acc08ffe32e840b698e7152431b1ca7baddbe6fc224fe65a7478be11d9"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/resume.ts",
+      "bytes": 3681,
+      "sha256": "f3a04a04eafd4aac600f7e78e9d06751194cca2b401a896e1daac6d2a71d135b"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/storage.ts",
+      "bytes": 16251,
+      "sha256": "3a7c238d419e331b5b5ad40527fff706e1d143e2bef7b535df499c13365bbaeb"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/actions/tailored-resume.ts",
+      "bytes": 24768,
+      "sha256": "4319c9309fe802c91f57b97ebc6915fd2b62fd16136ca90ef741d9c89c05d8e8"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(auth)/auth/page.tsx",
+      "bytes": 723,
+      "sha256": "4b73c3050b67f082734b854edbef48a3a51a0a5a8ae5bdbf4506a5d59ba4bd1f"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(auth)/login/page.tsx",
+      "bytes": 678,
+      "sha256": "b4926875c667894d7b56ec5363c4cea9207723d8e467e7303ff329f1c57d7f00"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(auth)/signup/page.tsx",
+      "bytes": 681,
+      "sha256": "62a1b97700bf8280647a5342c8052fead47e9aece6701e341bb31667963f0f20"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/contact/page.tsx",
+      "bytes": 1440,
+      "sha256": "8b92e32fad478cb7cb50d31d78013a4f1b8964e3b6ce0a0cbe2941042884dccb"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/guidelines/page.tsx",
+      "bytes": 1381,
+      "sha256": "0926ad7de654bd71066f5911db72c69e173e73f08e9e1d5fd46a752429eef0bd"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/job-hunt/layout.tsx",
+      "bytes": 428,
+      "sha256": "f72772e5e75e40147246e9390f4e92d101296b87fcea09d36637630de0d5685c"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/job-hunt/page.tsx",
+      "bytes": 13884,
+      "sha256": "1707afb05ce2edc83291cc9f64e1696374ef4f51eed14ada26aff00be9af2cc8"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/privacy/page.tsx",
+      "bytes": 1957,
+      "sha256": "da440201a35475ff1170ef30acd3e37da18a10379c2c1287839b8b2a9b83b7b3"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/profile/page.tsx",
+      "bytes": 774,
+      "sha256": "dd0064739c4c65899ee61190f13920ab8e15c947c17284da794eca2d28e3cb76"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/profile/ProfileForm.tsx",
+      "bytes": 12911,
+      "sha256": "9f1d46051af5ec98f221e560661a880eabfc4f6e8cd66d02f7fc6b58b7a7cff5"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/saved-jobs/page.tsx",
+      "bytes": 12641,
+      "sha256": "75a371b0f673382856c260a12476bc3168665e9cebca768f41c30c0ea7c9fd56"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/terms/page.tsx",
+      "bytes": 1783,
+      "sha256": "6539ad5ace36b9a9d3e31f41d8212eaed7a83c7a67b2421aba071d8d9707364d"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/job-hunt/applications/page.tsx",
+      "bytes": 22572,
+      "sha256": "af672c7d4081b1917d85b8bac7b5dc8c58fcd5377dbec99c8061bb9d7d0a65f3"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/job-hunt/manage/loading.tsx",
+      "bytes": 156,
+      "sha256": "3607d705133ec23d313de0de3fa361eb512d0dd6daed78c8adecb78d2e5ada2c"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/job-hunt/manage/page.tsx",
+      "bytes": 104506,
+      "sha256": "99bf98ce7a05a1b7c5f30443a381736226418e7523dd3bfdb2c16a94bcbe6fb2"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/(main)/job-hunt/tailor-resume/page.tsx",
+      "bytes": 12530,
+      "sha256": "43b5710940cd740cbb85e08d66cdbe9de0504a55c2c512f8d87f3983c526313a"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/jobs/route.ts",
+      "bytes": 5003,
+      "sha256": "97db26ff2487f759c7a68d0bf5efe47b3aed5d7a1e6cd997e527ed71dc7a2e08"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/auth/[...path]/route.ts",
+      "bytes": 91,
+      "sha256": "c9a3e50525680b349e16cfb300add584d90515d80b874597293867e7a04c9082"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/job-hunt/applications/route.ts",
+      "bytes": 2742,
+      "sha256": "2377bfad35a0d51aa4587ea58a941303651fff7635379f165e3bf44a60368410"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/job-hunt/profile/route.ts",
+      "bytes": 1093,
+      "sha256": "037c57c45043e3a4f7edc4267e18e9fca8e91f2c8bc9df252f010d05299cb8b0"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/jobs/curated/route.ts",
+      "bytes": 5400,
+      "sha256": "cc3483ff1f883c1460ae7d90f7d833638a2e5124709329c42abe83330480cd2b"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/jobs/matched/route.ts",
+      "bytes": 5258,
+      "sha256": "023302f1ca186b43505c0226411679c4444dc1a62c7eb028a7fec648b59b3a22"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/jobs/saved/route.ts",
+      "bytes": 4740,
+      "sha256": "5c8e78d02dbca953b4a57cc9fa5f6e70d398168096dc5904619745d4ce3125fe"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/jobs/[id]/save/route.ts",
+      "bytes": 1719,
+      "sha256": "ff5cb38f98ad63336389b53873237073e6817df37c52e2719a7d11d6d42781fc"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/base/route.ts",
+      "bytes": 3504,
+      "sha256": "136c05a98a52f827f8b0bd55659392048b1982fcde3ad2bccfcf478f16c4eca2"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/export/route.ts",
+      "bytes": 1701,
+      "sha256": "fb8f4f0f9e29493e92a3045e72478cc5cafb631cda8d9f9976c6eaec1bb41e98"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/job/route.ts",
+      "bytes": 2523,
+      "sha256": "ef78757495b24aaceff27d5310ea9ab6d7b02795c8fb4e6de7cd7c173c01805c"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/requests/route.ts",
+      "bytes": 1745,
+      "sha256": "23a094b5772edcd1e2bd0c89d00a852769c2b985337c00bf2edcddafedf3c33e"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/upload/route.ts",
+      "bytes": 3011,
+      "sha256": "e98506598116cc88d987250a6b13d4e267abfd514ca085f887a9a34e54715ae3"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/generated/[requestId]/route.ts",
+      "bytes": 1142,
+      "sha256": "87860e4d71e0a0fb911c96ab8d40463f37c16e55a33798c791a4ccd272c210fd"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/generated/[requestId]/pdf/route.ts",
+      "bytes": 4766,
+      "sha256": "c3c61ab5f33edaea69dd50ecde296baff1305040619d245715ca3653d1ccb5e2"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/jobs/[jobId]/route.ts",
+      "bytes": 587,
+      "sha256": "31eb9ed8f8eecc90c591eadb40b77d1dccb7f62c00141c27a05c9ca402488291"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/requests/[requestId]/route.ts",
+      "bytes": 989,
+      "sha256": "197bdfac87b3aca31ba286fd746dc72d447fb6842531e33bef7710395332975c"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/resumes/[resumeId]/route.ts",
+      "bytes": 2664,
+      "sha256": "fbcb3ac38a2114437878a331566de0d221d45b4f24afdfde3ffe09135425941d"
+    },
+    {
+      "tree": "production-web",
+      "path": "app/api/resume/tailor/resumes/[resumeId]/preview/route.ts",
+      "bytes": 994,
+      "sha256": "afcc6a34bf726b36366343b975420e717bf2f59e41bedf7be780b05fd404b6aa"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/A4ResumePages.tsx",
+      "bytes": 4813,
+      "sha256": "9709645eee0403a7bbff3cf0b0dac9020e37787c34fba47d558983aa0053fd7a"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/AnimatedTabs.tsx",
+      "bytes": 2338,
+      "sha256": "93e2f12190a9b3bb11ed24c5567a10976f4922d3a3efe8f8b23045a62ac80533"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/ApplyModal.tsx",
+      "bytes": 7300,
+      "sha256": "f075940502d75c3b4f8602f09afbeac7fa5f681a2f7a1ca87d58accd420da89a"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/BackgroundResumeTasks.tsx",
+      "bytes": 10533,
+      "sha256": "26515a86aada191786ae046f9134e7482b2263a3f8f1c748b56eeae7903ccc13"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/FiltersModal.tsx",
+      "bytes": 14949,
+      "sha256": "3e1dcd0de1c55db71b0436bf61003fe850aa7c1598b8f5806373d9a7ac0c432d"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/Footer.tsx",
+      "bytes": 1139,
+      "sha256": "3b407d57340a11774aed1ae5a6c7858251059f3fe0d8bdb9bf2333e4cdb84da6"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/Header.tsx",
+      "bytes": 21230,
+      "sha256": "4870d63f9ff1b092b2684b384ea4960a7bf617f4636834d325cc432d3bbdb7ed"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/JobCard.tsx",
+      "bytes": 9546,
+      "sha256": "eb344b5983efdad83de2d12d4963309a4595dd13be8f28369d59d1507b93a377"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/JobCardSkeleton.tsx",
+      "bytes": 3008,
+      "sha256": "14f6e8c54ac16d0947740f8e5d79107f7343a4efdf925cc89bbdfb5b22db7025"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/JobDescriptionPanel.tsx",
+      "bytes": 11735,
+      "sha256": "d5093c480c3dffcab86ac8a99f634ad7380691dd68b8b9ef414a341038b7152a"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/JobGrid.tsx",
+      "bytes": 4710,
+      "sha256": "9fa1f65448f6caa708a768b3564152b5672b32ae955250650c475082a5de3017"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/JobHuntSidebar.tsx",
+      "bytes": 6864,
+      "sha256": "327464f29c40a814f855fddebbc7245539f93db4de5a587f2672728d8028821f"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/LocationDropdown.tsx",
+      "bytes": 9901,
+      "sha256": "30b1a85ee6efbd3c62784c71f711b8f6760d089e3fc7d82004ed734aaae8ae2f"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/LocationHydrator.tsx",
+      "bytes": 1024,
+      "sha256": "3a5a4349a9c7b8de5fe0e17bc263317a4818f92227bff027f481d7566ddb4030"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/ManageJobHuntSkeleton.tsx",
+      "bytes": 12002,
+      "sha256": "37e4ea13a08a71c7face4ea1f5932d1e635ebbf868e99c266b8f4c0596e7302d"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/Pagination.tsx",
+      "bytes": 4688,
+      "sha256": "de6625910e12c786218fab2059747d8ee332db44ce35bec6de709a1431920139"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/PdfPreviewModal.tsx",
+      "bytes": 25690,
+      "sha256": "f780d5d41b6a0fbeef0e91cae7389157afcd22034c4918fc7db074a251423c64"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/PremiumJobCard.tsx",
+      "bytes": 13481,
+      "sha256": "45e579acb7cbae8f8757aa1938820b693cbc4e164dc5afac411845d9f0ddd660"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/Providers.tsx",
+      "bytes": 848,
+      "sha256": "254c14839418c5a5763940cadd9e739da8c0101d119d3e6e1c87c8ee1db8e370"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/ResumeModal.tsx",
+      "bytes": 26941,
+      "sha256": "9b58df424abd31b7d1259e1e4347ed668169602ce17e248b6db17ec01430510e"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/ResumeSheet.tsx",
+      "bytes": 21081,
+      "sha256": "774c81a2505ede135ccedcef61384d31859a4133353bf1a90e332c1b74c8c82a"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/SavedJobsHydrator.tsx",
+      "bytes": 976,
+      "sha256": "203d1a70c3ff211f2cd7f1a5c4ba559463ee3f1067db095ce9284fe86ab266b6"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/SearchFilterBar.tsx",
+      "bytes": 15519,
+      "sha256": "baef0464a1722aace3db9da6706760b254c5fdd82493b017db4ec879ee938732"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/TailorResumeModal.tsx",
+      "bytes": 31654,
+      "sha256": "2149bdd68bba793c7428608dc80e4ae87b008818e73e3db36a384fa5853af272"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/UrlFilterSync.tsx",
+      "bytes": 230,
+      "sha256": "972031eb7b16be7c158b7fa706a9b67391ef8fa09d8fcc6a35dee496c2051922"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/auth/AuthContainer.tsx",
+      "bytes": 19953,
+      "sha256": "86ea3c0ba06e632f89ac96241d66e552689520ca0fd017c2e2f55b4649618cc1"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/ui/button.tsx",
+      "bytes": 3298,
+      "sha256": "77229b46b4446b55fd24a101743ceced0f41487889682e0ee5d8086930fe86e7"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/ui/LoaderDots.tsx",
+      "bytes": 365,
+      "sha256": "ea183b93e5b9e2dcda0ad9dc6ae44c35ba1543ee57818f230b17191524067e60"
+    },
+    {
+      "tree": "production-web",
+      "path": "components/ui/StrawberryLogo.tsx",
+      "bytes": 2210,
+      "sha256": "d0db8834ac5623cc4177a4bda01146c427ce284ebba2608e13a90be99b2da6b4"
+    },
+    {
+      "tree": "production-web",
+      "path": "components.json",
+      "bytes": 541,
+      "sha256": "002a5ca9a59a3787db4eeb6beabc560711995353e070d7df5e36dbe6d58ecaa9"
+    },
+    {
+      "tree": "production-web",
+      "path": "Dockerfile",
+      "bytes": 745,
+      "sha256": "fe47e5003c3348ce8afcbb01b998214430810121a48ea52cf309ae8c9cbb2c5f"
+    },
+    {
+      "tree": "production-web",
+      "path": "eslint.config.mjs",
+      "bytes": 541,
+      "sha256": "2059c04e228abfb26065c7ca3b3576a81adbb6ca24237035bf7ca1afa9cb93b4"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/active-resume.ts",
+      "bytes": 348,
+      "sha256": "35308ca8454a91d5b4767603258ad4e10ca4e7c73df6f5528ba6a333b64bbf66"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/base-resume.ts",
+      "bytes": 2485,
+      "sha256": "28bfbf40f9ae4c8bca46b3aad9c88fa1f6b675b1a5d44be27fa96580ab6be0cc"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db.ts",
+      "bytes": 1363,
+      "sha256": "7d621afe1efce5f0337032e39fc1cffbc136c554417df28ac388ef931e4e3a5d"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/job-description-data.ts",
+      "bytes": 15484,
+      "sha256": "246886e4f045a6d9febaeecdc5a302d66dc6fbf83b02a9235583bb1430d6905a"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/job-resumes.ts",
+      "bytes": 5559,
+      "sha256": "fbed59f44d8a5a79265fe3a56388186088a79dda1525df27067281f61fc131e6"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/job-utils.ts",
+      "bytes": 5938,
+      "sha256": "2c67126187c6b1ac77218f4c50aa6f375feb368a6d1b6ce710b4436e2aea6c93"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/markdown-utils.ts",
+      "bytes": 1535,
+      "sha256": "fd7ee592baa7680715f52e7093119fb8232c8b62984b663933fe1dd446266af0"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/preferences-confirmation.ts",
+      "bytes": 1183,
+      "sha256": "d7452ddd43aee95190d6fdcb79bb532a57c154940e5b2786d7a9377c553e894f"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/profile-service.ts",
+      "bytes": 1056,
+      "sha256": "b434bd9514ec0fab4a01f135e6edfbe6c24ec1284f42c6e966b896b5065dd233"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/resume-contacts.ts",
+      "bytes": 4142,
+      "sha256": "d7d3e1acf58a67ff07bf16f97e91b7ec1a9de47ff1ec06a779039229fd2eaa2f"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/resume-content.ts",
+      "bytes": 4795,
+      "sha256": "e00e662b4a29b90f6fc092f107297190343d829f2b6549caa5fc792c10defc56"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/resume-failure.ts",
+      "bytes": 545,
+      "sha256": "e26f313d47b621caf31940be3b7a537ba1310551a9c60f3db7245022c7e5c5f3"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/resume-parser.ts",
+      "bytes": 17827,
+      "sha256": "9ab8ad198b73c3c9a16c4d533ba364f18ba83df57897f5b08642110fa616fcc4"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/resume-pdf-backend.ts",
+      "bytes": 1832,
+      "sha256": "312962a165344e5e64d203dbb2d705babdfbd74d05bb9ee372d6d47c19c9a847"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/resume-tailoring.ts",
+      "bytes": 7002,
+      "sha256": "e2f7e4b278278d24bcd9b1604810ebf85be73f169a6288f6677fbc29b88e9df1"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/resumeApi.ts",
+      "bytes": 2759,
+      "sha256": "e8b81085aacc1f2a56b42a0234c28789b980ea3fa605f2c40b6d30f3bbd0e98e"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/utils.ts",
+      "bytes": 2644,
+      "sha256": "9c39a6b590faab93cac5892f0f995d5f465e2b8dce0ea6a93294a10198ae1689"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/auth/client.ts",
+      "bytes": 127,
+      "sha256": "098d2c8e7716bb3b6d04974de29b39a2799876fbffe0b407eae0ea60f871c901"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/auth/server.ts",
+      "bytes": 886,
+      "sha256": "6892a89ce804e7995d6d77d28b0027a3d4a0214c5c09d86f1122eb80b7f17683"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/constants/filters.ts",
+      "bytes": 1624,
+      "sha256": "6e34c757df571a99eb5fb42f59a0c3a840d6f7f9d03d2318b6b54b03812fb718"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/job-filters.ts",
+      "bytes": 4236,
+      "sha256": "c044c128578b0a8c808ae03e920ea8db27048664d74798fc31b660c60196e8f5"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/job-matching.ts",
+      "bytes": 24239,
+      "sha256": "78322a29fdb439332cd5d2ddf4fde11a7766368866364f92bcdc485278f76365"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/job-preference-matching.ts",
+      "bytes": 49621,
+      "sha256": "9b4b970c59410e3dc5d5a073dbde404291a64ee5c12e5ab1b6ac09d5ea2173f2"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/preferences-confirmation.ts",
+      "bytes": 900,
+      "sha256": "dd139a730e48630494b0284aca6ee2ce5bf86c9e8d6686ef6e2b33e39550f30a"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/hooks/useClickOutside.ts",
+      "bytes": 827,
+      "sha256": "cba056597a9de84c2e7620876b08d2a07fa65b01b91421ec589f4580ae79e5b0"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/hooks/useDebounce.ts",
+      "bytes": 620,
+      "sha256": "c50dede270141a97e3f84a07f5d99a1b67cb4db942b284c165375c3be98dec48"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/hooks/useEscapeKey.ts",
+      "bytes": 460,
+      "sha256": "c2498c82cd56a43a16e0ef07778fb914044ab3b4a1b53d26f0eae285a2231932"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/hooks/useJobsQuery.ts",
+      "bytes": 2282,
+      "sha256": "817bdd231d4e834d7a32982e61a0ab8c8b2c4dc2fb45c494e36d0f0ddfe7e007"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/hooks/useMatchedJobsQuery.ts",
+      "bytes": 2345,
+      "sha256": "76ba3baacb2a5e246dcee7c25a60685c3ae879fa6e86066cc3e412c5d178b290"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/hooks/useR2Storage.ts",
+      "bytes": 3751,
+      "sha256": "710b236f8ba74783331b7dceeb18c72dc7156ce9c45a5f236f58f6fcf48141a9"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/hooks/useSyncUrlFilters.ts",
+      "bytes": 3701,
+      "sha256": "e5bdea180a725afb0dd2331d2ba71d3c9236e1b5b193c81bdc8a9cce4a570be9"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/meta/0000_snapshot.json",
+      "bytes": 184231,
+      "sha256": "429324ccd8d33267bf430402fc5eb04bc2b8c5f4db60e59150073c7e24245f61"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/meta/_journal.json",
+      "bytes": 222,
+      "sha256": "401725295282a40aea336f7745b11589ac835b55cd8cb83ea3cad1c6fbff7763"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/storage/r2.ts",
+      "bytes": 948,
+      "sha256": "4043b305101288e212072a45c5025e26933fe7433dc03e9522bf0211ee728a7e"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/utils/scroll.ts",
+      "bytes": 1105,
+      "sha256": "dd18e55ede7d7527bd25022921c188e9fe3f366ce67a7cbc55d7ee741e35fba2"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/schema/applications.ts",
+      "bytes": 4212,
+      "sha256": "3f421262db275df8e7fa6b61d582aa34e34d405ffabd283ab30dba4493f4d2d6"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/schema/countries.ts",
+      "bytes": 406,
+      "sha256": "6ac65cb9be33eef6ffbce73705a0a3da83df26f161085ada00e84da9b63e3698"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/schema/credits.ts",
+      "bytes": 1251,
+      "sha256": "1ae0925375a94a7ae0570a8d8a180456fb299815e9175107ef90c96d63c2e06c"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/schema/index.ts",
+      "bytes": 174,
+      "sha256": "7cbee26027c58cde66a24ce3def8b2c24d3e1b2cb6b64f40d79156d621c05f95"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/schema/jobs.ts",
+      "bytes": 4460,
+      "sha256": "eec6153460181cbf879a9ba2efabc396a05331f132bdca6d5da13c15a316127d"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/schema/preferences.ts",
+      "bytes": 3813,
+      "sha256": "d6c13a2ee750a3e6b9ad5d3d03d84d864378c4661c3f2b2016c70a57f5e2c2fd"
+    },
+    {
+      "tree": "production-web",
+      "path": "lib/db/schema/users.ts",
+      "bytes": 686,
+      "sha256": "5f2b941d52c2742861ab22fa98ff06b71b0d9a553d4da17aafec38251fca43c9"
+    },
+    {
+      "tree": "production-web",
+      "path": "next.config.ts",
+      "bytes": 650,
+      "sha256": "a8dfadd13d55031f415cbf85ee7a990b9afe2df0b1733c3ea1b7a6f3fe1de82a"
+    },
+    {
+      "tree": "production-web",
+      "path": "package-lock.json",
+      "bytes": 514650,
+      "sha256": "956dd2a33abca3b03911f2db95167038d89369febb31a827c54d7132586ccfbe"
+    },
+    {
+      "tree": "production-web",
+      "path": "package.json",
+      "bytes": 1609,
+      "sha256": "88b20ae48c90c310455fa3ae13cd20bc979f2911a93ed65bad28febd13a6ad62"
+    },
+    {
+      "tree": "production-web",
+      "path": "postcss.config.mjs",
+      "bytes": 101,
+      "sha256": "7b299d3d3b16699ddda397c0b2373b3af4f25f8fc9ccc9b3d9e64ef083bc1c21"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/auth-ladder-dark.jpg",
+      "bytes": 272328,
+      "sha256": "d5016f0d860f9e2f56e592bfdfb4866d620a448490152ddd845205d8fdbcf0fe"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/auth-ladder-light.jpg",
+      "bytes": 268712,
+      "sha256": "c1bf256794a1fffb17db133fbe77a2ac67decfe1c53ccdfbd11eb92f74b3c6dd"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/auth-ladder-Vectorized-dark.svg",
+      "bytes": 13124,
+      "sha256": "a718a65b5a9cb732af7ca7f4a5dd3d2204f045e0cc2dca1dbd82de886b1626bb"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/auth-ladder-Vectorized-light.svg",
+      "bytes": 13102,
+      "sha256": "9a89ff82d453c760038b26670bd2c97bbafa87d2c3833da048f53af06d388909"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/file.svg",
+      "bytes": 391,
+      "sha256": "2b67812c325c199a02536cdbeea0c593a72f707d323b72ee3e08dbab06753bd4"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/globe.svg",
+      "bytes": 1035,
+      "sha256": "b614b9bf183925957661ac851498fe1d8029fd43a62fbfed86f9e2624a57e7cf"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/next.svg",
+      "bytes": 1375,
+      "sha256": "55995dfad6ecb4945a1e856ddca03c5e16aa5bf13fd21b4df6a74ae79357bcfc"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/original-reference.jpg",
+      "bytes": 16327,
+      "sha256": "7756035de214440a15f459ad10e33c09a02577df3442bb3124238b5e7f924056"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/vercel.svg",
+      "bytes": 128,
+      "sha256": "f081337b2fee635b455b63275406a3e7f39d6a014e25ad90dab5a67e62a12ac4"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/window.svg",
+      "bytes": 385,
+      "sha256": "644768c4aaeb4767bce293344eeb0c125fb804a94d801440424072202d85e3a1"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/resume-templates/bznbzdprjfyy-1.jpg",
+      "bytes": 1119160,
+      "sha256": "cd3180e85faf659ad733fd392363545cb67184cf0d8df4f157b1093b67c918bb"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/resume-templates/cxtjgrmpsrvh-1.jpg",
+      "bytes": 1210784,
+      "sha256": "61d672ffda48e99e69ae5a91dcec09881757117128d7b76874957880e553e713"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/resume-templates/dhmkrwtksdgy-1.jpg",
+      "bytes": 1414590,
+      "sha256": "be6d4524137475d0d76dfff71f1f2e4d24b74b2dc6859dce74c75bbedbac79e1"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/resume-templates/hmhyxvxfspsw-1.jpg",
+      "bytes": 1686194,
+      "sha256": "5ed6725c5e1f928cfc1aab7a8799d2e9162d05e194fd22721edceba3a4ab4962"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/resume-templates/MITCAPD-1.jpg",
+      "bytes": 1223497,
+      "sha256": "b9159105dc0f7be1590e621c4ea09029d9ed6851a1af0b768ec0748e071225bf"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/resume-templates/Untitled-1.jpg",
+      "bytes": 1200601,
+      "sha256": "007ed748e30ff93d9f2f8b5c5831620f5884b0e1c7e40f864e2c737e6b483ccb"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/vendor/pdfjs/pdf.min.js",
+      "bytes": 320025,
+      "sha256": "86791280654fb3403853a2e3a39212941fd1c4af0c7e3608ae8f85cead458be0"
+    },
+    {
+      "tree": "production-web",
+      "path": "public/vendor/pdfjs/pdf.worker.min.js",
+      "bytes": 1087233,
+      "sha256": "6195a19b81679dfb8fbd6c387aa37cf212c83f02628d768d142925fddc3d88fb"
+    },
+    {
+      "tree": "production-web",
+      "path": "scripts/check-resume-release.tsx",
+      "bytes": 10232,
+      "sha256": "c6c101274c50127c1ea9eaaa0dbc7c67f40cdb8d7bb60e9a696f3b463023eb2a"
+    },
+    {
+      "tree": "production-web",
+      "path": "scripts/check-ui-release.tsx",
+      "bytes": 3001,
+      "sha256": "51b5ddc1f1331c252e6b3f32d020ffc3157f0400a2c97ff6f619fb3590a3893c"
+    },
+    {
+      "tree": "production-web",
+      "path": "store/useCreditStore.ts",
+      "bytes": 2535,
+      "sha256": "b2c0b6a1f31cd9dd4144504f0de4226fa4238833da9006f83ee2becbfd461879"
+    },
+    {
+      "tree": "production-web",
+      "path": "store/useJobStore.ts",
+      "bytes": 11400,
+      "sha256": "09647a6053fdd8f52bd3a48b5cc53ca00a24b83d5f49f77e3a1a1041cb427ca1"
+    },
+    {
+      "tree": "production-web",
+      "path": "store/useResumeStore.ts",
+      "bytes": 4695,
+      "sha256": "51030861bbaf45ea4b1e174679838c3c7ed918562f6883e29e7d25afcc9a1f70"
+    },
+    {
+      "tree": "production-web",
+      "path": "tsconfig.json",
+      "bytes": 726,
+      "sha256": "f62d325f40a5b88f8cfb8190e795437c570c4c40a3752d0cb510fd377c60277a"
+    },
+    {
+      "tree": "production-web",
+      "path": "types/index.ts",
+      "bytes": 24,
+      "sha256": "d1fa8f03e7993b8ce5db8dc057d06c071a09e961cc7d070d732f47f7b738c044"
+    },
+    {
+      "tree": "production-web",
+      "path": "types/job.ts",
+      "bytes": 1824,
+      "sha256": "51cf956f03bfe15a7db531a992a4a11829a96977972f46efd61495d799d55c64"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/error.tsx",
+      "bytes": 2198,
+      "sha256": "3fa46b2d79d14eb971f92d79a9a96470f81f7f2ef59203a1328a7bcf02a2de4b"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/favicon.ico",
+      "bytes": 25931,
+      "sha256": "2b8ad2d33455a8f736fc3a8ebf8f0bdea8848ad4c0db48a2833bd0f9cd775932"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/globals.css",
+      "bytes": 25352,
+      "sha256": "199d660be651a304d62964faf0474dfc0dd8f16f7cddd3bb90b47d43dd2ed22b"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/layout.tsx",
+      "bytes": 1401,
+      "sha256": "d8ba5a50989c0c1f6c04deed78dd80b8680eb5bfc625c529d89dd47c6ec556c6"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/not-found.tsx",
+      "bytes": 1687,
+      "sha256": "b312d2438e80912970854f9349c68469300ece232bf2def8b4622b6e908483f8"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/shadcn-tailwind.css",
+      "bytes": 17823,
+      "sha256": "745a2b7495ad7839b3c8e90ea013c7b0ea3cede6b1ac966b45a8e6b8d1a9b63d"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/template.tsx",
+      "bytes": 675,
+      "sha256": "bcd50674f210a62c39bd7f2a8fd86d5f6e892f065e01ca7a6bcca7c176b24fa7"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(auth)/layout.tsx",
+      "bytes": 331,
+      "sha256": "bd2722b063d2a20fb9587d81dc0a6915ec2d9255047585f148fb1f7299f3513e"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/layout.tsx",
+      "bytes": 752,
+      "sha256": "ebc21bb2ecbe6d65f4a3f96452ceac65c0e0768368a2bf7c65a2bab7601f9921"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/page.tsx",
+      "bytes": 2826,
+      "sha256": "c6c214905650ffcf6281240efd8435bc9cdade32d53a0a0f4cc78a0360214af7"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/credits.ts",
+      "bytes": 3377,
+      "sha256": "6fdddef961de9acd27d48fb29765f4b3a99c0e6b659a08d7f73e79b161331558"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/jobs.ts",
+      "bytes": 1687,
+      "sha256": "e225b3793dda5b2fe44ccebc8cd0d71664460765c872e04dadaaf877a20d21b7"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/locations.ts",
+      "bytes": 886,
+      "sha256": "29d258c5e31ac50b69fa57cd984c4d5fda0bc4546cd3807cce85fc79da1e3fa8"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/preferences.ts",
+      "bytes": 18832,
+      "sha256": "f23b7492d053f22c60e26f65fe61fa529f7557dcd87faa00997d6167399c9b01"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/profile.ts",
+      "bytes": 1975,
+      "sha256": "3ff672b802ee673ea0dfa6c8372eee5ba602212474e16de82a0d959b970cb43d"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/recommendations.ts",
+      "bytes": 4537,
+      "sha256": "f47ba5a086606835171accc88bf22ae56885f2cc6e3a9fef054b37facfde7ee8"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/resume-applications.ts",
+      "bytes": 2890,
+      "sha256": "f5b2d2acc08ffe32e840b698e7152431b1ca7baddbe6fc224fe65a7478be11d9"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/resume.ts",
+      "bytes": 2717,
+      "sha256": "f3db03222d44b73261f04717460dce6d91476e72cbda5047cec51db51312a773"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/storage.ts",
+      "bytes": 17122,
+      "sha256": "39e10db739b8a7d0a5fc889a09e6295a3480cd0c4e4a0981d32acc313373480b"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/actions/tailored-resume.ts",
+      "bytes": 24768,
+      "sha256": "4319c9309fe802c91f57b97ebc6915fd2b62fd16136ca90ef741d9c89c05d8e8"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/fonts/MonaSansVF.woff2",
+      "bytes": 532968,
+      "sha256": "fd40288d051171b51e3d01f36790604470dbb4d4fc5b36ee5a8119f4f4c6b3e1"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(auth)/auth/page.tsx",
+      "bytes": 723,
+      "sha256": "4b73c3050b67f082734b854edbef48a3a51a0a5a8ae5bdbf4506a5d59ba4bd1f"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(auth)/login/page.tsx",
+      "bytes": 678,
+      "sha256": "b4926875c667894d7b56ec5363c4cea9207723d8e467e7303ff329f1c57d7f00"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(auth)/signup/page.tsx",
+      "bytes": 681,
+      "sha256": "62a1b97700bf8280647a5342c8052fead47e9aece6701e341bb31667963f0f20"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/contact/page.tsx",
+      "bytes": 1440,
+      "sha256": "8b92e32fad478cb7cb50d31d78013a4f1b8964e3b6ce0a0cbe2941042884dccb"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/guidelines/page.tsx",
+      "bytes": 1381,
+      "sha256": "0926ad7de654bd71066f5911db72c69e173e73f08e9e1d5fd46a752429eef0bd"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/job-hunt/layout.tsx",
+      "bytes": 466,
+      "sha256": "2e137cfcd706da6b026031f2e58c32c9809e504d68b24c5c64935d6e08403fa3"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/job-hunt/page.tsx",
+      "bytes": 13884,
+      "sha256": "1707afb05ce2edc83291cc9f64e1696374ef4f51eed14ada26aff00be9af2cc8"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/privacy/page.tsx",
+      "bytes": 1957,
+      "sha256": "da440201a35475ff1170ef30acd3e37da18a10379c2c1287839b8b2a9b83b7b3"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/profile/page.tsx",
+      "bytes": 774,
+      "sha256": "dd0064739c4c65899ee61190f13920ab8e15c947c17284da794eca2d28e3cb76"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/profile/ProfileForm.tsx",
+      "bytes": 13836,
+      "sha256": "6e0f9c541e0274dbd5d71589f28f1ae6a5a45faf1722885e9c0387db29c3610a"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/saved-jobs/page.tsx",
+      "bytes": 8370,
+      "sha256": "f2628303b7c0ae7d11cbc5f8337e6172d058d9fb03a383a20e774cfd688c1ac0"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/terms/page.tsx",
+      "bytes": 1783,
+      "sha256": "6539ad5ace36b9a9d3e31f41d8212eaed7a83c7a67b2421aba071d8d9707364d"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/job-hunt/applications/page.tsx",
+      "bytes": 22572,
+      "sha256": "af672c7d4081b1917d85b8bac7b5dc8c58fcd5377dbec99c8061bb9d7d0a65f3"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/job-hunt/manage/loading.tsx",
+      "bytes": 151,
+      "sha256": "dbc4229d66adb650a06f1c6f64b364c6fe4a6485b3e5215b92865b74dbd63bfb"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/(main)/job-hunt/manage/page.tsx",
+      "bytes": 126675,
+      "sha256": "0342ef398a29c4211d24c7811e9571de72c9ce3008c7a51459a910f97818cb41"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/jobs/route.ts",
+      "bytes": 4197,
+      "sha256": "7c1228da9569b536e9afa83023580a9d0fe6e09c1698e5e80dbc801867641a20"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/auth/[...path]/route.ts",
+      "bytes": 88,
+      "sha256": "1f3f4a575cfc5b0f6489e9bed7dbfd837c0bac7fa003a45c1e263c5370b6c6bb"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/job-hunt/profile/route.ts",
+      "bytes": 3369,
+      "sha256": "169782b7052d421598f56624787b46ea552c7b2aadd05f7f5b804b3aa55d840e"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/jobs/curated/route.ts",
+      "bytes": 5400,
+      "sha256": "cc3483ff1f883c1460ae7d90f7d833638a2e5124709329c42abe83330480cd2b"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/jobs/matched/route.ts",
+      "bytes": 5400,
+      "sha256": "cc3483ff1f883c1460ae7d90f7d833638a2e5124709329c42abe83330480cd2b"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/jobs/saved/route.ts",
+      "bytes": 4719,
+      "sha256": "9c6f835cb435ce461cf3a61543b3ec54062955414015e982fd29f930df34375e"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/jobs/[id]/save/route.ts",
+      "bytes": 1661,
+      "sha256": "b88b8e6575776afe9c673c6117a53423638d630eba383d357f1050a7a53b782b"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/resume/base/route.ts",
+      "bytes": 1101,
+      "sha256": "28d815429025febcfff44ed70bcd6211e852c03d42068d82c3790f2e117d6a41"
+    },
+    {
+      "tree": "local-app",
+      "path": "app/api/resume/export/route.ts",
+      "bytes": 1160,
+      "sha256": "b59d78b61f5549ad2a80a57f733af725d3ad21a0695fadbdc119b96d6090416c"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/A4ResumePages.tsx",
+      "bytes": 4712,
+      "sha256": "bcdf0fb68219a2560c97541c2651c59d4748670bb75dc002b98505ef74fe2a77"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/AnimatedTabs.tsx",
+      "bytes": 2338,
+      "sha256": "93e2f12190a9b3bb11ed24c5567a10976f4922d3a3efe8f8b23045a62ac80533"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/ApplyModal.tsx",
+      "bytes": 7364,
+      "sha256": "bd1bce28988f5dd80689cf921fe6bf1513f810e9b4dc176b9c03fd0cc4002218"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/BackgroundResumeTasks.tsx",
+      "bytes": 10533,
+      "sha256": "26515a86aada191786ae046f9134e7482b2263a3f8f1c748b56eeae7903ccc13"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/FiltersModal.tsx",
+      "bytes": 20294,
+      "sha256": "5ccadbc64204b12b3886da10c844a9e7857a2ee60ab74df9e3a1f7734af103ca"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/FloatingBottomNav.tsx",
+      "bytes": 7147,
+      "sha256": "1206726e89160a7d059c9e82b2b77e7a7359abc2f08feafb7691de3830093639"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/Footer.tsx",
+      "bytes": 1139,
+      "sha256": "3b407d57340a11774aed1ae5a6c7858251059f3fe0d8bdb9bf2333e4cdb84da6"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/Header.tsx",
+      "bytes": 51613,
+      "sha256": "798365dfde869b5b0cc5fe0a4ef282290449011cf18033700ff582a638a27bd8"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/JobBoardView.tsx",
+      "bytes": 5647,
+      "sha256": "eed8a0167e2757dbb08e9c3cd251a74f3b43e77d0603a8a2867319eebf42a1bc"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/JobCard.tsx",
+      "bytes": 11232,
+      "sha256": "d155dd28218ef7a1b17884517c1326b6a974f560c9c8248579e850cc24da3371"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/JobCardSkeleton.tsx",
+      "bytes": 3008,
+      "sha256": "14f6e8c54ac16d0947740f8e5d79107f7343a4efdf925cc89bbdfb5b22db7025"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/JobDescriptionPanel.tsx",
+      "bytes": 13039,
+      "sha256": "51b89a53e0e0ead93e24c100056352855794e6d29c2ff3954b9b34ec8b0d8120"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/JobGrid.tsx",
+      "bytes": 5097,
+      "sha256": "e735036483eaab33e7e1fdcac6968e44cdf5f244fc2aa572988e5597d6fc6edd"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/JobHuntSidebar.tsx",
+      "bytes": 6864,
+      "sha256": "327464f29c40a814f855fddebbc7245539f93db4de5a587f2672728d8028821f"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/LocationDropdown.tsx",
+      "bytes": 15179,
+      "sha256": "decc5951c4d690a4f790673fd4c735968c1edcc8bb34c2d79dbe369db2673660"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/LocationHydrator.tsx",
+      "bytes": 1331,
+      "sha256": "90196a90f5ac708fdf76d855af5f732eca9c8d0555da2ba8458b4b95c8bf8a02"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/ManageJobHuntSkeleton.tsx",
+      "bytes": 11764,
+      "sha256": "5e38eea24467df6750793883f82046cc27d03a82f35397183b6b6fecdad82c13"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/Pagination.tsx",
+      "bytes": 13507,
+      "sha256": "58f23f29c38f8b5c736780f46a7e2ff0c380c2475e15027a4034c629fda110bc"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/PdfPreviewModal.tsx",
+      "bytes": 25690,
+      "sha256": "f780d5d41b6a0fbeef0e91cae7389157afcd22034c4918fc7db074a251423c64"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/PremiumJobCard.tsx",
+      "bytes": 15619,
+      "sha256": "9ec12cfd0cac431b9479d777636febca00669e528b99ee77d0f2de04b97aef09"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/Providers.tsx",
+      "bytes": 848,
+      "sha256": "254c14839418c5a5763940cadd9e739da8c0101d119d3e6e1c87c8ee1db8e370"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/ResumeModal.tsx",
+      "bytes": 26941,
+      "sha256": "9b58df424abd31b7d1259e1e4347ed668169602ce17e248b6db17ec01430510e"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/ResumeSheet.tsx",
+      "bytes": 21081,
+      "sha256": "774c81a2505ede135ccedcef61384d31859a4133353bf1a90e332c1b74c8c82a"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/SavedJobsHydrator.tsx",
+      "bytes": 976,
+      "sha256": "203d1a70c3ff211f2cd7f1a5c4ba559463ee3f1067db095ce9284fe86ab266b6"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/SearchFilterBar.tsx",
+      "bytes": 32039,
+      "sha256": "c11022b5f0c59a5cb095d9053ff0818392e1672bc06622927b3444a45202b7df"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/TailorResumeModal.tsx",
+      "bytes": 31654,
+      "sha256": "2149bdd68bba793c7428608dc80e4ae87b008818e73e3db36a384fa5853af272"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/UrlFilterSync.tsx",
+      "bytes": 230,
+      "sha256": "972031eb7b16be7c158b7fa706a9b67391ef8fa09d8fcc6a35dee496c2051922"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/auth/AuthContainer.tsx",
+      "bytes": 19953,
+      "sha256": "86ea3c0ba06e632f89ac96241d66e552689520ca0fd017c2e2f55b4649618cc1"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/ui/button.tsx",
+      "bytes": 3298,
+      "sha256": "77229b46b4446b55fd24a101743ceced0f41487889682e0ee5d8086930fe86e7"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/ui/LoaderDots.tsx",
+      "bytes": 365,
+      "sha256": "ea183b93e5b9e2dcda0ad9dc6ae44c35ba1543ee57818f230b17191524067e60"
+    },
+    {
+      "tree": "local-app",
+      "path": "components/ui/StrawberryLogo.tsx",
+      "bytes": 2362,
+      "sha256": "a8c5cb3c9ec071417c2b8ba26fc9289cba971423f01dc64ad24d66ffafed1494"
+    },
+    {
+      "tree": "local-app",
+      "path": "components.json",
+      "bytes": 516,
+      "sha256": "9928283696d86836422959a2c520df83a718d31ffbcab533a14ca8dca2c8d475"
+    },
+    {
+      "tree": "local-app",
+      "path": "eslint.config.mjs",
+      "bytes": 541,
+      "sha256": "2059c04e228abfb26065c7ca3b3576a81adbb6ca24237035bf7ca1afa9cb93b4"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/active-resume.ts",
+      "bytes": 340,
+      "sha256": "8c17cc8274561a9bc1ba6b64b6f42d6c8b71c6b9ada09e1f42f4700d99d8e068"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/base-resume.ts",
+      "bytes": 2485,
+      "sha256": "28bfbf40f9ae4c8bca46b3aad9c88fa1f6b675b1a5d44be27fa96580ab6be0cc"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db.ts",
+      "bytes": 1372,
+      "sha256": "93a63b99d7570b41234dfbcbad8636176f048275fc92f496368bdfb2a0f7b311"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/job-description-data.ts",
+      "bytes": 15140,
+      "sha256": "bb5fcdee34120e5c6565c81f166befcc40bbb355aef1573b761792cace04ab6e"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/job-utils.ts",
+      "bytes": 6840,
+      "sha256": "d51ecc3d8f9e2e919daa62033a5651e0b71f909530f3f852c712c6fbc796cc95"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/markdown-utils.ts",
+      "bytes": 1503,
+      "sha256": "bc863b2c2f82c2a183aa8a29724285584beac2ea483d42103129b99fc604856c"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/profile-service.ts",
+      "bytes": 5208,
+      "sha256": "0d05de75397e60f16e4df1a2158f8cb604e66d322193a0dc3deba2aad133431d"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/resume-contacts.ts",
+      "bytes": 4142,
+      "sha256": "d7d3e1acf58a67ff07bf16f97e91b7ec1a9de47ff1ec06a779039229fd2eaa2f"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/resume-content.ts",
+      "bytes": 4728,
+      "sha256": "15572da5025bb2a57fb6cbe7cb91b4d9735055169f444b8ada8fa374a5c6ccd4"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/resume-failure.ts",
+      "bytes": 545,
+      "sha256": "e26f313d47b621caf31940be3b7a537ba1310551a9c60f3db7245022c7e5c5f3"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/resume-parser.ts",
+      "bytes": 17809,
+      "sha256": "b9172625ea4962510e8cf4b604d20f9a43f5c2432e4026399a0b3b5934f707f7"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/resumeApi.ts",
+      "bytes": 2665,
+      "sha256": "6346069240f423252268425535c101e0c20b4591f599e7951e4b150f8fccf175"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/utils.ts",
+      "bytes": 2568,
+      "sha256": "27748d14bda56dd86e639114db10a5bdc3dc8b8e06c76857d39e1d5b65ac58e3"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/auth/client.ts",
+      "bytes": 122,
+      "sha256": "af9ecf1fdfe041ed58aafebead2cd1bc8e7b1ad4e01632c77c6d290c7ed42896"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/auth/server.ts",
+      "bytes": 1002,
+      "sha256": "6f60410177c38ad47dea4ad0678ccc87475fceaab374aec6ee3d98d5ab843325"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/constants/filters.ts",
+      "bytes": 1574,
+      "sha256": "c8a59a4bc6885ece1d288ee59b5bfa861cf53a859172547e2872259031edce8f"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/job-filters.ts",
+      "bytes": 7857,
+      "sha256": "39b2c1b6378ef769ab5f5a1aa1b94a3ce6e856b171a777d939a1c64e9b4c35c8"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/job-matching.ts",
+      "bytes": 24239,
+      "sha256": "78322a29fdb439332cd5d2ddf4fde11a7766368866364f92bcdc485278f76365"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useClickOutside.ts",
+      "bytes": 800,
+      "sha256": "2a8bbd50262dcde3df620b902ff1c24ae590d4735ed86518350e76cc6b351eaa"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useDebounce.ts",
+      "bytes": 597,
+      "sha256": "7ec1841d1f7155cac4da54c6233031d2d7596a5fa819725260703969b600aca3"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useEscapeKey.ts",
+      "bytes": 441,
+      "sha256": "a553fd2fb462789066730381d05db3580e93c4ee6dd765a19ad6c26e48f14877"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useHeaderMorph.ts",
+      "bytes": 7846,
+      "sha256": "39fc9939b8323595f067d1d2dfe62a0d6a28ba38370f80c13a8a5ad52ade435d"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useJobsQuery.ts",
+      "bytes": 2430,
+      "sha256": "9b0dfa7c093e075d4aea5f63512295496940ef65195feedfa601f3e12d61a4fe"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useMatchedJobsQuery.ts",
+      "bytes": 2345,
+      "sha256": "76ba3baacb2a5e246dcee7c25a60685c3ae879fa6e86066cc3e412c5d178b290"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useR2Storage.ts",
+      "bytes": 3608,
+      "sha256": "4216239635307bee07644640dd437b91ff3451d5a2ab43ae3699ebdc5f02fc40"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/hooks/useSyncUrlFilters.ts",
+      "bytes": 4704,
+      "sha256": "8b71f2edd047efbebafca6f3176c1542e90fc0546de5a44c5d3f334272142ac6"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/meta/0000_snapshot.json",
+      "bytes": 184231,
+      "sha256": "429324ccd8d33267bf430402fc5eb04bc2b8c5f4db60e59150073c7e24245f61"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/meta/_journal.json",
+      "bytes": 222,
+      "sha256": "401725295282a40aea336f7745b11589ac835b55cd8cb83ea3cad1c6fbff7763"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/storage/r2.ts",
+      "bytes": 910,
+      "sha256": "bc737c60f374c6480d6c2469256628415bd4feec9915be7c19d10b3618a5ce4d"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/utils/scroll.ts",
+      "bytes": 1074,
+      "sha256": "61c14c5ceda0cc5d3668c9a8d84044b56fa9934e4d8c14e5cb01e1ed56ce7ce4"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/schema/applications.ts",
+      "bytes": 4615,
+      "sha256": "f0a78f11f21200f9bc7d3a25d0a909723acac3953c41a2dd985f3d461e8ebf7b"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/schema/countries.ts",
+      "bytes": 398,
+      "sha256": "56938b40b73f7eebf21c06bfc65d988c3bebf15f8fe6ded1a92c2f1b7e665fea"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/schema/credits.ts",
+      "bytes": 1232,
+      "sha256": "7ae224ea403bdb6dc1c30fe6a84e438208d0e45009bb0df920dfa527ea18db0c"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/schema/index.ts",
+      "bytes": 168,
+      "sha256": "ce7b8f878f4219af99522d738b9b340410150f486f2bce806d0d6e9fe9417db1"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/schema/jobs.ts",
+      "bytes": 5023,
+      "sha256": "c5efef139f8d9edbbe9c064979e3452c008b4dbfa82f8d93bb4f63f4bb3277b9"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/schema/preferences.ts",
+      "bytes": 3813,
+      "sha256": "d6c13a2ee750a3e6b9ad5d3d03d84d864378c4661c3f2b2016c70a57f5e2c2fd"
+    },
+    {
+      "tree": "local-app",
+      "path": "lib/db/schema/users.ts",
+      "bytes": 588,
+      "sha256": "16d40d9fa6848d3bae001d58e8e6f9b51d4773781220e8f8d25b4c50b111eb12"
+    },
+    {
+      "tree": "local-app",
+      "path": "next-env.d.ts",
+      "bytes": 296,
+      "sha256": "0f70629890b72a0a82e91972cc032c04b658b26c265373cb711cf576bfbf8fcc"
+    },
+    {
+      "tree": "local-app",
+      "path": "next.config.ts",
+      "bytes": 175,
+      "sha256": "dcf6ffe6dfbc044d548c11da0dbeb067b57b1e20cdbf2e396394674ea1e041b9"
+    },
+    {
+      "tree": "local-app",
+      "path": "package-lock.json",
+      "bytes": 514650,
+      "sha256": "956dd2a33abca3b03911f2db95167038d89369febb31a827c54d7132586ccfbe"
+    },
+    {
+      "tree": "local-app",
+      "path": "package.json",
+      "bytes": 1609,
+      "sha256": "88b20ae48c90c310455fa3ae13cd20bc979f2911a93ed65bad28febd13a6ad62"
+    },
+    {
+      "tree": "local-app",
+      "path": "postcss.config.mjs",
+      "bytes": 94,
+      "sha256": "dfac7ac2d86d326a0e5adb024e7943c181393ed17a5fcb8f0315b24c7da6ddde"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/auth-ladder-dark.jpg",
+      "bytes": 272328,
+      "sha256": "d5016f0d860f9e2f56e592bfdfb4866d620a448490152ddd845205d8fdbcf0fe"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/auth-ladder-light.jpg",
+      "bytes": 268712,
+      "sha256": "c1bf256794a1fffb17db133fbe77a2ac67decfe1c53ccdfbd11eb92f74b3c6dd"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/auth-ladder-Vectorized-dark.svg",
+      "bytes": 13101,
+      "sha256": "bd6c696632dd54dc46caa980abead340a57f6cd029435fb94ff0d970b8688485"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/auth-ladder-Vectorized-light.svg",
+      "bytes": 13079,
+      "sha256": "20bb9d7696ecc446dacfa02c1867f6c818febb7b8f4d0ffe09e2138c83e26fd0"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/file.svg",
+      "bytes": 391,
+      "sha256": "2b67812c325c199a02536cdbeea0c593a72f707d323b72ee3e08dbab06753bd4"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/globe.svg",
+      "bytes": 1035,
+      "sha256": "b614b9bf183925957661ac851498fe1d8029fd43a62fbfed86f9e2624a57e7cf"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/next.svg",
+      "bytes": 1375,
+      "sha256": "55995dfad6ecb4945a1e856ddca03c5e16aa5bf13fd21b4df6a74ae79357bcfc"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/original-reference.jpg",
+      "bytes": 16327,
+      "sha256": "7756035de214440a15f459ad10e33c09a02577df3442bb3124238b5e7f924056"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/vercel.svg",
+      "bytes": 128,
+      "sha256": "f081337b2fee635b455b63275406a3e7f39d6a014e25ad90dab5a67e62a12ac4"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/window.svg",
+      "bytes": 385,
+      "sha256": "644768c4aaeb4767bce293344eeb0c125fb804a94d801440424072202d85e3a1"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/resume-templates/bznbzdprjfyy-1.jpg",
+      "bytes": 1119160,
+      "sha256": "cd3180e85faf659ad733fd392363545cb67184cf0d8df4f157b1093b67c918bb"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/resume-templates/cxtjgrmpsrvh-1.jpg",
+      "bytes": 1210784,
+      "sha256": "61d672ffda48e99e69ae5a91dcec09881757117128d7b76874957880e553e713"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/resume-templates/dhmkrwtksdgy-1.jpg",
+      "bytes": 1414590,
+      "sha256": "be6d4524137475d0d76dfff71f1f2e4d24b74b2dc6859dce74c75bbedbac79e1"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/resume-templates/hmhyxvxfspsw-1.jpg",
+      "bytes": 1686194,
+      "sha256": "5ed6725c5e1f928cfc1aab7a8799d2e9162d05e194fd22721edceba3a4ab4962"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/resume-templates/MITCAPD-1.jpg",
+      "bytes": 1223497,
+      "sha256": "b9159105dc0f7be1590e621c4ea09029d9ed6851a1af0b768ec0748e071225bf"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/resume-templates/Untitled-1.jpg",
+      "bytes": 1200601,
+      "sha256": "007ed748e30ff93d9f2f8b5c5831620f5884b0e1c7e40f864e2c737e6b483ccb"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/vendor/pdfjs/pdf.min.js",
+      "bytes": 320004,
+      "sha256": "5b5799e6f8c680663207ac5b42ee14eed2a406fa7af48f50c154f0c0b1566946"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/vendor/pdfjs/pdf.worker.min.js",
+      "bytes": 1087212,
+      "sha256": "feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b"
+    },
+    {
+      "tree": "local-app",
+      "path": "public/vendor/pdfjs/pdf_viewer.min.css",
+      "bytes": 45052,
+      "sha256": "0f2f7750328ec786c9588f83f1227c4e8862d1fe9b650f2bb0ca46d8c30f577c"
+    },
+    {
+      "tree": "local-app",
+      "path": "scripts/check-counts.ts",
+      "bytes": 755,
+      "sha256": "f206f4d7e7a39ec113c4ddcb9899f31fed79857018ccbf9c18c44351b7864f78"
+    },
+    {
+      "tree": "local-app",
+      "path": "scripts/check-curated-jobs.ts",
+      "bytes": 8391,
+      "sha256": "863731f260e74c30bbd4da87ca814de5aec1ce3f1a2392fb373fb2579c6cd2d6"
+    },
+    {
+      "tree": "local-app",
+      "path": "scripts/check-curated-view.tsx",
+      "bytes": 2177,
+      "sha256": "2506da4517aef8a6a72598f86f376854401d010e23aafd58d32535c6d4817114"
+    },
+    {
+      "tree": "local-app",
+      "path": "scripts/check-live-qa-saved.ts",
+      "bytes": 1450,
+      "sha256": "bd323ccfa0af8ef491b99b561052ea3b613c348e0ae62422c4a9360d50a7e84f"
+    },
+    {
+      "tree": "local-app",
+      "path": "scripts/check-resume-release.tsx",
+      "bytes": 10232,
+      "sha256": "c6c101274c50127c1ea9eaaa0dbc7c67f40cdb8d7bb60e9a696f3b463023eb2a"
+    },
+    {
+      "tree": "local-app",
+      "path": "scripts/check-ui-release.tsx",
+      "bytes": 3001,
+      "sha256": "51b5ddc1f1331c252e6b3f32d020ffc3157f0400a2c97ff6f619fb3590a3893c"
+    },
+    {
+      "tree": "local-app",
+      "path": "store/useCreditStore.ts",
+      "bytes": 2581,
+      "sha256": "68d41b40ec73e2a2f78ff82c1fdf0689d8c8c2f60888e791fc710ca9079cc8c2"
+    },
+    {
+      "tree": "local-app",
+      "path": "store/useJobStore.ts",
+      "bytes": 12640,
+      "sha256": "e02e33f5a23ba1a7ae991adc7975886ce70b81084675684e6a16b4b577428be5"
+    },
+    {
+      "tree": "local-app",
+      "path": "store/useResumeStore.ts",
+      "bytes": 4700,
+      "sha256": "ef752066e70277fb5fc5959f6187532e105a8d8fb4bf95c9ef057e6620abd6e6"
+    },
+    {
+      "tree": "local-app",
+      "path": "tsconfig.json",
+      "bytes": 693,
+      "sha256": "eb6403834851a9c3d3908c633d313b07b05487ca0c723a8c6d1d26f6f0f7fa67"
+    },
+    {
+      "tree": "local-app",
+      "path": "types/index.ts",
+      "bytes": 23,
+      "sha256": "6f370df75ddc2e877fedd6e48f6a9113fc946b9ec9adf773f203832d8869e42d"
+    },
+    {
+      "tree": "local-app",
+      "path": "types/job.ts",
+      "bytes": 1824,
+      "sha256": "51cf956f03bfe15a7db531a992a4a11829a96977972f46efd61495d799d55c64"
+    }
+  ]
+}

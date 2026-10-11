@@ -14,9 +14,9 @@ Backend releases are ready at 100% traffic:
 
 Four synthetic compiler exports and R2 uploads produced complete two-page A4 PDFs. Four templates also passed local desktop/mobile preview checks. No paid generation, live resume replacement/deletion, or profile save was performed.
 
-A web rollout happened before this ownership clarification: job-hunt-web-app-fixes-v3-1011 currently receives 100% traffic. Its 11 staged and 11 live HTTP smoke checks passed, but signed-in production export was not tested. Restoring the previous UI revision job-hunt-web-curated-fresh-1010, removing this task's app-fixes-qa web tag, and revoking the three unused web secret grants is pending explicit recovery approval. Automatic approval review rejected those mutations after the scope clarification; no rollback or grant removal was applied.
+The production UI is restored to its prior job-hunt-web-curated-fresh-1010 revision at 100% traffic, following explicit user recovery approval. The three public restoration checks (home, auth and public jobs API) return 200. This task's app-fixes-qa web tag is removed. The three temporary Secret Accessor bindings added for job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com were removed after confirming that the prior UI does not reference those secrets. Their removal was verified individually. Backend deployments and permissions were not changed by the restoration.
 
-The three grants were individually approved and applied earlier: roles/secretmanager.secretAccessor for job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com on resume-pdf-compiler-secret, resume-pdf-backend-r2-access-key and resume-pdf-backend-r2-secret-key. They are not project-wide grants. The proposed restoration verifies the prior UI does not reference these secrets before removing only those newly added bindings. Backend runtime permissions and deployments remain untouched.
+An earlier web rollout was reversed after the user clarified ownership. Its 11 staged and 11 live HTTP checks are retained only as historical verification of the candidate frontend source. Signed-in production save/export was not tested; these checks belong to the UI team's staging acceptance. Current production UI does not include this task's new frontend/server-route fixes. No new UI deployment or production Google sign-in is being pursued by this backend release.
 
 Dormant web revisions/builds may remain in GCP history after restoration. A future UI deployment must use the UI team's reviewed configuration, rather than inheriting the newest dormant service template without checking its environment/secret bindings.
 
@@ -53,6 +53,7 @@ The verified build configurations are also collected beside this handoff: produc
 
 | Area | Behavior after UI-team integration | Integrate together |
 | --- | --- | --- |
+| API privacy | Matched jobs require an authenticated session; caller-supplied userId cannot select another user's records; limits are bounded and legacy keyset shape is preserved | app/api/jobs/matched/route.ts and matching query helpers; deploy this server change with the UI team's release |
 | Contact/header and company formatting | Supplied phone, email, LinkedIn, GitHub, portfolio and additional contacts survive; title has its own row; duplicate contacts and literal Markdown emphasis are removed; long values wrap | lib/resume-contacts.ts, lib/resume-parser.ts, components/ResumeSheet.tsx, profile service contacts/extractor |
 | Resume page length | Complete multipage A4 preview, numbered pages, fit-to-width zoom on small screens; page-count and review notice reserve their own space | components/A4ResumePages.tsx, ResumeSheet.tsx, ResumeModal.tsx |
 | PDF download | Export compiles a real PDF, then displays Download PDF; template/working edits invalidate an old link; compile failure retains the previous saved PDF | ResumeModal.tsx, app/api/resume/export/route.ts, app/api/resume/base/route.ts, lib/job-resumes.ts, lib/storage/r2.ts |
@@ -74,6 +75,7 @@ Templates: MIT CAPD Classical (theme 2), Modern Ivy LaTeX (3), Minimalist Execut
 ## Required work for the UI team
 
 1. Start from your actual production frontend repository. Compare the immutable source snapshot against your UI; apply the changed groups in the table together. Do not replace unrelated designs or blindly copy the entire snapshot over your application.
+   Prioritize the authenticated matched-jobs endpoint and durable save/export server contracts. The restored older UI does not include this task's new frontend/server-route fixes; they remain pending the UI team's integration and deployment.
 2. Integrate lib/resume-contacts.ts, lib/resume-parser.ts, ResumeSheet.tsx and A4ResumePages.tsx together. Keep optional contacts, skills and projects in all four templates. Retain mobile fit-to-width, long-header wrapping, page numbers and unobstructed toolbars.
 3. Wire every ResumeModal caller to the opened generation ID, persisted save action and read-only history behavior. Integrate Applications, BackgroundResumeTasks and TailorResumeModal with durable edits. Surface stale-editor and export errors, and refresh after save; do not report a browser-only change as saved.
 4. Integrate the Next.js server routes/actions and their libraries on the UI team's hosting platform. These are the frontend's authenticated server layer, not standalone GCP profile/compiler services. The new base/export endpoints, storage actions, job queries, credit actions and session guards must ship with their corresponding components. Client-only deployment cannot run these contracts.
@@ -151,6 +153,6 @@ Next.js and eslint-config-next are pinned to 16.3.8, and the unused shadcn CLI d
 
 ## Rollback
 
-Use the prior revision names in release-evidence.json to move Cloud Run traffic back for web/profile/compiler independently. No destructive schema migration or regeneration of user resumes is required for this release. For the scope correction, restore the prior web revision and remove only this task's unused web grants after explicit recovery approval; do not change backend permissions. In subsequent UI-team releases, verify the older export contract before changing configuration.
+Use the prior revision names in release-evidence.json to move Cloud Run traffic back for web/profile/compiler independently. No destructive schema migration or regeneration of user resumes is required for this release. The scope correction is complete: prior web traffic restored and only this task's unused web grants removed after explicit recovery approval. Do not change backend permissions. In subsequent UI-team releases, verify the older export contract before changing configuration.
 
 Do not roll back the worker or remove current request/audit records to revert a UI. Preserve the four credited units and existing original/edited resume history.

@@ -7,6 +7,7 @@ COPY scripts/resume_to_json.py scripts/resume_json_to_preferences.py scripts/
 COPY service/main.py service/main.py
 COPY service/confirmation.py service/confirmation.py
 COPY service/resume_content.py service/resume_content.py
+COPY service/contacts.py service/contacts.py
 COPY service/test_main.py service/test_main.py
 COPY service/test_resume_content.py service/test_resume_content.py
 RUN JOB_HUNT_SERVICE_SECRET=container-test-only python -m unittest service.test_main service.test_resume_content

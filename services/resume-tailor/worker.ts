@@ -23,7 +23,7 @@ function run(command: string, args: string[], cwd: string) {
     child.on("error", error => { clearTimeout(timeout); reject(error); });
     child.on("close", code => { clearTimeout(timeout);
       if (timedOut) reject(new Error("worker_timeout"));
-      else if (code === 0 || code === 2) resolve(code);
+      else if (code === 0 || code === 2 || code === 3) resolve(code);
       else reject(new Error("agent_failed"));
     });
   });
@@ -126,6 +126,12 @@ export async function processRequest(requestId: string, agent = run) {
     const code = await agent(process.env.RESUME_PYTHON || "python", ["-m", "low_risk_agent", "--resume", resume, "--jd", jd,
       "--tenant-id", request.user_id, "--job-id", request.job_id, "--base-resume-id", request.base_resume_id,
       "--generation-id", request.id, "--summary", request.include_summary ? "yes" : "no", "--out", output], folder);
+    if (code === 3) {
+      // Keep the held credit while the durable provider batch is processing.
+      // A queued delivery replays cached stages and polls the same batch ID.
+      await resumeBatch(request);
+      return true;
+    }
     if (code === 2) {
       // A persisted review draft is billable, but remains explicitly unapproved.
       if (!await recoverOutput(request)) await release(request, "needs_review", "no_verified_review_output");
@@ -143,6 +149,20 @@ export async function processRequest(requestId: string, agent = run) {
   return true;
 }
 
+async function resumeBatch(request: RequestRow) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const paused = await client.query(`UPDATE resume_generation_requests SET status='queued',running_slot=NULL,
+      lease_token=NULL,lease_expires_at=NULL WHERE id=$1 AND lease_token=$2 AND status='running'
+      AND credit_state='held' RETURNING id`, [request.id, request.lease_token]);
+    if (paused.rows[0]) await client.query(`UPDATE resume_dispatch_outbox SET attempts=0,batch_poll_count=batch_poll_count+1,
+      dispatched_at=NULL,next_attempt_at=now()+interval '1 minute' WHERE request_id=$1`, [request.id]);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; }
+  finally { client.release(); }
+}
+
 export async function recover() {
   // Fence expired leases before settlement. Never reclaim them for another AI run.
   const expired = await pool.query(`UPDATE resume_generation_requests SET lease_token=gen_random_uuid()
@@ -150,7 +170,10 @@ export async function recover() {
       AND lease_expires_at<now() ORDER BY lease_expires_at LIMIT 20 FOR UPDATE SKIP LOCKED)
     RETURNING *`);
   for (const request of expired.rows) {
-    if (!await recoverOutput(request)) await release(request, "needs_review", "interrupted_attempt_no_verified_output");
+    if (await recoverOutput(request)) continue;
+    const durable = await pool.query(`SELECT 1 FROM resume_model_batches WHERE request_id=$1 LIMIT 1`, [request.id]);
+    if (durable.rows[0]) await resumeBatch(request);
+    else await release(request, "needs_review", "interrupted_attempt_no_verified_output");
   }
   const due = await pool.query(`SELECT o.request_id FROM resume_dispatch_outbox o
     JOIN resume_generation_requests r ON r.id=o.request_id

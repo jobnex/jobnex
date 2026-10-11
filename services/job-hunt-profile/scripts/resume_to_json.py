@@ -14,16 +14,20 @@ from pathlib import Path
 from docx import Document
 from docx.table import Table
 from pypdf import PdfReader
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from service.contacts import extract_contacts
 
 
 HEADINGS = {
     "SUMMARY": "summary", "PROFESSIONAL SUMMARY": "summary", "PROFILE": "summary",
     "OBJECTIVE": "summary", "CAREER OBJECTIVE": "summary",
     "SKILLS": "skills", "TECHNICAL SKILLS": "skills", "CORE COMPETENCIES": "skills",
+    "SKILLS & TECHNOLOGIES": "skills", "SKILLS AND TECHNOLOGIES": "skills",
     "EXPERIENCE": "experience", "WORK EXPERIENCE": "experience",
     "PROFESSIONAL EXPERIENCE": "experience", "EMPLOYMENT HISTORY": "experience",
     "PROJECTS": "projects", "TECHNICAL PROJECTS": "projects",
     "PERSONAL PROJECTS": "projects", "ACADEMIC PROJECTS": "projects",
+    "SELECTED PROJECTS": "projects", "KEY PROJECTS": "projects",
     "EDUCATION": "education", "ACADEMIC BACKGROUND": "education",
     "CERTIFICATIONS": "certifications", "CERTIFICATES": "certifications",
     "AWARDS": "awards", "PUBLICATIONS": "publications",
@@ -69,8 +73,12 @@ def experience_entries(raw: str) -> list[dict]:
     return entries
 
 
-def resume_details(text: str) -> dict:
+def resume_details(text: str, targets=()) -> dict:
     """Preserve detected sections verbatim; omit sections not found."""
+    text = re.sub(
+        r"(?<!\w)((?:SELECTED|TECHNICAL|PERSONAL|ACADEMIC|KEY) PROJECTS)(?!\w)\s*",
+        r"\n\1\n", text,
+    )
     sections = {}
     other = {}
     header_lines = []
@@ -103,18 +111,38 @@ def resume_details(text: str) -> dict:
     header_text = "\n".join(header_lines).strip()
     header = {}
     candidates = [line.strip() for line in header_lines if line.strip()]
-    if candidates and re.fullmatch(r"[A-Za-z][A-Za-z .'-]{2,80}", candidates[0]) and len(candidates[0].split()) >= 2:
-        header["name"] = candidates[0]
+    for line in candidates[:6]:
+        for candidate in re.split(r'\s*\|\s*|\s{2,}', line):
+            candidate = candidate.strip('#* ')
+            if re.fullmatch(r"[^\W\d_][\w .'\u2019-]{1,79}", candidate) and candidate.lower() not in {'resume','curriculum vitae','cv','linkedin','github','portfolio'} and not re.search(r'\b(?:engineer|scientist|developer|architect|analyst|designer|manager|consultant)\b',candidate,re.I):
+                header['name'] = candidate
+                break
+        if header.get('name'): break
     if match := EMAIL.search(header_text):
         header["email"] = match.group()
-    if match := PHONE.search(header_text):
-        header["phone"] = match.group(1).strip()
-    if links := URL.findall(header_text):
-        header["links"] = links
+    contacts = extract_contacts(text, targets)
+    if contacts['emails']:
+        header['email'] = header.get('email') or contacts['emails'][0]
+        header['emails'] = contacts['emails']
+    if contacts['phones']:
+        header['phone'] = contacts['phones'][0]
+        header['phones'] = contacts['phones']
+    if contacts['links']:
+        header['links'] = contacts['links']
     for line in candidates[1:]:
         if re.search(r"\b(?:engineer|scientist|developer|architect|analyst|designer|manager|consultant)\b", line, re.I) and len(line) <= 80:
-            header["title"] = line
+            header["title"] = line.strip("*_ ")
             break
+    additional = []
+    known = [header.get('name',''), *header.get('title','').split('|'), *contacts['emails'], *contacts['phones'], *contacts['links']]
+    for line in candidates:
+        for part in re.split(r'\s*\|\s*|\s{2,}', line):
+            part = part.strip('#* ')
+            if not part or part.lower() in {'resume','cv','linkedin','github','portfolio'}: continue
+            if any(value.strip() and value.strip() in part for value in known): continue
+            # Retain addresses, handles and other supplied header details verbatim.
+            additional.append(part)
+    if additional: header['additional_contacts'] = list(dict.fromkeys(additional))
     result = {"header": header} if header else {}
     result.update(sections)
     if "experience" in result:
@@ -127,16 +155,53 @@ def resume_details(text: str) -> dict:
     return result
 
 
+def recover_pdf_spacing(layout: str, plain: str) -> str:
+    """Recover only observed spaces from a second extraction of identical glyphs.
+
+    Keep layout line order, indentation, punctuation and word casing. A differing
+    glyph sequence (e.g. reordered columns) is ambiguous and remains untouched.
+    """
+    if re.sub(r"\s", "", layout) != re.sub(r"\s", "", plain):
+        return layout
+    boundaries = set()
+    glyphs = 0
+    for match in re.finditer(r"\S|\s+", plain):
+        if match.group().isspace():
+            if glyphs:
+                boundaries.add(glyphs)
+        else:
+            glyphs += 1
+    output = []
+    glyphs = 0
+    for char in layout:
+        if not char.isspace():
+            if glyphs in boundaries and output and output[-1].isalnum() and char.isalnum():
+                output.append(" ")
+            glyphs += 1
+        output.append(char)
+    return "".join(output)
+
+
+def extract_pdf_page(page) -> str:
+    if "/Contents" not in page:
+        return ""
+    layout = page.extract_text(extraction_mode="layout") or ""
+    plain = page.extract_text() or ""
+    # Soft hyphens are formatting hints, not part of a word.
+    return recover_pdf_spacing(layout, plain).replace("\u00ad", "").replace("\uf0b7", "•").strip()
+
+
 def convert(input_path: Path, output_dir: Path) -> Path:
     if not input_path.is_file() or input_path.suffix.lower() not in {".pdf", ".docx"}:
         raise ValueError(f"Expected a PDF or DOCX file: {input_path}")
 
+    targets = []
     if input_path.suffix.lower() == ".pdf":
         reader = PdfReader(input_path)
         if reader.is_encrypted:
             raise ValueError(f"Encrypted PDF: {input_path}")
         pages = [
-            page.extract_text(extraction_mode="layout").replace("\uf0b7", "•").strip()
+            extract_pdf_page(page)
             for page in reader.pages
         ]
         text = "\n\n".join(page for page in pages if page)
@@ -144,8 +209,17 @@ def convert(input_path: Path, output_dir: Path) -> Path:
             raise ValueError(f"No extractable text in {input_path}; scanned PDFs need OCR")
         page_count = len(pages)
         page_data = [{"number": number, "text": page} for number, page in enumerate(pages, 1)]
+        for page in reader.pages:
+            for reference in page.get('/Annots', []):
+                action = reference.get_object().get('/A')
+                if action:
+                    targets.append(action.get_object().get('/URI', ''))
     else:
         document = Document(input_path)
+        for part in [document.part, *(section.header.part for section in document.sections),
+                     *(section.footer.part for section in document.sections)]:
+            targets.extend(rel.target_ref for rel in part.rels.values()
+                           if rel.is_external and rel.reltype.endswith('/hyperlink'))
         blocks = []
         for block in document.iter_inner_content():
             if isinstance(block, Table):
@@ -156,6 +230,16 @@ def convert(input_path: Path, output_dir: Path) -> Path:
             else:
                 blocks.append(block.text.strip())
         text = "\n".join(block for block in blocks if block)
+        # Word header/footer contacts are outside the main body.
+        margins = [node.text or '' for section in document.sections
+                   for container in (section.header, section.footer) for node in container._element.iter()
+                   if node.tag.endswith('}t')]
+        text = '\n'.join(filter(None, [*dict.fromkeys(margins), text]))
+        xml_text = '\n'.join(node.text or '' for node in document.element.iter() if node.tag.endswith('}t'))
+        if not text.strip(): text = xml_text
+        # Contacts in Word text boxes may not appear in paragraph.text.
+        recovered = extract_contacts(xml_text)
+        text += ''.join('\n'+value for values in recovered.values() for value in values if value not in text)
         if not text:
             raise ValueError(f"No extractable text in {input_path}")
         page_count = None  # DOCX page count depends on the rendering application.
@@ -169,7 +253,7 @@ def convert(input_path: Path, output_dir: Path) -> Path:
         "page_count": page_count,
         "pages": page_data,
         "text": text,
-        **resume_details(text),
+        **resume_details(text, targets),
     }
     try:
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=output_dir, suffix=".tmp", delete=False) as file:

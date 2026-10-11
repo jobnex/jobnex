@@ -3,7 +3,7 @@
 #let theme = int(sys.inputs.at("theme", default: "2"))
 #let serif = theme == 5
 #let font-size = if serif { 8.6pt } else if theme == 6 { 8.8pt } else { 8.5pt }
-#set page(paper: "us-letter", margin: (x: if theme == 6 { 1.1cm } else { 1cm }, y: 0.8cm))
+#set page(paper: "a4", margin: (x: if theme == 6 { 1.1cm } else { 1cm }, y: 0.8cm))
 #set text(font: if serif { "Times New Roman" } else { "Arial" }, size: font-size, fill: black,
   top-edge: 0.95em, bottom-edge: -0.425em)
 #set par(leading: 0pt, spacing: 0pt, justify: false)

@@ -19,6 +19,7 @@ from psycopg.types.json import Jsonb
 from dotenv import load_dotenv
 from service.confirmation import pending_preferences, PENDING_UPDATE
 from service.resume_content import normalize, markdown_from
+from service.contacts import contact_values
 
 sys.path.insert(0, os.environ.get("RESUME_SCRIPTS_DIR") or str(Path(__file__).resolve().parents[1]))
 from scripts.resume_json_to_preferences import apply_overrides, build_preferences
@@ -65,12 +66,14 @@ def read_profile(user_id: str) -> dict:
 
 
 def save_resume_content(conn, user_id: str, details: dict):
-    row = conn.execute(
-        "UPDATE user_pref_resumes SET content=%s, parsed_data=%s, updated_at=now() WHERE user_id=%s RETURNING id",
+    # A detached historical row is retained for audits, never made active by an autosave.
+    return conn.execute(
+        """UPDATE user_pref_resumes r SET content=%s, parsed_data=%s, updated_at=now()
+           FROM user_job_preferences p
+           WHERE r.user_id=%s AND p.user_id=r.user_id AND p.active_resume_id=r.id
+             AND r.is_primary=true AND r.file_key IS NOT NULL RETURNING r.id""",
         (markdown_from(details), Jsonb(details), user_id),
     ).fetchone()
-    if row:
-        conn.execute("UPDATE user_job_preferences SET active_resume_id=%s WHERE user_id=%s", (row[0], user_id))
 
 
 @app.get("/profile")
@@ -88,17 +91,38 @@ def save_profile(
     user_id = authenticated_user(x_user_id, x_timestamp, x_signature)
     if update.preferences is None and update.resume_details is None:
         raise HTTPException(400, "Nothing to save")
-    current = read_profile(user_id)
-    preferences = current["preferences"]
-    details = current["resume_details"]
-    if update.preferences is not None:
-        try:
-            preferences = apply_overrides(build_preferences(details.get("text") or "Resume"), update.preferences)
-        except (ValueError, KeyError) as error:
-            raise HTTPException(400, str(error)) from error
-    if update.resume_details is not None:
-        details = normalize(details | update.resume_details, edited=True)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (user_id,))
+        row = conn.execute(
+            "SELECT preferences,resume_details FROM user_job_preferences WHERE user_id=%s FOR UPDATE",
+            (user_id,),
+        ).fetchone()
+        preferences, details = (row[0] or {}, row[1] or {}) if row else ({}, {})
+        if update.resume_details is not None:
+            active = conn.execute(
+                """SELECT r.id FROM user_pref_resumes r JOIN user_job_preferences p
+                   ON p.user_id=r.user_id AND p.active_resume_id=r.id
+                   WHERE r.user_id=%s AND r.is_primary=true AND r.file_key IS NOT NULL FOR UPDATE OF r,p""",
+                (user_id,),
+            ).fetchone()
+            if not active:
+                raise HTTPException(409, "Upload an active resume before saving resume details")
+            pending = conn.execute(
+                "SELECT id FROM resume_generation_requests WHERE user_id=%s AND status IN ('queued','running') LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if pending:
+                raise HTTPException(409, "Wait for resume generation to finish before changing the base resume")
+        if update.preferences is not None:
+            try:
+                preferences = apply_overrides(build_preferences(details.get("text") or "Resume"), update.preferences)
+            except (ValueError, KeyError) as error:
+                raise HTTPException(400, str(error)) from error
+        if update.resume_details is not None:
+            merged = details | update.resume_details
+            if isinstance(update.resume_details.get('personalDetails'), dict):
+                merged['personalDetails'] = (details.get('personalDetails') or {}) | update.resume_details['personalDetails']
+            details = normalize(merged, edited=True)
         conn.execute(
             f"""INSERT INTO user_job_preferences
                (user_id, preferences, resume_details, preferences_created_at, preferences_updated_at,
@@ -208,6 +232,10 @@ def import_r2_resume(user: str, data: dict):
             inferred = build_preferences(details["text"])
         except Exception:
             raise HTTPException(400, "Could not extract text from resume") from None
+    if not str(details.get("text", "")).strip():
+        raise HTTPException(400, "Resume has no extractable text. Upload a text-based PDF or DOCX.")
+    if data.get("validateOnly") is True:
+        return {"valid": True}
     current = read_profile(user)
     preferences = current["preferences"] | inferred
     for key in ("jobTypes", "salaryMin", "salaryMax", "selectedTemplateId", "includeSummarySections", "autofillFromResume"):
@@ -218,7 +246,8 @@ def import_r2_resume(user: str, data: dict):
     result = {"preferences": preferences, "resume_details": details}
     header = details.get("header", {})
     details["personalDetails"] = {"fullName": header.get("name", ""), "email": header.get("email", ""),
-        "phoneNumber": header.get("phone", ""), "location": (preferences.get("cities") or [""])[0]}
+        "phoneNumber": header.get("phone", ""), "location": header.get('location',''),
+        "links": header.get('links', []), 'emails': header.get('emails', []), 'phones': header.get('phones', [])}
     details["educationHistory"] = [{"id": "1", "college": details["education"], "degree": "", "field": "",
         "startDate": "", "endDate": "", "grade": "", "maxGrade": "", "gradeType": "CGPA"}] if details.get("education") else []
     entries = details.get("experience", [])
@@ -226,7 +255,7 @@ def import_r2_resume(user: str, data: dict):
         "startDate": "", "endDate": "", "jobDescription": "\n".join(entry.get("bullets", [])), "skills": [], "domains": [], "responsibilities": ""}
         for index, entry in enumerate(entries if isinstance(entries, list) else [])]
     preferences["resumeFileKey"] = data["objectKey"]
-    lines = ["# " + header.get("name", ""), " | ".join(filter(None, [header.get("email"), header.get("phone")])), ""]
+    lines = ["# " + header.get("name", ""), *(['**'+header['title']+'**'] if header.get('title') else []), " | ".join(contact_values(details['personalDetails'], header)), ""]
     for title, field in [("Professional Summary", "summary"), ("Education", "education"), ("Skills & Technologies", "skills")]:
         value = details.get(field)
         if isinstance(value, str) and value.strip(): lines.extend(["## " + title, value, ""])
@@ -241,10 +270,17 @@ def import_r2_resume(user: str, data: dict):
     details["compiler_payload"] = {"markdown": "\n".join(lines), "templateId": preferences.get("selectedTemplateId", "mit-capd")}
     details = normalize(details)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (user,))
         # Ignore a stale extraction if the user already uploaded a newer resume.
         active = conn.execute("SELECT file_key FROM user_pref_resumes WHERE user_id=%s FOR UPDATE", (user,)).fetchone()
         if not active or active[0] != data["objectKey"]:
             raise HTTPException(409, "Resume replaced during extraction; retry latest upload")
+        pending = conn.execute(
+            "SELECT id FROM resume_generation_requests WHERE user_id=%s AND status IN ('queued','running') LIMIT 1",
+            (user,),
+        ).fetchone()
+        if pending:
+            raise HTTPException(409, "Wait for resume generation to finish before changing the base resume")
         conn.execute(f"""INSERT INTO user_job_preferences(user_id,preferences,resume_details,active_resume_id,resume_details_created_at,resume_details_updated_at)
             VALUES(%s,%s,%s,(SELECT id FROM user_pref_resumes WHERE user_id=%s),now(),now())
             ON CONFLICT(user_id) DO UPDATE SET preferences={PENDING_UPDATE},resume_details=EXCLUDED.resume_details,

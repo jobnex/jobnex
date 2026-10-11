@@ -13,6 +13,8 @@ async function main() {
   const client = { release() {}, async query(sql, values = []) {
     const text = sql.replace(/\s+/g, ' ');
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(text)) return result();
+    if (text.includes('pg_advisory_xact_lock')) return result();
+    if (text.startsWith('SELECT r.id,r.content')) return result([{id:resume.id,content:resume.markdown,parsed_data:{}}]);
     if (text.includes('WHERE user_id=$1 AND idempotency_key=$2')) return result(rows.filter(row => row.user_id === values[0] && row.key === values[1]));
     if (text.startsWith('SELECT job_description')) return result([{ job_description: 'Synthetic job' }]);
     if (text.startsWith('INSERT INTO wallets')) return result();
@@ -34,7 +36,7 @@ async function main() {
   }};
   const exports = {};
   const code = ts.transpileModule(fs.readFileSync('lib/resume-tailoring.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
-  vm.runInNewContext(code, { exports, require: name => name === '@/lib/db' ? { pool: { connect: async () => client } } : name === '@/lib/resume-content' ? { resumeText: () => '' } : require(name) });
+  vm.runInNewContext(code, { exports, require: name => name === '@/lib/db' ? { pool: { connect: async () => client } } : name === '@/lib/resume-content' ? { resumeText: content => content } : require(name) });
   const enqueue = exports.enqueueTailoring;
   const first = await enqueue(userId, 'job-a', resume, 'key-a');
   const second = await enqueue(userId, 'job-b', resume, 'key-b');

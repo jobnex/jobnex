@@ -5,15 +5,19 @@ This supplements and supersedes the deployment/integration status in the earlier
 
 ## Current deployment status
 
-The final web build passes, but production web traffic still runs the prior revision. Staging the new web revision failed because job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com cannot read the three existing compiler/R2 secrets listed below. Automatic approval review rejected granting this persistent access without explicit approval identifying the recipient, role, resources, and secret-level scope. No IAM grant was applied.
+The core security/UI web revision job-hunt-web-app-fixes-core-1011 is ready and receives 100% traffic. Eleven staged and eleven live HTTP checks passed: public pages return 200, and private APIs reject unauthenticated requests with 401. The profile revision job-hunt-profile-app-fixes-v2-1010 and A4 compiler revision resume-pdf-compiler-app-fixes-1010 also receive 100% traffic.
 
-The profile revision job-hunt-profile-app-fixes-v2-1010 and A4 compiler revision resume-pdf-compiler-app-fixes-1010 are ready and receive 100% traffic. The web code is backed up for collection; production web promotion remains pending the narrow access decision and final staged smoke tests.
+Production storage and direct PDF operations are not fully enabled. The web runtime job-hunt-web-runtime@job-scout-508222.iam.gserviceaccount.com cannot read three existing compiler/R2 secrets. Automatic approval review rejected granting persistent access without explicit approval identifying the recipient, role, resources, and secret-level scope. No IAM grant was applied. The core release removes failed new secret references and uses existing permissions; unavailable export operations return a controlled error instead of fabricating a PDF or charging for base formatting. Upload/download/object cleanup paths need the scoped access before full production acceptance.
+
+The compiler itself was verified with four real synthetic exports and R2 uploads, each producing two A4 pages, and the local UI with existing credentials passes all four template previews. The remaining release gate is production web storage/PDF configuration and its authenticated acceptance; code, tests, documentation and GitHub backups are complete.
 
 ## Where to collect the code
 
 Repository: https://github.com/jobnex/jobnex
 Frontend backup branch: docs/resume-ui-handoff-20261010; PR https://github.com/jobnex/jobnex/pull/13.
 Backend branch: fix/resume-background-credits; PR https://github.com/jobnex/jobnex/pull/12.
+
+The exact UI source commit is [3ba7471c4129bade2d78df534eb9a3bdde5c25e3](https://github.com/jobnex/jobnex/tree/3ba7471c4129bade2d78df534eb9a3bdde5c25e3/docs/ui/releases/app-fixes-20261010). The backend source commit is [8a8a3f441b4eb0df269dda842b8eb6ec630bf45a](https://github.com/jobnex/jobnex/commit/8a8a3f441b4eb0df269dda842b8eb6ec630bf45a).
 
 The new bundle is docs/ui/releases/app-fixes-20261010/. Use production-web/ as the source of the GCP frontend, local-app/ for the separate localhost UI, and source-manifest.json for original relative paths and SHA-256 checksums. The ZIP preserves those paths for collection outside Git. These are complete allowlisted source snapshots, not files renamed .txt. Secrets, environment files, private resumes, personal screenshots, dependencies and generated build output are excluded.
 
@@ -33,6 +37,8 @@ Local working sources:
 - Profile, PDF compiler and worker source: resume-backend-release/
 
 Release revisions, image digests, build IDs and verified traffic are recorded in release-evidence.json beside this handoff. Use the exact pushed commit and release manifest when collecting code; old ZIPs and old .txt snapshots do not contain this release.
+
+The verified build configurations are also collected beside this handoff: production-cloudbuild.json, profile-cloudbuild.json and compiler-cloudbuild.json. Run the web configuration from the collected production-web source directory; run each service configuration from the corresponding backend service directory. These files record the successful image-build steps. Runtime secret bindings and traffic promotion remain separate deployment steps described below; a successful image build alone does not enable production storage/PDF access.
 
 ## User-visible changes and integration files
 
@@ -98,7 +104,7 @@ No model switch or paid generation occurs in this release. Synchronous Gemini wr
 
 Re-run:
 1. TypeScript and ESLint on the integrated app; do not disable rules to silence regressions.
-2. scripts/check-resume-release.tsx: sparse/full factual forms, contacts, education/company, skills/projects and four-template rendering.
+2. The portable docs/ui/tests/check-root-release.cjs accepts local and production app roots as positional arguments and checks session/keyset/limits/admission without DB or AI. Install the snapshot dependencies with npm ci --legacy-peer-deps before running. scripts/check-resume-release.tsx: sparse/full factual forms, contacts, education/company, skills/projects and four-template rendering.
 3. scripts/check-ui-release.tsx: real navigation, credit/history presentation.
 4. Auth/privacy negative controls and keyset preservation; requested/current/failed run history, newest/24h filtering, country deduplication and pagination.
 5. Desktop and 390 × 844 mobile preview in all four templates; controls remain reachable; second page retains projects; close/cancel does not save working changes.

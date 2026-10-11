@@ -30,7 +30,8 @@
           "status": "True",
           "type": "RoutesReady"
         }
-      ]
+      ],
+      "imageDigest": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile@sha256:9e4a0b30f7c1ea12a433b4213fa0073a1955cc6fc68ff8a67adce19926caafbc"
     },
     "resume-pdf-compiler": {
       "readyRevision": "resume-pdf-compiler-app-fixes-1010",
@@ -60,14 +61,20 @@
           "status": "True",
           "type": "RoutesReady"
         }
-      ]
+      ],
+      "imageDigest": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/resume-pdf-compiler@sha256:7c052239462410bf57b75ade06c15efb9f2d6ad6cb872b41d5e09f5e0ad636e1"
     },
     "job-hunt-web": {
-      "readyRevision": "job-hunt-web-curated-fresh-1010",
+      "readyRevision": "job-hunt-web-app-fixes-core-1011",
       "url": "https://job-hunt-web-znsph25yja-ue.a.run.app",
       "traffic": [
         {
           "percent": 100,
+          "revisionName": "job-hunt-web-app-fixes-core-1011",
+          "tag": "app-fixes-qa",
+          "url": "https://app-fixes-qa---job-hunt-web-znsph25yja-ue.a.run.app"
+        },
+        {
           "revisionName": "job-hunt-web-curated-fresh-1010",
           "tag": "curated-qa",
           "url": "https://curated-qa---job-hunt-web-znsph25yja-ue.a.run.app"
@@ -78,30 +85,31 @@
           "url": "https://neondb-trial---job-hunt-web-znsph25yja-ue.a.run.app"
         }
       ],
-      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web@sha256:e1f5ce7b20e65d4f2fb4ad9491a39bcfe0ce83cbb2a6d9cb0302cfed5e18db6a",
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web:app-fixes-20261010",
       "conditions": [
         {
-          "lastTransitionTime": "2026-10-10T23:03:01.681899Z",
+          "lastTransitionTime": "2026-10-11T04:24:30.109156Z",
           "status": "True",
           "type": "Ready"
         },
         {
-          "lastTransitionTime": "2026-10-10T23:01:42.294861Z",
+          "lastTransitionTime": "2026-10-11T04:17:34.529841Z",
           "status": "True",
           "type": "ConfigurationsReady"
         },
         {
-          "lastTransitionTime": "2026-10-10T23:03:01.649459Z",
+          "lastTransitionTime": "2026-10-11T04:24:30.061936Z",
           "status": "True",
           "type": "RoutesReady"
         }
-      ]
+      ],
+      "imageDigest": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web@sha256:24576fc6f70cbc889c60dc8740e44be84e6c8614a44c467e69b263207d8c4d0c"
     }
   },
   "web_build": {
     "id": "098a6f8f-a56b-4fca-863b-d0b66d49584f",
     "status": "SUCCESS",
-    "promotion": "blocked_pending_explicit_secret_access_approval"
+    "promotion": "core_security_ui_live_at_100_percent; full_storage_pdf_access_pending_explicit_approval"
   },
   "profile_build": {
     "id": "65c9cff3-8f5e-44c9-8b2a-4ee87aaefd0f",
@@ -215,5 +223,159 @@
       "resume-pdf-backend-r2-secret-key"
     ],
     "grants_applied": false
+  },
+  "live_http_smoke": {
+    "url": "https://job-hunt-web-znsph25yja-ue.a.run.app",
+    "checks": [
+      {
+        "path": "/privacy",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/terms",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/guidelines",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/contact",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/api/jobs?limit=1",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/api/jobs/matched?userId=00000000-0000-4000-8000-000000000000&limit=1",
+        "method": "GET",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/jobs/saved",
+        "method": "GET",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/job-hunt/applications",
+        "method": "GET",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/resume/tailor/requests",
+        "method": "POST",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/resume/export",
+        "method": "POST",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/resume/base",
+        "method": "POST",
+        "status": 401,
+        "expected": 401
+      }
+    ],
+    "passed": 11
+  },
+  "staged_http_smoke": {
+    "url": "https://app-fixes-qa---job-hunt-web-znsph25yja-ue.a.run.app",
+    "checks": [
+      {
+        "path": "/privacy",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/terms",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/guidelines",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/contact",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/api/jobs?limit=1",
+        "method": "GET",
+        "status": 200,
+        "expected": 200
+      },
+      {
+        "path": "/api/jobs/matched?userId=00000000-0000-4000-8000-000000000000&limit=1",
+        "method": "GET",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/jobs/saved",
+        "method": "GET",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/job-hunt/applications",
+        "method": "GET",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/resume/tailor/requests",
+        "method": "POST",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/resume/export",
+        "method": "POST",
+        "status": 401,
+        "expected": 401
+      },
+      {
+        "path": "/api/resume/base",
+        "method": "POST",
+        "status": 401,
+        "expected": 401
+      }
+    ],
+    "passed": 11
+  },
+  "source_commits": {
+    "ui": "3ba7471c4129bade2d78df534eb9a3bdde5c25e3",
+    "backend": "8a8a3f441b4eb0df269dda842b8eb6ec630bf45a"
+  },
+  "release_gates": {
+    "met": 13,
+    "unmet": 1,
+    "abandoned": 0,
+    "unmet_gate": "root G5: full production storage/PDF configuration and authenticated acceptance, pending explicit scoped secret access approval"
   }
 }

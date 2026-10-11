@@ -1,0 +1,1 @@
+{"steps": [{"name": "gcr.io/cloud-builders/docker", "args": ["build", "-t", "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile:app-fixes-v2-20261010", "."]}], "images": ["us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile:app-fixes-v2-20261010"], "timeout": "1200s"}

@@ -39,6 +39,36 @@ def request(*, tenant: str = "tenant-a", estimates: bool = True, jd: str = JD) -
 
 
 class PipelineTests(unittest.TestCase):
+    def test_length_fit_model_failure_keeps_prior_draft_for_review(self):
+        from low_risk_agent.pipeline import ResumeTailoringPipeline as FullPipeline
+        from low_risk_agent.llm import OutputTokenLimitError, StructuredOutputError, ProviderRequestError
+        from low_risk_agent.models import TokenUsage
+        usage = TokenUsage(stage="fit_length", model="google/gemini-3.8-flash",
+            input_tokens=20, output_tokens=16000, estimated_cost_usd=0.06, cache_read_tokens=0, cache_write_tokens=0, request_id="public-test")
+        for error in [OutputTokenLimitError("truncated", usage),
+                      StructuredOutputError("invalid JSON", usage),
+                      ProviderRequestError("model provider request timed out")]:
+            with self.subTest(error=type(error).__name__):
+                def fail(_payload):
+                    raise error
+                llm = ScriptedLLM({"fit_length": fail})
+                result = FullPipeline(llm=llm).run(request())
+                self.assertEqual(result.status, "needs_review", result.error)
+                self.assertIn("Acme Corp", result.resume_markdown)
+                self.assertIn("Jane Doe", result.resume_markdown)
+                self.assertIn("length.fit_unavailable", result.error)
+                self.assertEqual(llm.counts["fit_length"], 1)
+                if hasattr(error, "usage"):
+                    self.assertIn(usage, result.usage)
+
+    def test_initial_craft_failure_does_not_invent_saved_draft(self):
+        from low_risk_agent.llm import ProviderRequestError
+        def fail(_payload):
+            raise ProviderRequestError("model provider request timed out")
+        result = ResumeTailoringPipeline(llm=ScriptedLLM({"craft": fail})).run(request())
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.resume_markdown, "")
+
     def test_craft_payload_carries_each_roles_own_bullet_count(self) -> None:
         # CRAFT_SYSTEM references role_bullet_counts as a density reference
         # point (see prompts.py) -- this confirms the payload actually
@@ -253,7 +283,8 @@ class PipelineTests(unittest.TestCase):
         )
 
         self.assertEqual(allowed.status, "completed_with_estimates")
-        self.assertEqual(denied.status, "needs_review")
+        self.assertEqual(denied.status, "failed")
+        self.assertEqual(denied.resume_markdown, "", "Rejected invented metrics must not become usable output.")
         self.assertEqual(denied.revision_count, 1)
         self.assertEqual(denied_llm.counts["semantic_review"], 0)
         self.assertTrue(
@@ -326,7 +357,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result.source_facts, [])
         self.assertEqual(result.claim_provenance, [])
 
-    def test_repeated_unknown_role_terminates_as_needs_review(self) -> None:
+    def test_repeated_unknown_role_terminates_without_usable_output(self) -> None:
         def rogue_role(payload):
             draft = ScriptedLLM._draft(payload)
             role = draft.experience[0].model_copy(update={"role_id": "rogue"})
@@ -336,7 +367,8 @@ class PipelineTests(unittest.TestCase):
             llm=ScriptedLLM({"craft": rogue_role}), cache_secret=SECRET
         ).run(request())
 
-        self.assertEqual("needs_review", result.status)
+        self.assertEqual("failed", result.status)
+        self.assertEqual("", result.resume_markdown)
         self.assertEqual(1, result.revision_count)
         self.assertNotIn("KeyError", result.error)
 

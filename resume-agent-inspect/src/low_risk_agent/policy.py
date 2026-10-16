@@ -11,6 +11,7 @@ from .models import (
     ComplianceCheck,
     CriticStrategy,
     DraftBullet,
+    MetricAnnotation,
     RepairOutput,
     ResumeDraft,
     ResumeSource,
@@ -23,7 +24,7 @@ WEAK_VERB = re.compile(
     re.IGNORECASE,
 )
 OWNERSHIP_VERB = re.compile(
-    r"\b(?:architected|directed|headed|led|managed|owned|spearheaded|supervised)\b",
+    r"\b(?:architected|(?<!self-)directed|headed|led|managed|owned|spearheaded|supervised)\b",
     re.IGNORECASE,
 )
 GENERIC_SKILL_CATEGORIES = {
@@ -76,9 +77,40 @@ def attach_metric_fact_ids(draft: ResumeDraft, source: ResumeSource) -> ResumeDr
     facts = fact_map(source)
 
     def attach(bullet: DraftBullet, group_id: str = "") -> DraftBullet:
+        def cited_metric(literal: str, body_id: str = ""):
+            bodies = [facts[fid] for fid in bullet.fact_ids if fid in facts
+                      and facts[fid].kind in {"responsibility", "project_detail", "other"}
+                      and (not body_id or fid == body_id)]
+            return next((fact for fact in facts.values()
+                         if fact.kind == "metric" and fact.source_span == literal
+                         and (not group_id or fact.role_or_project_id in {"", group_id})
+                         and any(body.span_start <= fact.span_start
+                                 and fact.span_end <= body.span_end
+                                 and body.role_or_project_id == fact.role_or_project_id
+                                 for body in bodies)), None)
+
+        metrics = []
+        for metric in bullet.metrics:
+            cited = facts.get(metric.fact_id)
+            if metric.origin == "source" and cited and cited.kind in {
+                "responsibility", "project_detail", "other"
+            }:
+                exact = cited_metric(metric.literal, metric.fact_id)
+                if exact:
+                    metric = metric.model_copy(update={"fact_id": exact.fact_id})
+            metrics.append(metric)
+        annotated = {metric.literal for metric in metrics}
+        for match in METRIC.finditer(bullet.text):
+            literal = match.group()
+            if literal not in annotated:
+                exact = cited_metric(literal)
+                if exact:
+                    metrics.append(MetricAnnotation(literal=literal, origin="source",
+                                                    fact_id=exact.fact_id))
+                    annotated.add(literal)
         metric_ids = [
             metric.fact_id
-            for metric in bullet.metrics
+            for metric in metrics
             if metric.origin == "source"
             and metric.fact_id in facts
             and facts[metric.fact_id].kind == "metric"
@@ -88,8 +120,8 @@ def attach_metric_fact_ids(draft: ResumeDraft, source: ResumeSource) -> ResumeDr
         fact_ids = list(dict.fromkeys([*bullet.fact_ids, *metric_ids]))
         return (
             bullet
-            if fact_ids == bullet.fact_ids
-            else bullet.model_copy(update={"fact_ids": fact_ids})
+            if fact_ids == bullet.fact_ids and metrics == bullet.metrics
+            else bullet.model_copy(update={"fact_ids": fact_ids, "metrics": metrics})
         )
 
     return draft.model_copy(
@@ -471,19 +503,16 @@ def lint_draft(
         group.group_id for group in source.projects if group.group_id not in set(actual_projects)
     ]
     if omitted_projects:
-        # Same auditability as experience.role_omitted above. Unlike roles,
-        # project narrowing down to a JD-relevant subset is the intended,
-        # already-bounded behavior of the project-selection machinery (see
-        # #1 in hard-count-low-resume.md, select_projects()'s own 1-3
-        # cap) — this is observability, not a new restriction.
+        # Library selection already narrows source.projects before crafting.
+        # The writer must retain those projects as independent entries.
         checks.append(
             check(
                 "projects.omitted",
                 False,
                 "projects",
                 f"Omitted project(s) not present in the rendered resume: "
-                f"{', '.join(omitted_projects)}.",
-                severity="info",
+                f"{', '.join(omitted_projects)}. Condense project bullets instead of dropping projects.",
+                severity="error",
             )
         )
     for project in draft.projects:
@@ -937,7 +966,7 @@ def rendered_protection_checks(
         and re.sub(r"\s*\[cite:\s*\d+\]", "", facts[fact_id].source_span, flags=re.IGNORECASE)
         not in markdown
     ]
-    return [
+    checks = [
         check(
             "render.protected_entities",
             not missing,
@@ -946,6 +975,21 @@ def rendered_protection_checks(
             evidence_ids=missing,
         )
     ]
+    if draft is not None:
+        experience = re.search(r"^## Experience\s*\n(.*?)(?=^## |\Z)", markdown, re.M | re.S)
+        headers = re.findall(r"^### (.+)$", experience.group(1), re.M) if experience else []
+        groups = {group.group_id for group in source.roles}
+        roles = [role for role in draft.experience if role.role_id in groups]
+        misplaced = []
+        for index, role in enumerate(roles):
+            header = headers[index] if index < len(headers) else ""
+            misplaced.extend(fact.fact_id for fact in source.facts
+                if fact.role_or_project_id == role.role_id and fact.kind in {"employer", "date"}
+                and re.sub(r"\s*\[cite:\s*\d+\]", "", fact.source_span, flags=re.I) not in header)
+        checks.append(check("render.role_entities", not misplaced and len(headers) == len(roles),
+                            "experience", "Keep each employer and date in its own role header.",
+                            evidence_ids=misplaced))
+    return checks
 
 
 def draft_uses_estimates(draft: ResumeDraft) -> bool:

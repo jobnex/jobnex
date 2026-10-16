@@ -10,8 +10,9 @@ from uuid import UUID, uuid4
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from .cache import MemoryJdAnalysisCache, PostgresJdAnalysisCache
-from .llm import configure_langsmith_env
-from .models import RunRequest
+from .batch import BatchPending, DurableTransport
+from .llm import OpenAICompatibleClient, configure_langsmith_env
+from .models import PipelineConfig, RunRequest
 from .pipeline import ResumeTailoringPipeline
 from .render import write_result
 
@@ -28,8 +29,11 @@ def _run_pipeline(pipeline: ResumeTailoringPipeline, request: RunRequest):
             "tenant_id": request.tenant_id,
             "include_summary": request.include_summary,
             "uses_project_library": bool(request.project_library),
+            "writer_model": pipeline.config.writer_model,
+            "analyzer_model": pipeline.config.analyzer_model,
+            "review_model": pipeline.config.review_model,
         },
-        tags=["resume-tailoring"],
+        tags=["resume-tailoring", pipeline.config.writer_model],
     )(pipeline.run)(request)
 
 
@@ -115,9 +119,15 @@ def main(argv: list[str] | None = None) -> int:
         configure_langsmith_env()
 
         cache = PostgresJdAnalysisCache(database_url) if database_url else MemoryJdAnalysisCache()
+        config = PipelineConfig()
+        llm = OpenAICompatibleClient(config)
+        if store and generation_id:
+            llm.transport = DurableTransport(store.database_url, generation_id, args.tenant_id, llm._post_json)
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         with SqliteSaver.from_conn_string(str(checkpoint_path)) as checkpointer:
             pipeline = ResumeTailoringPipeline(
+                config=config,
+                llm=llm,
                 jd_cache=cache,
                 cache_secret=secret or None,
                 checkpointer=checkpointer,
@@ -191,6 +201,9 @@ def main(argv: list[str] | None = None) -> int:
             if result.status == "needs_review"
             else 1
         )
+    except BatchPending:
+        print(json.dumps({"status": "batch_pending"}))
+        return 3
     except Exception as error:
         print(f"{error.__class__.__name__}: {error}", file=sys.stderr)
         return 1

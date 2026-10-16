@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .batch import BatchPending
+
 import os
 import re
 import secrets
@@ -13,7 +15,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from .cache import JdAnalysisCache, MemoryJdAnalysisCache, jd_cache_key
-from .llm import OpenAICompatibleClient, StructuredLLM
+from .llm import OpenAICompatibleClient, StructuredLLM, ModelOutputError, ProviderRequestError
 from .models import (
     CriticStrategy,
     FallbackFacts,
@@ -69,7 +71,7 @@ from .render import (
     estimate_word_budget,
     render_resume,
 )
-from .source import extract_source, merge_fallback_facts, normalize_document, sha256_text
+from .source import extract_source, merge_fallback_facts, normalize_document, sha256_text, validate_source_groups
 
 
 class PipelineFailure(RuntimeError):
@@ -155,7 +157,7 @@ def _preserve_skill_categories(categories, source):
     seen = set()
     result = []
     for name, display in names.items():
-        items = planned.get(name) or originals.get(display, [])
+        items = [*originals.get(display, []), *planned.get(name, [])]
         unique = []
         for item in items:
             key = _skill_key(item)
@@ -205,6 +207,7 @@ class ResumeTailoringPipeline:
             )
             source = merge_fallback_facts(source, request.original_resume, fallback)
             usage = [*usage, record]
+        validate_source_groups(source)
         normalized_job = normalize_document(request.job_description)
         source_word_count = count_resume_words(request.original_resume)
         length_mode, min_words, max_words = estimate_word_budget(source_word_count, self.config)
@@ -611,6 +614,9 @@ class ResumeTailoringPipeline:
                 "only; never pad or invent content.",
             )
         )
+        if state.get("fit_length_failure"):
+            checks.append(check("length.fit_unavailable", False, "resume_length",
+                "Length fitting failed; the earlier draft was retained and requires review."))
         return {"lint_checks": checks}
 
     def semantic_review(self, state: GraphState) -> dict[str, Any]:
@@ -634,6 +640,21 @@ class ResumeTailoringPipeline:
                 *validate_semantic_review(review, pairs, state["source"]),
             ]
             usage = [*usage, record]
+            missing = {c.field_path for c in review_checks if c.code == "review.missing_claim"}
+            if missing:
+                # One bounded coverage retry; keep every genuine failure from the first review.
+                try:
+                    coverage, record = self.llm.complete(
+                        stage="semantic_review_coverage", model=self.config.review_model,
+                        output_type=SemanticReview, system=SEMANTIC_REVIEW_SYSTEM,
+                        payload={"claim_evidence_pairs": [p for p in pairs if p["field_path"] in missing]},
+                        max_tokens=4000, effort="low",
+                    )
+                except (ModelOutputError, ProviderRequestError) as error:
+                    coverage, record = SemanticReview(checks=[]), getattr(error, "usage", None)
+                review = review.model_copy(update={"checks": [*review.checks, *coverage.checks]})
+                review_checks = [*lint_checks, *validate_semantic_review(review, pairs, state["source"])]
+                usage = [*usage, *([record] if record is not None else [])]
         ledger = [*state.get("strategy_checks", []), *review_checks]
         history = state.get("violation_history", [])
         repair_payload: dict[str, Any] = {}
@@ -644,7 +665,8 @@ class ResumeTailoringPipeline:
             history = [
                 *history,
                 ViolationSnapshot(
-                    fingerprint=violation_fingerprint(ledger), error_count=error_count
+                    fingerprint=violation_fingerprint(ledger), error_count=error_count,
+                    phase="deterministic" if has_errors(lint_checks) else "semantic",
                 ),
             ]
             repair_payload = make_repair_payload(
@@ -668,23 +690,39 @@ class ResumeTailoringPipeline:
             return "needs_review"
         history = state["violation_history"]
         if state["revision_count"] >= self.config.max_repairs:
-            return "needs_review"
+            # Reserve one targeted correction for the first semantic review after
+            # deterministic repairs/length fitting. Never extend a stalled phase.
+            first_semantic = (history[-1].phase == "semantic"
+                              and sum(s.phase == "semantic" for s in history) == 1)
+            if not (self.config.max_repairs > 0 and first_semantic
+                    and state["revision_count"] == self.config.max_repairs):
+                return "needs_review"
         if all(
             c.code == "length.word_count"
             for c in state["compliance_ledger"]
             if not c.passed and c.severity == "error" and not c.waiver
         ):
             return "repair"
-        if len(history) >= 2:
+        if len(history) >= 2 and history[-1].phase == history[-2].phase:
             current, previous = history[-1], history[-2]
-            repeated = current.fingerprint in {item.fingerprint for item in history[:-1]}
+            repeated = current.fingerprint in {item.fingerprint for item in history[:-1]
+                                               if item.phase == current.phase}
             if repeated or current.error_count >= previous.error_count:
                 return "needs_review"
         return "repair"
 
     def repair(self, state: GraphState) -> dict[str, Any]:
-        if any(c.code == "length.word_count" and not c.passed for c in state["compliance_ledger"]):
-            result = self.craft(state)
+        failures = [c for c in state["compliance_ledger"]
+                    if not c.passed and c.severity == "error" and not c.waiver]
+        if failures and all(c.code == "length.word_count" for c in failures):
+            try:
+                result = self.craft(state)
+            except (ModelOutputError, ProviderRequestError) as error:
+                # Retain the earlier schema-valid draft; never replace it with partial JSON.
+                usage = getattr(error, "usage", None)
+                return {"draft": state["draft"], "revision_count": self.config.max_repairs,
+                    "fit_length_failure": error.__class__.__name__,
+                    "usage": [*state.get("usage", []), *([usage] if usage is not None else [])]}
             return {**result, "revision_count": state["revision_count"] + 1}
         repair, usage = self.llm.complete(
             stage="repair",
@@ -730,10 +768,17 @@ class ResumeTailoringPipeline:
     def needs_review(self, state: GraphState) -> dict[str, Any]:
         markdown = render_resume(state["draft"], state["source"])
         protection = rendered_protection_checks(markdown, state["source"], state["draft"])
+        ledger = [*state["compliance_ledger"], *protection]
+        # Factual failures must not become exportable, billable review output.
+        reviewable = {"length.word_count", "length.fit_unavailable", "experience.bullet_count", "projects.bullet_count",
+                      "projects.purpose_order", "skills.category_count", "experience.metric_count",
+                      "projects.metric_count"}
+        unsafe = any(not item.passed and item.severity == "error" and not item.waiver
+                     and item.code not in reviewable for item in ledger)
         return {
-            "resume_markdown": markdown,
-            "compliance_ledger": [*state["compliance_ledger"], *protection],
-            "terminal_status": "needs_review",
+            "resume_markdown": "" if unsafe else markdown,
+            "compliance_ledger": ledger,
+            "terminal_status": "failed" if unsafe else "needs_review",
         }
 
     def _build_graph(self, checkpointer: Any):
@@ -789,9 +834,11 @@ class ResumeTailoringPipeline:
                 cache_hit=state.get("cache_hit", False),
                 project_selection=state.get("project_selection", {}),
                 error=", ".join(sorted(set(failures)))
-                if state["terminal_status"] == "needs_review"
+                if state["terminal_status"] in {"needs_review", "failed"}
                 else "",
             )
+        except BatchPending:
+            raise
         except Exception as error:
             return PipelineResult(
                 status="failed",

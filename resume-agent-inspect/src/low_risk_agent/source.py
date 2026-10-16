@@ -27,6 +27,8 @@ SECTION_NAMES = {
     "employment history": "experience",
     "skills": "skills",
     "technical skills": "skills",
+    "skills & technologies": "skills",
+    "skills and technologies": "skills",
     "core competencies": "skills",
     "relevant knowledge areas": "skills",
     "knowledge areas": "skills",
@@ -57,11 +59,12 @@ SECTION_NAMES = {
     "affiliations": "preserved",
     "professional affiliations": "preserved",
 }
-BULLET = re.compile(r"^(?:[-\u2013\u2014*\u2022\u2023\u25aa\u25e6\u25cf]|\d+[.)])\s+")
+BULLET = re.compile(r"^(?:[\u2022\u2023\u25aa\u25e6\u25cf]\s*|(?:[-\u2013\u2014*]|\d+[.)])\s+)")
 HORIZONTAL_RULE = re.compile(r"^(?:[-*_]\s*){3,}$")
 METRIC = re.compile(
-    r"(?<![\w.])(?:[$\u00a3\u20ac]\s*)?\d[\d,]*(?:\.\d+)?"
-    r"(?:\s?(?:%|x|X|k|K|m|M|ms|s|sec|secs|seconds?|minutes?|hours?|days?|weeks?|months?|years?))?"
+    r"(?<![\w.])(?:[$\u00a3\u20ac]\s*)?\d[\d,]*(?:\.\d+)?\+?"
+    r"(?:\s?(?:%|(?:x|X|k|K|ms|m|M|s|sec|secs|seconds?|minutes?|hours?|days?|weeks?|months?|years?)(?!\w)))?"
+    r"|(?<=[A-Za-z])\d+(?:\.\d+)?(?:%|\+)"
 )
 CITATION = re.compile(r"\[cite:\s*\d+\]", re.IGNORECASE)
 DATE = re.compile(
@@ -91,6 +94,7 @@ class ParsedLine:
     end: int
     is_bullet: bool
     indent: int = 0
+    heading_level: int = 0
 
 
 def normalize_document(value: str) -> str:
@@ -121,7 +125,28 @@ def _parsed_lines(text: str) -> list[ParsedLine]:
             continue
         value_left = content.find(value, marker)
         start = match.start() + left + value_left
-        parsed.append(ParsedLine(value, start, start + len(value), bullet is not None, left))
+        # PDF extraction can place a section or project heading on the last
+        # bullet's line. Split only explicit uppercase section labels and
+        # sentence-delimited project titles followed by a middle-dot stack.
+        boundaries = [0]
+        for heading_match in re.finditer(
+            r"(?<!\w)(?:SELECTED|TECHNICAL|PERSONAL|ACADEMIC|KEY) PROJECTS(?!\w)", value
+        ):
+            boundaries.extend([heading_match.start(), heading_match.end()])
+        for project_match in re.finditer(
+            r"(?<=[.!?])\s+(?=[A-Z][\w &()+/-]{1,120}(?:Platform|System|Application|App|Engine|Dashboard|Pipeline)"
+            r"\s+[A-Za-z][\w+#.-]*\s*[\u00b7\u2014\ufffd])", value
+        ):
+            boundaries.append(project_match.end())
+        boundaries = sorted(set([*boundaries, len(value)]))
+        for begin, finish in zip(boundaries, boundaries[1:]):
+            part = value[begin:finish].strip()
+            if not part:
+                continue
+            offset = begin + len(value[begin:finish]) - len(value[begin:finish].lstrip())
+            parsed.append(ParsedLine(part, start + offset, start + offset + len(part),
+                                     bullet is not None and begin == 0, left if begin == 0 else 0,
+                                     len(heading.group().strip()) if heading and begin == 0 else 0))
     return parsed
 
 
@@ -153,7 +178,7 @@ def _metrics(text: str):
 def _skill_spans(line: ParsedLine) -> list[tuple[str, int, int]]:
     text = line.text
     colon = text.find(":")
-    if 0 < colon < 40:
+    if 0 < colon < 80:
         offset = colon + 1
         value = text[offset:]
     else:
@@ -203,9 +228,26 @@ def extract_source(resume: str) -> ResumeSource:
     section_order: list[str] = []
     section = "preamble"
     parsed_lines = _parsed_lines(resume)
+    # Join physical skill wraps without changing the verbatim evidence or offsets.
+    joined_lines: list[ParsedLine] = []
+    in_skills = False
+    for line in parsed_lines:
+        heading = _section(line.text)
+        if heading:
+            in_skills = heading == "skills"
+        elif in_skills and joined_lines and not line.is_bullet and ":" not in line.text:
+            previous = joined_lines[-1]
+            if _section(previous.text) is None and not resume[previous.end:line.start].strip():
+                joined_lines[-1] = ParsedLine(resume[previous.start:line.end], previous.start,
+                                              line.end, previous.is_bullet, previous.indent)
+                continue
+        joined_lines.append(line)
+    parsed_lines = joined_lines
     recognized_headings = sum(_section(line.text) is not None for line in parsed_lines)
     unstructured_lines = 0
     has_summary = any(_section(line.text) == "summary" for line in parsed_lines)
+    skill_categories: dict[str, list[str]] = {}
+    skill_category = ""
 
     def add_fact(
         kind: str,
@@ -234,7 +276,7 @@ def extract_source(resume: str) -> ResumeSource:
         return fact_id
 
     def _is_continuation(groups: list[dict[str, object]], line: ParsedLine) -> bool:
-        if not groups or not groups[-1]["body_fact_ids"] or line.is_bullet:
+        if not groups or not groups[-1]["body_fact_ids"] or line.is_bullet or line.heading_level >= 3:
             return False
         if line.text and line.text[0].islower():
             return True
@@ -266,11 +308,21 @@ def extract_source(resume: str) -> ResumeSource:
                 break
         return False
 
+    def is_paragraph(line: ParsedLine) -> bool:
+        if line.heading_level or DATE.fullmatch(line.text) or "|" in line.text:
+            return False
+        return _ownership(line.text) != "none" or bool(re.match(
+            r"^(?:took|troubleshot|used|collaborated|supported|integrated|engineered|"
+            r"constructed|orchestrated|configured|deployed|resolved|responsible)\b", line.text, re.I
+        )) or (len(line.text.split()) >= 8 and line.text.endswith((".", ";")))
+
     def current_group(
-        groups: list[dict[str, object]], prefix: str, line: ParsedLine
+        groups: list[dict[str, object]], prefix: str, line: ParsedLine, body: bool = False
     ) -> dict[str, object]:
         is_cont = _is_continuation(groups, line)
-        if not groups or (groups[-1]["body_fact_ids"] and not line.is_bullet and not is_cont):
+        if not groups or (not body and (
+            line.heading_level >= 3 or (groups[-1]["body_fact_ids"] and not is_cont)
+        )):
             groups.append(
                 {
                     "group_id": f"{prefix}_{len(groups) + 1}",
@@ -302,9 +354,10 @@ def extract_source(resume: str) -> ResumeSource:
             preamble.append(fact_id)
         elif section == "experience":
             is_cont = _is_continuation(roles, line)
-            group = current_group(roles, "role", line)
+            body = line.is_bullet or is_cont or bool(roles and is_paragraph(line))
+            group = current_group(roles, "role", line, body)
             group_id = str(group["group_id"])
-            if line.is_bullet or is_cont:
+            if body:
                 fact_id = add_fact(
                     "responsibility",
                     line.text,
@@ -313,7 +366,7 @@ def extract_source(resume: str) -> ResumeSource:
                     group_id,
                     ownership=_ownership(line.text),
                 )
-                if line.is_bullet:
+                if line.is_bullet or not is_cont:
                     group["body_fact_ids"].append(fact_id)  # type: ignore[union-attr]
                 for metric in _metrics(line.text):
                     add_fact(
@@ -382,9 +435,10 @@ def extract_source(resume: str) -> ResumeSource:
                     )
         elif section == "projects":
             is_cont = _is_continuation(projects, line)
-            group = current_group(projects, "project", line)
+            body = line.is_bullet or is_cont or bool(projects and is_paragraph(line))
+            group = current_group(projects, "project", line, body)
             group_id = str(group["group_id"])
-            if line.is_bullet or is_cont:
+            if body:
                 fact_id = add_fact(
                     "project_detail",
                     line.text,
@@ -393,7 +447,7 @@ def extract_source(resume: str) -> ResumeSource:
                     group_id,
                     ownership=_ownership(line.text),
                 )
-                if line.is_bullet:
+                if line.is_bullet or not is_cont:
                     group["body_fact_ids"].append(fact_id)  # type: ignore[union-attr]
                 for metric in _metrics(line.text):
                     add_fact(
@@ -409,8 +463,12 @@ def extract_source(resume: str) -> ResumeSource:
                 )
                 group["header_fact_ids"].append(fact_id)  # type: ignore[union-attr]
         elif section == "skills":
+            if 0 < line.text.find(":") < 80:
+                skill_category = line.text.split(":", 1)[0].strip(" -*#_`\\\t")
             for item, start, end in _skill_spans(line):
                 add_fact("skill", item, start, end)
+                if skill_category:
+                    skill_categories.setdefault(skill_category, []).append(item)
         elif section == "education":
             kind = (
                 "coursework"
@@ -424,6 +482,9 @@ def extract_source(resume: str) -> ResumeSource:
             preserved.append(fact_id)
         else:
             add_fact("other", line.text, line.start, line.end)
+            if section == "summary":
+                for metric in _metrics(line.text):
+                    add_fact("metric", metric.group(), line.start + metric.start(), line.start + metric.end())
 
     for groups in (roles, projects):
         for group in groups:
@@ -441,16 +502,6 @@ def extract_source(resume: str) -> ResumeSource:
     if recognized_headings == 0 and len(facts) >= 4:
         ambiguous.append(AmbiguousBlock(source_span=resume, span_start=0, span_end=len(resume)))
 
-    skill_categories: dict[str, list[str]] = {}
-    for fact in facts:
-        if fact.kind != "skill":
-            continue
-        line_start = resume.rfind("\n", 0, fact.span_start) + 1
-        prefix = resume[line_start : fact.span_start]
-        if ":" in prefix:
-            category = prefix.split(":", 1)[0].strip(" -*#_`\\\t")
-            if category:
-                skill_categories.setdefault(category, []).append(fact.source_span)
     return ResumeSource(
         skill_categories=skill_categories,
         original_hash=sha256_text(resume),
@@ -487,6 +538,8 @@ def merge_fallback_facts(
                 offset = index + 1
         if not possible:
             raise ValueError("fallback fact is not a verbatim source span")
+        if len(possible) > 1 and candidate.kind not in {"skill", "identity", "other"}:
+            raise ValueError("fallback structural span is ambiguous; include unique source context")
         # A short, legitimately-repeated snippet (a skill name, a common
         # word) can verbatim-match more than one ambiguous block -- that
         # used to hard-fail the whole generation. Nothing downstream keys
@@ -544,11 +597,13 @@ def merge_fallback_facts(
         used_group_ids.add(group_id)
         return group_id
 
+    # Metadata and previously misclassified prose are not new job anchors.
+    by_id = {fact.fact_id: fact for fact in facts}
     anchors = [
-        (fact.span_start, fact.span_end, fact.role_or_project_id, family)
-        for fact in facts
-        for family, header_kind in (("role", "role_header"), ("project", "project_header"))
-        if fact.kind == header_kind
+        (first.span_start, first.span_end, group.group_id, family)
+        for family, groups in (("role", source.roles), ("project", source.projects))
+        for group in groups if group.header_fact_ids
+        for first in [by_id[group.header_fact_ids[0]]]
     ]
     header_groups: dict[tuple[str, int, int], str] = {
         (family, start, end): group_id for start, end, group_id, family in anchors
@@ -562,7 +617,10 @@ def merge_fallback_facts(
             else ""
         )
         if family and (family, start, end) not in header_groups:
-            group_id = allocate_group(family)
+            overlapping = [a for a in anchors if a[3] == family and start < a[1] and end > a[0]]
+            if len({a[2] for a in overlapping}) > 1:
+                raise ValueError("fallback header crosses source group boundaries")
+            group_id = overlapping[0][2] if len({a[2] for a in overlapping}) == 1 else allocate_group(family)
             header_groups[(family, start, end)] = group_id
             anchors.append((start, end, group_id, family))
     anchors.sort()
@@ -588,6 +646,8 @@ def merge_fallback_facts(
         if not preceding:
             raise ValueError(f"fallback {kind} has no preceding role or project header")
         _, _, group_id, family = max(preceding, key=lambda anchor: anchor[0])
+        if any(start < a[0] < end and a[2] != group_id for a in anchors):
+            raise ValueError("fallback fact crosses source group boundaries")
         if kind in {"employer", "title", "responsibility"} and family != "role":
             raise ValueError(f"fallback {kind} is outside a role")
         if kind == "project_detail" and family != "project":
@@ -607,7 +667,10 @@ def merge_fallback_facts(
                 for index, fact in enumerate(facts)
                 if fact.span_start == start
                 and fact.span_end == end
-                and fact.kind in {"identity", "other"}
+                and (fact.kind in {"identity", "other"} or (
+                    fact.kind in {"role_header", "project_header"}
+                    and candidate.kind in {"responsibility", "project_detail"}
+                ))
             ),
             None,
         )
@@ -643,6 +706,15 @@ def merge_fallback_facts(
         else:
             facts[replacement] = fact
         seen.add(key)
+
+    # Rebind retained facts as well as fallback facts to canonical source anchors.
+    # Otherwise an employer can survive under the old, incorrectly merged role.
+    for index, fact in enumerate(facts):
+        if fact.role_or_project_id:
+            kind = "title" if fact.kind == "role_header" else "project_detail" if fact.kind == "project_header" else fact.kind
+            facts[index] = fact.model_copy(update={
+                "role_or_project_id": derive_group(kind, fact.span_start, fact.span_end)
+            })
 
     def rebuild_groups(kind_header: str, kind_body: str) -> list[SourceGroup]:
         grouped: dict[str, list[SourceFact]] = {}
@@ -680,3 +752,15 @@ def merge_fallback_facts(
 
 def fact_map(source: ResumeSource) -> dict[str, SourceFact]:
     return {fact.fact_id: fact for fact in source.facts}
+
+
+def validate_source_groups(source: ResumeSource) -> None:
+    """Reject conflicting identity before the writer can attribute work to it."""
+    for group in source.roles:
+        employers = {
+            normalize_document(re.sub(r"[*_`#]", "", fact.source_span)).casefold()
+            for fact in source.facts
+            if fact.kind == "employer" and fact.role_or_project_id == group.group_id
+        }
+        if len(employers) > 1:
+            raise ValueError("source role has conflicting employers; source attribution is unsafe")

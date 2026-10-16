@@ -52,7 +52,9 @@ async function main() {
     const markdown = "# Synthetic tailored résumé";
     generation = { status, resume_markdown: markdown, source_hash: sourceHash(row.source_text), job_hash: hash(row.job_description.replace(/\s+/gu, " ").trim()),
       audit_json: { status, resume_markdown: markdown, source_hash: sourceHash(row.source_text), job_hash: hash(row.job_description.replace(/\s+/gu, " ").trim()),
-        error: status === "needs_review" ? "experience.roles" : null,
+        error: status === "needs_review" ? "length.word_count" : null,
+        compliance_ledger: [{ code: status === "needs_review" ? "length.word_count" : "claim.evidence",
+          passed: status !== "needs_review", severity: status === "needs_review" ? "error" : "info" }],
         usage: [{ model: "mock", stage: "mock", input_tokens: 2, output_tokens: 3, estimated_cost_usd: 0 }] } };
     mutate?.(generation);
     if (crash) throw new Error("mock_crash_after_save");
@@ -72,9 +74,13 @@ async function main() {
     (saved: Generation) => { saved.audit_json.usage = []; },
     (saved: Generation) => { saved.source_hash = "other-source"; saved.audit_json.source_hash = "other-source"; },
     (saved: Generation) => { saved.job_hash = "other-job"; saved.audit_json.job_hash = "other-job"; },
+    (saved: Generation) => { saved.audit_json.compliance_ledger = []; },
+    (saved: Generation) => { saved.audit_json.compliance_ledger = [{ code: "claim.evidence", passed: false, severity: "error" }]; },
+    (saved: Generation) => { saved.audit_json.compliance_ledger = [{ code: "render.role_entities", passed: false, severity: "error" }]; },
   ]) {
     reset(); await processRequest(row.id, agent("needs_review", mutate));
     assert.equal(row.credit_state, "released"); assert.equal(wallet, 3); assert.equal(refunds, 1);
+    assert.equal(row.status, "failed", "An unverified draft must not remain eligible as needs_review");
     await processRequest(row.id, agent("completed")); assert.equal(refunds, 1); assert.equal(calls, 1);
   }
   reset(); await processRequest(row.id, agent("needs_review", undefined, true));

@@ -71,6 +71,15 @@ function usageId(requestId: string, index: number) {
   return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
 
+function usableAudit(audit: Record<string, unknown>, status: string) {
+  if (!Array.isArray(audit.compliance_ledger) || !audit.compliance_ledger.length) return false;
+  const reviewable = new Set(["length.word_count", "length.fit_unavailable", "experience.bullet_count", "projects.bullet_count",
+    "projects.purpose_order", "skills.category_count", "experience.metric_count", "projects.metric_count"]);
+  return audit.compliance_ledger.every(check => check && typeof check.code === "string"
+    && typeof check.passed === "boolean" && ["error", "warning", "info"].includes(check.severity)
+    && (check.passed || check.severity !== "error" || (status === "needs_review" && reviewable.has(check.code))));
+}
+
 async function recoverOutput(request: RequestRow) {
   const result = await pool.query(`SELECT status,resume_markdown,audit_json,source_hash,job_hash FROM resume_generations
     WHERE id=$1 AND user_id=$2 AND job_id=$3 AND base_resume_id=$4
@@ -85,6 +94,7 @@ async function recoverOutput(request: RequestRow) {
       // Python read_text uses universal newlines before computing the source hash.
       || generation.source_hash !== createHash("sha256").update(request.source_text.replace(/\r\n?/g, "\n")).digest("hex")
       || generation.job_hash !== createHash("sha256").update(request.job_description.normalize("NFC").replace(/\s+/gu, " ").trim()).digest("hex")) return false;
+  if (!usableAudit(audit, generation.status)) return false;
   // The persisted agent audit is authoritative; retries never invoke AI again.
   await recordUsage(request, audit.usage);
   const status = generation.status === "needs_review" ? "needs_review" : "completed";
@@ -134,7 +144,7 @@ export async function processRequest(requestId: string, agent = run) {
     }
     if (code === 2) {
       // A persisted review draft is billable, but remains explicitly unapproved.
-      if (!await recoverOutput(request)) await release(request, "needs_review", "no_verified_review_output");
+      if (!await recoverOutput(request)) await release(request, "failed", "no_verified_review_output");
       return true;
     }
     await readFile(output, "utf8"); // Agent already persisted this exact generation ID; verify output was produced before charging.
@@ -173,7 +183,7 @@ export async function recover() {
     if (await recoverOutput(request)) continue;
     const durable = await pool.query(`SELECT 1 FROM resume_model_batches WHERE request_id=$1 LIMIT 1`, [request.id]);
     if (durable.rows[0]) await resumeBatch(request);
-    else await release(request, "needs_review", "interrupted_attempt_no_verified_output");
+    else await release(request, "failed", "interrupted_attempt_no_verified_output");
   }
   const due = await pool.query(`SELECT o.request_id FROM resume_dispatch_outbox o
     JOIN resume_generation_requests r ON r.id=o.request_id

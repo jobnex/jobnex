@@ -133,7 +133,10 @@ python -m unittest discover -s tests -v
 ruff check .
 ```
 
-The primary path uses Gemini Flash for JD analysis/review and GPT for selection/writing.
+The primary path uses `google/gemini-3.8-flash` for JD analysis, selection, writing,
+and review. Requests run synchronously. LangSmith root traces identify the configured
+writer/analyzer/review models; LLM traces report model, tokens, and provider cost
+(with Gemini pricing estimates used when provider cost is absent).
 All use one OpenRouter OpenAI-compatible endpoint without an SDK.
 Tests use a bounded fake and make no network calls.
 

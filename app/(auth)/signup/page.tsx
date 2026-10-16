@@ -4,8 +4,8 @@ import { AuthContainer } from "@/components/auth/AuthContainer";
 import { LoaderDots } from "@/components/ui/LoaderDots";
 
 export const metadata: Metadata = {
-  title: "Create Account | Strawberry Jobs",
-  description: "Create your Strawberry Jobs account and climb higher in your career.",
+  title: "Create Account",
+  description: "Create your Jobnex account and climb higher in your career.",
 };
 
 export default function SignUpPage() {
@@ -21,4 +21,3 @@ export default function SignUpPage() {
     </Suspense>
   );
 }
-

@@ -2,7 +2,7 @@ import { Job } from "@/types";
 
 export type { Job };
 
-export const jobsData: Job[] = [
+const baseJobsData: Job[] = [
   // --- PAGE 1 (Jobs 1 - 12) ---
   {
     id: "1",
@@ -384,6 +384,11 @@ export const jobsData: Job[] = [
     categories: ["product", "remote", "all"]
   }
 ];
+
+export const jobsData: Job[] = baseJobsData.map((job) => ({
+  ...job,
+  externalApplyUrl: job.externalApplyUrl || `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(job.jobRoleTitle + " " + job.company)}`,
+}));
 
 /**
  * Partition IDs for Curated Roles vs Requested/Applications Roles

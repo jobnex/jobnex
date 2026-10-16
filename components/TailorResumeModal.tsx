@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useJobStore } from "@/store/useJobStore";
 import { useCreditStore } from "@/store/useCreditStore";
+import { useResumeStore } from "@/store/useResumeStore";
 import { authClient } from "@/lib/auth/client";
 import {
   getTailoringPreview,
   initiateTailoringRequest,
+  getResumeRequestStatus,
+  updateTailoredResumeMarkdown,
   TailoringPreviewResult,
 } from "@/app/actions/tailored-resume";
 import { ResumeModal } from "@/components/ResumeModal";
 import { downloadMarkdownFile } from "@/lib/resumeApi";
+import { useEscapeKey } from "@/lib/hooks/useEscapeKey";
+import { lockBodyScroll, unlockBodyScroll } from "@/lib/utils/scrollLock";
 import { toast } from "sonner";
 import Link from "next/link";
 import { Job } from "@/types";
@@ -61,8 +66,9 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
   const [previewData, setPreviewData] = useState<TailoringPreviewResult | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(true);
   const [isRetryingPreview, setIsRetryingPreview] = useState(false);
-  const [tailoringStage, setTailoringStage] = useState<"preview" | "generating" | "completed">("preview");
-  const [stageMessage, setStageMessage] = useState<string>("Initializing generation...");
+  const [tailoringStage, setTailoringStage] = useState<"preview" | "completed">("preview");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [tailoredMarkdown, setTailoredMarkdown] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"formatted" | "raw">("formatted");
   const [isCopied, setIsCopied] = useState(false);
@@ -70,6 +76,21 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
 
   // Compute effective credit balance from preview response or client credit store
   const effectiveCreditBalance = previewData?.creditBalance ?? storeCredits ?? 0;
+
+  // Close on Escape key
+  useEscapeKey(() => {
+    if (!isFullStudioOpen && !isSubmitting) {
+      onClose();
+    }
+  }, true);
+
+  // Lock body scroll while modal is mounted
+  useEffect(() => {
+    lockBodyScroll();
+    return () => {
+      unlockBodyScroll();
+    };
+  }, []);
 
   // Sync client credit balance if not yet loaded
   useEffect(() => {
@@ -137,36 +158,45 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
   // Handle escape key to close
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && tailoringStage !== "generating" && !isFullStudioOpen) {
+      if (e.key === "Escape" && !isFullStudioOpen && !isSubmitting) {
         onClose();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [tailoringStage, isFullStudioOpen, onClose]);
+  }, [isFullStudioOpen, isSubmitting, onClose]);
 
   const handleGenerate = async () => {
-    setTailoringStage("generating");
-    setStageMessage("Initiating request with AI tailoring engine...");
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmissionError(null);
 
     try {
-      const initRes = await initiateTailoringRequest(job.id);
+      const activeTemplateId = useResumeStore.getState().selectedTemplateId;
+      const initRes = await initiateTailoringRequest(job.id, activeTemplateId);
 
       if (!initRes.success || !initRes.requestId) {
-        setTailoringStage("preview");
-        toast.error(initRes.error || "Failed to start tailoring request. Please check credits.");
+        const errorMsg = initRes.error || "Failed to start tailoring request. Please check your credit balance or active resume.";
+        setSubmissionError(errorMsg);
+        toast.error(errorMsg);
         return;
       }
 
-      // The accepted request belongs to the worker, not this modal's lifetime.
+      toast.success("Resume tailoring started in the background!", {
+        description: `Aligning skills and tailoring experience for ${job.company}.`,
+        duration: 4000,
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("resume-requests-changed"));
+      }
+      useCreditStore.getState().fetchCredits().catch(() => {});
       onClose();
-      window.dispatchEvent(new Event("resume-requests-changed"));
-      void useCreditStore.getState().fetchCredits();
-      toast.success("Resume generation started. Track it in Resume generations; you can keep browsing.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to initiate tailoring";
-      setTailoringStage("preview");
+      setSubmissionError(msg);
       toast.error(msg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -191,7 +221,14 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-200">
+      <div
+        className="fixed inset-0 z-[1000] flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-200"
+        onClick={() => {
+          if (!isSubmitting) {
+            onClose();
+          }
+        }}
+      >
         <div
           className="relative w-full max-w-2xl bg-bg-card border-[1.5px] border-border-color rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.25)] flex flex-col max-h-[92dvh] sm:max-h-[90vh] overflow-hidden dark:bg-[#161822] dark:border-[#2B3042]"
           onClick={(e) => e.stopPropagation()}
@@ -218,7 +255,7 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
 
             <button
               onClick={onClose}
-              disabled={tailoringStage === "generating"}
+              disabled={isSubmitting}
               className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-tag transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed dark:hover:bg-[#222534] dark:hover:text-white"
               aria-label="Close modal"
             >
@@ -284,34 +321,14 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
                   </p>
                 </div>
               </div>
-            ) : tailoringStage === "generating" ? (
-              <div className="py-14 flex flex-col items-center justify-center text-center space-y-5">
-                <div className="relative">
-                  <div className="w-16 h-16 rounded-full border-4 border-brand-lime/20 border-t-brand-dark dark:border-t-brand-lime animate-spin" />
-                  <Sparkles className="w-6 h-6 text-brand-dark dark:text-brand-lime absolute inset-0 m-auto" />
-                </div>
-                <div className="space-y-1.5 max-w-sm mx-auto">
-                  <h3 className="text-base font-bold text-text-primary dark:text-white">
-                    Submitting Resume Request
-                  </h3>
-                  <p className="text-xs text-text-muted dark:text-[#94A3B8] leading-relaxed">
-                    {stageMessage}
-                  </p>
-                </div>
-              </div>
             ) : tailoringStage === "completed" ? (
               <div className="space-y-4">
-                {previewData?.existingResume?.status === "needs_review" && (
-                  <p role="alert" className="rounded-lg border border-amber-500 p-3 text-sm text-amber-700 dark:text-amber-300">
-                    Needs review: check this draft against your original experience before using it.
-                  </p>
-                )}
                 {/* Completed Banner */}
                 <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                     <span className="text-xs font-semibold">
-                      Saved tailored draft for this job. Review the content before using it.
+                      Tailored resume generated and saved to your profile for this job.
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -548,6 +565,17 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
                     )}
                   </>
                 )}
+
+                {/* Submission Error Alert */}
+                {submissionError && (
+                  <div className="p-3.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium flex items-start gap-2.5 animate-in fade-in duration-150">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <p className="font-bold">Could not start tailoring</p>
+                      <p>{submissionError}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -557,19 +585,26 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
             <div className="px-5 py-3.5 border-t border-border-color dark:border-[#2B3042] bg-bg-card dark:bg-[#1A1D2A] flex items-center justify-between gap-3 shrink-0">
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-bold rounded-lg border border-border-color hover:bg-bg-tag transition-colors text-text-muted hover:text-text-primary dark:border-[#2B3042] dark:hover:bg-[#222534] dark:hover:text-white cursor-pointer"
+                disabled={isSubmitting}
+                className="px-4 py-2 text-xs font-bold rounded-lg border border-border-color hover:bg-bg-tag transition-colors text-text-muted hover:text-text-primary dark:border-[#2B3042] dark:hover:bg-[#222534] dark:hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
 
               <button
                 onClick={handleGenerate}
-                disabled={effectiveCreditBalance < 1}
+                disabled={isSubmitting || effectiveCreditBalance < 1}
                 className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-lg bg-brand-dark text-white hover:bg-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed dark:bg-brand-lime dark:text-[#111827] dark:hover:bg-white"
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                {isSubmitting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
                 <span>
-                  {effectiveCreditBalance < 1
+                  {isSubmitting
+                    ? "Starting Generation..."
+                    : effectiveCreditBalance < 1
                     ? "Insufficient Credits (1 Required)"
                     : previewData?.skillGapAvailable === false
                     ? "Tailor Resume Anyway (1 Credit)"
@@ -585,12 +620,28 @@ function TailorResumeModalContent({ job, onClose }: TailorResumeModalContentProp
       {isFullStudioOpen && (
         <ResumeModal
           isOpen={isFullStudioOpen}
+          jobId={job.id}
+          templateId={useResumeStore.getState().selectedTemplateId}
+          expectedGenerationId={previewData?.existingResume?.id || null}
           onClose={() => setIsFullStudioOpen(false)}
           initialMarkdown={tailoredMarkdown}
           initialMode="view"
-          reviewWarning={previewData?.existingResume?.status === "needs_review" ? "Needs review: check this draft against your original experience before using it." : undefined}
+          onSave={async (newMarkdown, newTemplateId, expectedGenId) => {
+            const res = await updateTailoredResumeMarkdown(
+              job.id,
+              newMarkdown,
+              newTemplateId,
+              expectedGenId
+            );
+            if (res && !res.success) {
+              return res;
+            }
+            setTailoredMarkdown(newMarkdown);
+            return res;
+          }}
         />
       )}
+
     </>
   );
 }

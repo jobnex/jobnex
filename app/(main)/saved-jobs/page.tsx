@@ -2,22 +2,21 @@
 
 import { useEffect, useRef, Suspense, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { JobGrid } from "@/components/JobGrid";
 import { SearchFilterBar } from "@/components/SearchFilterBar";
 import { FiltersModal } from "@/components/FiltersModal";
-import { Pagination } from "@/components/Pagination";
+import { JobBoardView } from "@/components/JobBoardView";
 import { UrlFilterSync } from "@/components/UrlFilterSync";
 import { useJobStore, useAppFilters } from "@/store/useJobStore";
 import { authClient } from "@/lib/auth/client";
-import { JobsResponse, Job } from "@/types";
-import { useDebounce } from "@/lib/hooks/useDebounce";
+import { JobsResponse } from "@/types";
 import { LoaderDots } from "@/components/ui/LoaderDots";
 import Link from "next/link";
-import { JobDescriptionPanel } from "@/components/JobDescriptionPanel";
+import { DEFAULT_PAGE_SIZE } from "@/lib/job-utils";
 
 export default function SavedJobsPage() {
   const {
     searchQuery,
+    locationQuery,
     searchBy,
     location,
     categories,
@@ -29,28 +28,19 @@ export default function SavedJobsPage() {
     workMode,
     page,
     setPage,
+    resetFilters,
   } = useAppFilters("saved");
 
-  const {
-    isJdOpen,
-    activeJdJob,
-    closeJd,
-    setActiveJdJob,
-    savedJobIds,
-    savedJobIdsMap,
-    setSavedJobIds,
-  } = useJobStore();
-  const debouncedSearchQuery = useDebounce(searchQuery, 400);
-
+  const savedJobIdsMap = useJobStore((s) => s.savedJobIdsMap);
   const { data: session, isPending } = authClient.useSession();
-  
   const shouldScrollTopRef = useRef(false);
 
   const { data, isLoading, isError, isFetching } = useQuery<JobsResponse>({
     queryKey: [
       "saved-jobs",
-      debouncedSearchQuery,
-      debouncedSearchQuery ? searchBy : 'all',
+      searchQuery,
+      searchQuery ? searchBy : "all",
+      locationQuery || "",
       location,
       categories,
       jobType,
@@ -62,13 +52,16 @@ export default function SavedJobsPage() {
       page,
     ],
     queryFn: async () => {
-      if (!session) return { jobs: [], total: 0, page: 1, limit: 24, totalPages: 0, hasNextPage: false, hasPrevPage: false };
-      
+      if (!session) {
+        return { jobs: [], total: 0, page: 1, limit: DEFAULT_PAGE_SIZE, totalPages: 0, hasNextPage: false, hasPrevPage: false };
+      }
+
       const params = new URLSearchParams();
-      if (debouncedSearchQuery) {
-        params.append("keyword", debouncedSearchQuery);
+      if (searchQuery) {
+        params.append("keyword", searchQuery);
         if (searchBy && searchBy !== "all") params.append("searchBy", searchBy);
       }
+      if (locationQuery) params.append("locationQuery", locationQuery);
       if (location) params.append("location", location);
       if (categories && categories.length > 0) params.append("categories", categories.join(","));
       if (jobType && jobType !== "all") params.append("type", jobType);
@@ -78,18 +71,11 @@ export default function SavedJobsPage() {
       if (visaSponsorship && visaSponsorship !== "all") params.append("visaSponsorship", visaSponsorship);
       if (workMode && workMode !== "all") params.append("workMode", workMode);
       params.append("page", page.toString());
-      params.append("limit", "24");
+      params.append("limit", DEFAULT_PAGE_SIZE.toString());
 
       const res = await fetch(`/api/jobs/saved?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch saved jobs");
-      const json = await res.json();
-      
-      // Update global savedJobIds store strictly with actual IDs currently matched/saved
-      if (json.jobs) {
-        // Just merging known loaded ones to prevent them popping out locally if we untoggle/toggle
-        // Typically the SavedJobsHydrator handles global sync, but this is a nice side-effect sync
-      }
-      return json;
+      return res.json();
     },
     enabled: !isPending && !!session?.user,
     placeholderData: keepPreviousData,
@@ -97,23 +83,23 @@ export default function SavedJobsPage() {
     staleTime: 1 * 60 * 1000,
   });
 
-  const scrollToTop = (smooth = true) => {
+  const scrollToTop = useCallback((smooth = true) => {
     if (typeof window === "undefined") return;
     const behavior = smooth ? "smooth" : "instant";
     window.scrollTo({ top: 0, left: 0, behavior });
-  };
+  }, []);
 
-  const handlePageChange = (newPage: number, source: "top" | "bottom" = "bottom") => {
+  const handlePageChange = useCallback((newPage: number, source: "top" | "bottom" = "bottom") => {
     setPage(newPage);
     if (source === "bottom") {
       shouldScrollTopRef.current = true;
       scrollToTop(true);
     }
-  };
+  }, [setPage, scrollToTop]);
 
   useEffect(() => {
     scrollToTop(true);
-  }, [location, categories, jobType, seniority, minSalary, postedTime, visaSponsorship]);
+  }, [location, categories, jobType, seniority, minSalary, postedTime, visaSponsorship, scrollToTop]);
 
   useEffect(() => {
     if (shouldScrollTopRef.current) {
@@ -123,41 +109,10 @@ export default function SavedJobsPage() {
       });
       return () => cancelAnimationFrame(frame);
     }
-  }, [page, data]);
-
-  const prevIsJdOpenRef = useRef(isJdOpen);
-  
-  useEffect(() => {
-    if (isJdOpen && !prevIsJdOpenRef.current && activeJdJob) {
-      setTimeout(() => {
-        const activeCard = document.getElementById(`job-card-${activeJdJob.id}`);
-        if (activeCard) {
-          const offset = 84; 
-          const rect = activeCard.getBoundingClientRect();
-          const targetY = window.scrollY + rect.top - offset;
-          window.scrollTo({
-            top: targetY,
-            behavior: "smooth"
-          });
-        }
-      }, 50);
-    }
-    prevIsJdOpenRef.current = isJdOpen;
-  }, [isJdOpen, activeJdJob]);
-
-  const handleSelectJob = useCallback((job: Job) => {
-    setActiveJdJob(job);
-  }, [setActiveJdJob]);
-
-  // Clean up global JD panel state on unmount to avoid cross-page state bleeding
-  useEffect(() => {
-    return () => {
-      closeJd();
-    };
-  }, [closeJd]);
+  }, [page, data, scrollToTop]);
 
   const hasActiveFilters = Boolean(
-    debouncedSearchQuery ||
+    searchQuery ||
     location ||
     (categories && categories.length > 0) ||
     (jobType && jobType !== "all") ||
@@ -171,7 +126,7 @@ export default function SavedJobsPage() {
   if (isPending) {
     return (
       <div className="flex h-full min-h-[50vh] items-center justify-center">
-        <LoaderDots className="h-8 w-8  " />
+        <LoaderDots className="h-8 w-8" />
       </div>
     );
   }
@@ -179,9 +134,11 @@ export default function SavedJobsPage() {
   if (!session?.user) {
     return (
       <div className="p-4 sm:p-8 flex flex-col items-center justify-center min-h-[50vh] gap-4">
-        <h1 className="font-heading text-2xl font-semibold text-text-primary dark:text-white">Sign in to view saved jobs</h1>
-        <Link 
-          href="/login" 
+        <h1 className="font-heading text-2xl font-semibold text-text-primary dark:text-white">
+          Sign in to view saved jobs
+        </h1>
+        <Link
+          href="/login"
           className="px-6 py-2 bg-brand-dark text-white rounded-md hover:bg-brand-lime hover:text-[#111827] transition-colors dark:bg-brand-lime dark:text-[#111827]"
         >
           Sign In
@@ -191,16 +148,16 @@ export default function SavedJobsPage() {
   }
 
   // Filter out any locally unsaved jobs (optimistic UI deletion)
-  const displayedJobs = (data?.jobs || []).filter(job => !!savedJobIdsMap[job.id]);
+  const displayedJobs = (data?.jobs || []).filter((job) => !!savedJobIdsMap[job.id]);
 
   return (
-    <section className="py-5 sm:py-7 pb-16 flex-1">
-      <div className="container max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-7">
+    <section className="py-[var(--space-m)] pb-16 flex-1">
+      <div className="fluid-container">
         <div className="flex flex-col gap-1 mb-5">
-          <h1 className="font-heading text-[1.45rem] font-semibold text-text-primary dark:text-white">
+          <h1 className="font-heading text-2xl sm:text-3xl font-semibold text-text-primary dark:text-white">
             Saved Jobs
           </h1>
-          <p className="text-[0.95rem] text-text-subtle dark:text-[#A1A1AA]">
+          <p className="text-sm sm:text-base text-text-subtle dark:text-[#A1A1AA]">
             Search, filter, and manage your bookmarked roles.
           </p>
         </div>
@@ -224,14 +181,20 @@ export default function SavedJobsPage() {
               <p className="text-text-muted dark:text-[#A1A1AA] text-center">
                 No saved jobs match your current filters.
               </p>
+              <button
+                onClick={resetFilters}
+                className="px-6 py-2 border-2 border-brand-dark text-brand-dark rounded-md hover:bg-brand-dark hover:text-white transition-colors dark:border-brand-lime dark:text-brand-lime dark:hover:bg-brand-lime dark:hover:text-[#111827] cursor-pointer font-bold text-sm"
+              >
+                Reset Filters
+              </button>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4 border-2 border-dashed border-border-subtle rounded-xl p-8 dark:border-[#2B3042]">
               <p className="text-text-muted dark:text-[#A1A1AA] text-center">
                 You haven&apos;t saved any jobs yet. Browse the job board to find roles that match your skills!
               </p>
-              <Link 
-                href="/job-hunt" 
+              <Link
+                href="/job-hunt"
                 className="px-6 py-2 border-2 border-brand-dark text-brand-dark rounded-md hover:bg-brand-dark hover:text-white transition-colors dark:border-brand-lime dark:text-brand-lime dark:hover:bg-brand-lime dark:hover:text-[#111827]"
               >
                 Browse Jobs
@@ -239,97 +202,19 @@ export default function SavedJobsPage() {
             </div>
           )
         ) : (
-          <div>
-            {isJdOpen && activeJdJob ? (
-              /* Split-View Layout: Left List + Right JD Side Panel */
-              <div className="flex flex-col lg:flex-row gap-6 items-start pt-1">
-                <div className="w-full lg:w-[410px] xl:w-[440px] shrink-0 flex flex-col gap-3">
-                  {data && data.total > 0 && (
-                    <Pagination
-                      currentPage={page}
-                      totalPages={data.totalPages || 1}
-                      totalResults={data.total || 0}
-                      pageSize={24}
-                      onPageChange={handlePageChange}
-                      position="top"
-                      forceCompact={true}
-                    />
-                  )}
-
-                  <JobGrid 
-                    jobs={displayedJobs} 
-                    isSplitView={true}
-                    activeJobId={activeJdJob.id}
-                    onSelectJob={handleSelectJob}
-                    isLoading={isFetching && !isLoading}
-                    isPremium={true}
-                    variant="blue"
-                  />
-
-                  {data && data.total > 0 && (
-                    <Pagination
-                      currentPage={page}
-                      totalPages={data.totalPages || 1}
-                      totalResults={data.total || 0}
-                      pageSize={24}
-                      onPageChange={handlePageChange}
-                      position="bottom"
-                      forceCompact={true}
-                    />
-                  )}
-                </div>
-
-                <div className="hidden lg:block lg:flex-1 min-w-0 sticky top-[5.25rem]">
-                  <JobDescriptionPanel 
-                    job={activeJdJob}
-                    onClose={closeJd}
-                  />
-                </div>
-
-                <div className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-3 flex flex-col justify-end sm:justify-center animate-in fade-in duration-200">
-                  <div className="w-full max-w-xl mx-auto h-[90vh] max-h-[700px] flex flex-col">
-                    <JobDescriptionPanel 
-                      job={activeJdJob}
-                      onClose={closeJd}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* Default Full Width 3-Column Grid View */
-              <div>
-                {data && data.total > 0 && (
-                  <Pagination
-                    currentPage={page}
-                    totalPages={data.totalPages || 1}
-                    totalResults={data.total || 0}
-                    pageSize={24}
-                    onPageChange={handlePageChange}
-                    position="top"
-                  />
-                )}
-
-                <JobGrid 
-                  jobs={displayedJobs} 
-                  onSelectJob={handleSelectJob}
-                  isLoading={isFetching && !isLoading}
-                  isPremium={true}
-                  variant="blue"
-                />
-
-                {data && data.total > 0 && (
-                  <Pagination
-                    currentPage={page}
-                    totalPages={data.totalPages || 1}
-                    totalResults={data.total || 0}
-                    pageSize={24}
-                    onPageChange={handlePageChange}
-                    position="bottom"
-                  />
-                )}
-              </div>
-            )}
-          </div>
+          <JobBoardView
+            jobs={displayedJobs}
+            total={data?.total || 0}
+            totalPages={data?.totalPages || 1}
+            page={page}
+            pageSize={DEFAULT_PAGE_SIZE}
+            onPageChange={handlePageChange}
+            onResetFilters={resetFilters}
+            isLoading={isLoading}
+            isFetching={isFetching}
+            isPremium={true}
+            variant="blue"
+          />
         )}
       </div>
 

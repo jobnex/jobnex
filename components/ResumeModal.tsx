@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import {
   Download, X, Edit3, FileText, Check,
   ZoomIn, ZoomOut, AlertTriangle, Printer,
-  Code2, Eye, Sparkles, ChevronDown
+  Code2, Eye, Sparkles, ChevronDown, Loader2, Lock
 } from "lucide-react";
 import { ResumeSheet } from "@/components/ResumeSheet";
 import { useResumeStore } from "@/store/useResumeStore";
@@ -16,24 +15,38 @@ import {
 } from "@/data/resume-templates";
 import { downloadMarkdownFile } from "@/lib/resumeApi";
 import { toast } from "sonner";
+import { lockBodyScroll, unlockBodyScroll } from "@/lib/utils/scrollLock";
 
 interface ResumeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  jobId?: string;
+  expectedGenerationId?: string | null;
+  readOnly?: boolean;
   initialMode?: "view" | "edit";
   initialMarkdown?: string;
   templateId?: string;
-  reviewWarning?: string;
+  reviewReason?: string | null;
+  onSave?: (
+    markdown: string,
+    templateId?: string,
+    expectedGenerationId?: string | null
+  ) => Promise<{ success: boolean; error?: string; code?: string } | boolean | void> | void;
 }
 
 export function ResumeModal({
   isOpen,
   onClose,
+  jobId,
+  expectedGenerationId,
+  readOnly = false,
   initialMode = "view",
   initialMarkdown,
   templateId,
-  reviewWarning,
+  reviewReason,
+  onSave,
 }: ResumeModalProps) {
+
   const store = useResumeStore();
 
   const [mode, setMode] = useState<"view" | "visual-edit" | "raw-edit">(
@@ -42,7 +55,7 @@ export function ResumeModal({
 
   // Working state during modal session
   const [currentTemplateId, setCurrentTemplateId] = useState<string>(
-    getTemplateById(templateId || store.selectedTemplateId).id
+    templateId || store.selectedTemplateId
   );
   const [currentMarkdown, setCurrentMarkdown] = useState<string>(
     initialMarkdown || store.resumeMarkdown
@@ -51,38 +64,52 @@ export function ResumeModal({
     initialMarkdown || store.resumeMarkdown
   );
   const [zoom, setZoom] = useState<number>(1);
-  const [isOverflowing, setIsOverflowing] = useState<boolean>(false);
+  const [pageCount, setPageCount] = useState<number>(1);
   const [isTemplateMenuOpen, setIsTemplateMenuOpen] = useState<boolean>(false);
+
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportedDownloadUrl, setExportedDownloadUrl] = useState<string | null>(null);
   const templateMenuRef = useRef<HTMLDivElement>(null);
 
   // Active template derived from modal's working templateId
   const activeTemplate: ResumeTemplate = getTemplateById(currentTemplateId);
 
-  // Reset the working document when this modal opens, before painting it.
+  // Reset state on modal open during render before paint
   if (!prevIsOpen && isOpen) {
-      setPrevIsOpen(true);
-      const activeTmpl = getTemplateById(templateId || store.selectedTemplateId).id;
-      const initialMd = initialMarkdown || store.resumeMarkdown;
-      setCurrentTemplateId(activeTmpl);
-      setCurrentMarkdown(initialMd);
-      setSavedBaselineMarkdown(initialMd);
-      setMode(initialMode === "edit" ? "visual-edit" : "view");
-      setZoom(1);
-      setIsTemplateMenuOpen(false);
+    setPrevIsOpen(true);
+    const activeTmpl = templateId || store.selectedTemplateId;
+    const initialMd = initialMarkdown || store.resumeMarkdown;
+    setCurrentTemplateId(activeTmpl);
+    setCurrentMarkdown(initialMd);
+    setSavedBaselineMarkdown(initialMd);
+    setMode(readOnly ? "view" : initialMode === "edit" ? "visual-edit" : "view");
+    const initialZoom =
+      typeof window !== "undefined" && window.innerWidth < 820
+        ? Math.max(0.4, Math.min(1, Math.round(((window.innerWidth - 24) / 794) * 100) / 100))
+        : 1;
+    setZoom(initialZoom);
+    setIsTemplateMenuOpen(false);
+    setExportedDownloadUrl(null);
+
   } else if (prevIsOpen && !isOpen) {
-      setPrevIsOpen(false);
+    setPrevIsOpen(false);
   }
 
+
+  // Invalidate compiled PDF link when working markdown or template changes
+  useEffect(() => {
+    setExportedDownloadUrl(null);
+  }, [currentMarkdown, currentTemplateId]);
+
+  // Manage body scroll locking
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
+      lockBodyScroll();
+      return () => {
+        unlockBodyScroll();
+      };
     }
-    return () => {
-      document.body.style.overflow = "";
-    };
   }, [isOpen]);
 
   // Handle escape key
@@ -113,10 +140,32 @@ export function ResumeModal({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isTemplateMenuOpen]);
 
-  if (!isOpen || typeof document === "undefined") return null;
+  if (!isOpen) return null;
 
   const handleSave = async () => {
+    if (readOnly) {
+      toast.error("This is a historical draft and cannot be edited.");
+      return;
+    }
     try {
+      if (onSave) {
+        const result = await onSave(currentMarkdown, currentTemplateId, expectedGenerationId);
+        if (result && typeof result === "object" && !result.success) {
+          if (result.code === "STALE_GENERATION") {
+            toast.error(
+              result.error || "A newer draft was generated in the background. Please refresh to load the latest version."
+            );
+            return;
+          }
+          toast.error(result.error || "Failed to save tailored resume.");
+          return;
+        }
+        setSavedBaselineMarkdown(currentMarkdown);
+        setMode("view");
+        toast.success("Tailored resume saved successfully!");
+        return;
+      }
+
       const success = await store.saveResume(currentMarkdown, currentTemplateId);
       if (success) {
         setSavedBaselineMarkdown(currentMarkdown);
@@ -146,48 +195,82 @@ export function ResumeModal({
     window.print();
   };
 
-  return createPortal(
-    <div data-resume-print-root className="fixed inset-0 z-[100] font-sans print:p-0">
-      {/* Print-specific style sheet for exact 8.5in x 11in vector PDF generation */}
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true);
+      const response = await fetch(jobId ? "/api/resume/export" : "/api/resume/base", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...(jobId ? { jobId, ...(expectedGenerationId ? { expectedGenerationId } : {}) } : {}),
+          markdown: currentMarkdown, templateId: currentTemplateId }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "PDF export failed. Please retry.");
+      }
+      let url: string;
+      let temporary = false;
+      if (jobId) {
+        const data = await response.json();
+        if (!data.downloadUrl) throw new Error("The PDF download link is missing.");
+        url = data.downloadUrl;
+        setExportedDownloadUrl(url);
+      } else {
+        url = URL.createObjectURL(await response.blob());
+        temporary = true;
+      }
+      const link = document.createElement("a");
+      link.href = url; link.download = `${currentTemplateId}_resume.pdf`;
+      link.target = "_blank"; link.rel = "noopener noreferrer";
+      document.body.appendChild(link); link.click(); link.remove();
+      if (temporary) setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast.success("PDF ready.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "PDF export failed. Please retry.");
+    } finally { setIsExporting(false); }
+  };
+
+
+  return (
+    <div className="fixed inset-0 z-[1050] font-body print:p-0">
+      {/* Print-specific style sheet for exact 210mm x 297mm ISO A4 vector PDF generation */}
       <style jsx global>{`
         @media print {
-          @page { size: letter portrait; margin: 0; }
-          html, body {
+          @page {
+            size: A4 portrait;
+            margin: 0;
+          }
+          body {
             margin: 0 !important;
             padding: 0 !important;
-            height: auto !important;
-            min-height: 0 !important;
-            overflow: visible !important;
-            background: white !important;
+            background: #ffffff !important;
+            color: #000000 !important;
           }
-          body > :not([data-resume-print-root]) { display: none !important; }
-          [data-resume-print-root], .resume-workspace, .print-only-sheet,
-          .resume-sheet-root, .pseudo-pdf-container {
+          .no-print,
+          .no-print * {
+            display: none !important;
+          }
+          .print-only-sheet {
             display: block !important;
-            position: static !important;
-            width: 8.5in !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 210mm !important;
+            min-height: 297mm !important;
             height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            overflow: visible !important;
             transform: none !important;
-            transition: none !important;
             box-shadow: none !important;
           }
-          .no-print, .no-print * { display: none !important; }
-          .resume-paper {
-            min-height: 0 !important;
-            max-height: none !important;
-            height: auto !important;
-            overflow: visible !important;
-            border: 0 !important;
-            box-shadow: none !important;
-            print-color-adjust: exact;
+          .resume-section-item {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
-          .resume-paper h1, .resume-paper h2, .resume-paper h3 { break-after: avoid; }
-          .resume-paper li { break-inside: avoid; }
+          .resume-section-header {
+            break-after: avoid !important;
+            page-break-after: avoid !important;
+          }
         }
       `}</style>
 
@@ -199,214 +282,265 @@ export function ResumeModal({
         }}
       />
 
-      {reviewWarning && <p role="alert" className="no-print absolute bottom-5 left-5 right-5 z-[120] rounded-lg border border-amber-400 bg-amber-950 p-3 text-sm text-amber-100">{reviewWarning}</p>}
-
-      {/* Top Floating Bar: Title + Active Template Indicator (Hidden on Print) */}
-      <div className="no-print absolute top-5 left-6 z-[110] flex items-center gap-3 animate-in slide-in-from-top-4 fade-in duration-300">
-        <div className="flex items-center gap-2.5 text-white font-heading font-semibold text-[1.25rem] drop-shadow-md">
-          <FileText className="w-5 h-5 text-brand-lime dark:text-[#ACEE5F]" strokeWidth={2.5} />
-          <span>Resume Preview</span>
-        </div>
-
-        {/* Template Selector Dropdown */}
-        <div className="relative" ref={templateMenuRef}>
-          <button
-            type="button"
-            onClick={() => setIsTemplateMenuOpen(!isTemplateMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold backdrop-blur-sm transition-all cursor-pointer"
-          >
-            <span className="w-2 h-2 rounded-full bg-brand-lime animate-pulse" />
-            <span>{activeTemplate.name}</span>
-            <span className="text-white/60 text-[0.7rem] uppercase font-mono">
-              Theme {activeTemplate.themeId}
-            </span>
-            <ChevronDown className={`w-3.5 h-3.5 text-white/70 transition-transform duration-200 ${isTemplateMenuOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          {isTemplateMenuOpen && (
-            <div className="absolute left-0 top-full mt-2 w-[280px] bg-[#1a1c24] border border-[#2e3344] rounded-xl shadow-2xl p-2 text-white z-50 animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-3 py-1.5 text-[0.7rem] font-bold text-gray-400 uppercase tracking-wider border-b border-[#2e3344] mb-1">
-                Select Template & Theme
-              </div>
-              <div className="space-y-1">
-                {RESUME_TEMPLATES.map((tmpl) => {
-                  const isSelected = tmpl.id === currentTemplateId;
-                  return (
-                    <button
-                      key={tmpl.id}
-                      type="button"
-                      onClick={() => {
-                        setCurrentTemplateId(tmpl.id);
-                        setIsTemplateMenuOpen(false);
-                        toast.info(`Switched style to ${tmpl.name} (Theme ${tmpl.themeId})`);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
-                        isSelected
-                          ? "bg-brand-lime text-[#111827] font-bold"
-                          : "hover:bg-white/10 text-gray-200"
-                      }`}
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-semibold">{tmpl.name}</span>
-                        <span className={`text-[0.68rem] ${isSelected ? "text-black/70" : "text-gray-400"}`}>
-                          {tmpl.category}
-                        </span>
-                      </div>
-                      <span className={`text-[0.68rem] font-mono px-1.5 py-0.5 rounded ${
-                        isSelected ? "bg-black/20 text-black font-bold" : "bg-white/10 text-gray-300"
-                      }`}>
-                        T{tmpl.themeId}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+      {/* Top Floating Bar: Fixed Height & Balanced Zones (Hidden on Print) */}
+      <header className="no-print absolute top-0 left-0 right-0 z-[110] px-3 sm:px-6 py-2.5 md:py-0 md:h-16 bg-[#11131a]/95 backdrop-blur-md border-b border-white/10 flex items-center">
+        <div className="w-full max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-2.5 md:gap-4">
+          {/* Zone 1: Document Metadata & Style (Title + Template + Page Count + Mobile Close) */}
+          <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 w-full md:w-auto shrink-0">
+            <div className="flex items-center gap-2 text-white font-heading font-semibold text-sm sm:text-base md:text-[1.1rem] drop-shadow-md shrink-0">
+              <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-brand-lime dark:text-[#ACEE5F] shrink-0" strokeWidth={2.5} />
+              <span className="whitespace-nowrap">Resume Preview</span>
             </div>
-          )}
+
+            {/* Template Selector Dropdown */}
+            <div className="relative shrink-0" ref={templateMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsTemplateMenuOpen(!isTemplateMenuOpen)}
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[0.72rem] sm:text-xs font-semibold backdrop-blur-sm transition-all cursor-pointer"
+              >
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-brand-lime animate-pulse shrink-0" />
+                <span className="truncate max-w-[100px] sm:max-w-none">{activeTemplate.name}</span>
+                <span className="text-white/60 text-[0.65rem] sm:text-[0.7rem] uppercase font-mono hidden xs:inline">
+                  Theme {activeTemplate.themeId}
+                </span>
+                <ChevronDown className={`w-3 h-3 sm:w-3.5 sm:h-3.5 text-white/70 transition-transform duration-200 shrink-0 ${isTemplateMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {isTemplateMenuOpen && (
+                <div className="absolute left-0 top-full mt-2 w-[260px] sm:w-[280px] bg-[#1a1c24] border border-[#2e3344] rounded-xl shadow-2xl p-2 text-white z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-1.5 text-[0.7rem] font-bold text-gray-400 uppercase tracking-wider border-b border-[#2e3344] mb-1">
+                    Select Template & Theme
+                  </div>
+                  <div className="space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar">
+                    {RESUME_TEMPLATES.map((tmpl) => {
+                      const isSelected = tmpl.id === currentTemplateId;
+                      return (
+                        <button
+                          key={tmpl.id}
+                          type="button"
+                          onClick={() => {
+                            setCurrentTemplateId(tmpl.id);
+                            setIsTemplateMenuOpen(false);
+                            toast.info(`Switched style to ${tmpl.name} (Theme ${tmpl.themeId})`);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                            isSelected
+                              ? "bg-brand-lime text-[#111827] font-bold"
+                              : "hover:bg-white/10 text-gray-200"
+                          }`}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{tmpl.name}</span>
+                            <span className={`text-[0.68rem] ${isSelected ? "text-black/70" : "text-gray-400"}`}>
+                              {tmpl.category}
+                            </span>
+                          </div>
+                          <span className={`text-[0.68rem] font-mono px-1.5 py-0.5 rounded ${
+                            isSelected ? "bg-black/20 text-black font-bold" : "bg-white/10 text-gray-300"
+                          }`}>
+                            T{tmpl.themeId}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile Close Button */}
+            <div className="flex md:hidden items-center ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-md bg-[#FF3B5C]/20 text-[#FF3B5C] hover:bg-[#FF3B5C] hover:text-white border border-[#FF3B5C]/40 transition-colors cursor-pointer"
+                aria-label="Close Viewer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Zone 2 & 3: Canvas Controls + Action Buttons + Desktop Close (No-wrap on desktop) */}
+          <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-2.5 flex-nowrap overflow-x-auto md:overflow-visible w-full md:w-auto pb-0.5 md:pb-0 shrink-0">
+            {/* Mode Switcher Tabs or Read-Only Pill */}
+            {readOnly ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold shrink-0">
+                <Lock className="w-3.5 h-3.5" />
+                <span className="text-[0.74rem] sm:text-xs">Historical Draft (View Only)</span>
+              </div>
+            ) : (
+              <div className="flex items-center bg-[#151720] border border-[#2B3042] rounded-md p-0.5 text-xs text-white shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setMode("view")}
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded font-bold transition-all cursor-pointer ${
+                    mode === "view"
+                      ? "bg-white/20 text-white shadow-xs"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span className="text-[0.74rem] sm:text-xs">View</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("visual-edit")}
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded font-bold transition-all cursor-pointer ${
+                    mode === "visual-edit"
+                      ? "bg-brand-lime text-[#111827] shadow-xs"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span className="text-[0.74rem] sm:text-xs">Visual Edit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("raw-edit")}
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded font-bold transition-all cursor-pointer ${
+                    mode === "raw-edit"
+                      ? "bg-white/20 text-white shadow-xs"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  <span className="text-[0.74rem] sm:text-xs">Markdown</span>
+                </button>
+              </div>
+            )}
+
+            {/* Zoom Controls */}
+            <div className="flex items-center bg-[#151720] border border-[#2B3042] rounded-md text-white shrink-0">
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))}
+                className="p-1 sm:p-1.5 hover:bg-white/10 transition-colors cursor-pointer border-r border-[#2B3042]"
+                aria-label="Zoom Out"
+              >
+                <ZoomOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              </button>
+              <span className="text-[0.72rem] sm:text-[0.78rem] font-bold px-1.5 sm:px-2 w-[46px] text-center shrink-0">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.min(2.0, Math.round((z + 0.25) * 100) / 100))}
+                className="p-1 sm:p-1.5 hover:bg-white/10 transition-colors cursor-pointer border-l border-[#2B3042]"
+                aria-label="Zoom In"
+              >
+                <ZoomIn className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              </button>
+            </div>
+
+            {/* Action Buttons */}
+            {mode !== "view" ? (
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={store.isSaving}
+                  className="inline-flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1 sm:py-1.5 rounded-md bg-brand-lime text-[#111827] font-bold text-[0.72rem] sm:text-xs shadow-md hover:bg-white hover:text-black transition-all cursor-pointer active:scale-98"
+                >
+                  <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                  <span>{store.isSaving ? "Saving..." : "Save Changes"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white font-bold text-[0.72rem] sm:text-xs transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Cancel</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleDownloadMd}
+                  className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-md bg-[#151720] border border-[#2B3042] text-white hover:bg-white/10 font-bold text-[0.72rem] sm:text-xs transition-colors cursor-pointer"
+                  title="Download structured Markdown conforming to backend parser contract"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Markdown</span>
+                </button>
+
+                {exportedDownloadUrl ? (
+                  <a
+                    href={exportedDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 sm:gap-1.5 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-md bg-emerald-500 text-white hover:bg-emerald-400 font-bold text-[0.72rem] sm:text-xs shadow-md transition-all cursor-pointer active:scale-98"
+                    title="Download vector PDF from Cloudflare R2"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download PDF</span>
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleExportPdf}
+                    disabled={isExporting}
+                    className="inline-flex items-center gap-1 sm:gap-1.5 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-md bg-brand-lime text-[#111827] hover:bg-white font-bold text-[0.72rem] sm:text-xs shadow-md transition-all cursor-pointer active:scale-98 disabled:opacity-60"
+                    title="Compile and export vector PDF via Cloud Run Typst service"
+                  >
+                    {isExporting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Compiling...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Export PDF</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handlePrintPdf}
+                  className="p-1 sm:p-1.5 rounded-md bg-[#151720] border border-[#2B3042] text-gray-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Fallback: Print or save directly using browser print"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+
+            {/* Desktop Close Button */}
+            <div className="hidden md:flex items-center pl-1 border-l border-white/10 shrink-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-md bg-[#FF3B5C]/20 text-[#FF3B5C] hover:bg-[#FF3B5C] hover:text-white border border-[#FF3B5C]/40 transition-colors cursor-pointer"
+                aria-label="Close Viewer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </header>
 
-      {/* Top Floating Controls & Action Buttons (Hidden on Print) */}
-      <div className="no-print absolute top-5 right-6 z-[110] flex items-center gap-3 animate-in slide-in-from-right-4 fade-in duration-300">
-
-        {/* Mode Switcher Tabs */}
-        <div className="flex items-center bg-[#151720] border border-[#2B3042] rounded-md p-0.5 text-xs text-white">
-          <button
-            type="button"
-            onClick={() => setMode("view")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-bold transition-all cursor-pointer ${
-              mode === "view"
-                ? "bg-white/20 text-white shadow-xs"
-                : "text-gray-400 hover:text-white"
-            }`}
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>View</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("visual-edit")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-bold transition-all cursor-pointer ${
-              mode === "visual-edit"
-                ? "bg-brand-lime text-[#111827] shadow-xs"
-                : "text-gray-400 hover:text-white"
-            }`}
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>Visual Edit</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("raw-edit")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-bold transition-all cursor-pointer ${
-              mode === "raw-edit"
-                ? "bg-white/20 text-white shadow-xs"
-                : "text-gray-400 hover:text-white"
-            }`}
-          >
-            <Code2 className="w-3.5 h-3.5" />
-            <span>Markdown</span>
-          </button>
-        </div>
-
-        {/* Zoom Controls */}
-        <div className="flex items-center bg-[#151720] border border-[#2B3042] rounded-md text-white">
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))}
-            className="p-1.5 hover:bg-white/10 transition-colors cursor-pointer border-r border-[#2B3042]"
-            aria-label="Zoom Out"
-          >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <span className="text-[0.78rem] font-bold px-2.5 w-[50px] text-center shrink-0">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.min(2.0, Math.round((z + 0.25) * 100) / 100))}
-            className="p-1.5 hover:bg-white/10 transition-colors cursor-pointer border-l border-[#2B3042]"
-            aria-label="Zoom In"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Action Buttons */}
-        {mode !== "view" ? (
-          <>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={store.isSaving}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-brand-lime text-[#111827] font-bold text-xs shadow-md hover:bg-white hover:text-black transition-all cursor-pointer active:scale-98"
-            >
-              <Check className="w-3.5 h-3.5" strokeWidth={3} />
-              <span>{store.isSaving ? "Saving..." : "Save Changes"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Cancel</span>
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => setMode("visual-edit")}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-brand-lime text-[#111827] font-bold text-xs shadow-md hover:bg-white transition-all cursor-pointer active:scale-98"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>Edit Resume</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDownloadMd}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#151720] border border-[#2B3042] text-white hover:bg-white/10 font-bold text-xs transition-colors cursor-pointer"
-              title="Download structured Markdown conforming to backend parser contract"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Markdown</span>
-            </button>
-            <button
-              type="button"
-              onClick={handlePrintPdf}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#151720] border border-[#2B3042] text-white hover:bg-white/10 font-bold text-xs transition-colors cursor-pointer"
-              title="Print or save as vector PDF with physical US Letter dimensions"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Export PDF</span>
-            </button>
-          </>
-        )}
-
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1.5 rounded-md bg-[#FF3B5C]/20 text-[#FF3B5C] hover:bg-[#FF3B5C] hover:text-white border border-[#FF3B5C]/40 transition-colors cursor-pointer"
-          aria-label="Close Viewer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* 1-Page Budget Warning Banner (Hidden on Print) */}
-      {isOverflowing && (
-        <div className="no-print absolute top-[4.5rem] left-1/2 -translate-x-1/2 z-[115] px-4 py-2 bg-amber-500/90 text-black font-semibold text-xs rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
-          <AlertTriangle className="w-4 h-4 text-black shrink-0" />
-          <span>
-            <strong>Page Budget Exceeded:</strong> Content extends beyond the one-page preview. PDF export includes the full resume. Shorten content if you need one page.
-          </span>
+      {/* Floating Notice Banners (AI Audit Notice) */}
+      {reviewReason && (
+        <div className="no-print absolute top-[5.25rem] md:top-[4.5rem] left-1/2 -translate-x-1/2 z-[115] flex flex-col items-center gap-2 max-w-[90vw] pointer-events-none">
+          <div className="pointer-events-auto px-4 py-2 bg-amber-500 text-black font-semibold text-xs rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200 text-center">
+            <AlertTriangle className="w-4 h-4 text-black shrink-0" />
+            <span>
+              <strong>AI Audit Notice:</strong> {reviewReason} — Review or edit the bullet points below before exporting.
+            </span>
+          </div>
         </div>
       )}
 
-      {/* Main Document / Editor Workspace */}
-      <div className="resume-workspace absolute inset-0 pt-24 pb-20 overflow-y-auto custom-scrollbar flex justify-center z-[105] print:p-0 print:m-0 print:static print:overflow-visible">
+      {/* Main Document / Editor Workspace (Stable top padding to eliminate layout jumping) */}
+      <div className="absolute inset-0 pt-28 md:pt-20 pb-20 overflow-auto custom-scrollbar flex justify-center z-[105] px-2 sm:px-4 print:p-0 print:m-0 print:static print:overflow-visible">
         {mode === "raw-edit" ? (
           /* Split / Raw Markdown Mode */
           <div className="w-full max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
@@ -439,7 +573,7 @@ export function ResumeModal({
                 themeId={activeTemplate.themeId}
                 zoom={0.7}
                 isEditable={false}
-                onOverflowChange={setIsOverflowing}
+                onPageCountChange={setPageCount}
               />
             </div>
           </div>
@@ -447,8 +581,16 @@ export function ResumeModal({
           /* Visual Sheet Mode / View Mode */
           <div
             className="flex flex-col items-center justify-start print-only-sheet"
-            style={{ minHeight: `${11 * zoom}in` }}
+            style={{ minHeight: `${297 * zoom}mm` }}
           >
+            {/* Informational Multi-Page Indicator Pill */}
+            <div className="no-print mb-2.5 px-3.5 py-1 rounded-full bg-white/10 backdrop-blur-xs border border-white/10 text-gray-300 text-[0.74rem] font-medium flex items-center gap-1.5 shadow-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+              <span>
+                {pageCount} A4 {pageCount === 1 ? "page" : "pages"} · Formatted for ISO 210 × 297 mm · All content included in PDF export
+              </span>
+            </div>
+
             {mode === "visual-edit" && (
               <div className="no-print mb-3 px-4 py-1 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 text-xs font-semibold flex items-center gap-2">
                 <Edit3 className="w-3.5 h-3.5" />
@@ -462,12 +604,12 @@ export function ResumeModal({
               zoom={zoom}
               isEditable={mode === "visual-edit"}
               onMarkdownChange={(newMd) => setCurrentMarkdown(newMd)}
-              onOverflowChange={setIsOverflowing}
+              onPageCountChange={setPageCount}
             />
           </div>
         )}
+
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

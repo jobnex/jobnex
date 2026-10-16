@@ -1,3 +1,4 @@
+import { contactKey, extractContacts, uniqueContacts } from "./resume-contacts";
 export interface PersonalInfo {
   name: string;
   title: string;
@@ -6,6 +7,7 @@ export interface PersonalInfo {
   linkedin: string;
   github: string;
   location: string;
+  extraContacts?: string[];
 }
 
 export interface SkillCategory {
@@ -47,12 +49,24 @@ export interface ParsedResume {
   rawMarkdown: string;
 }
 
+/** Flatten inline emphasis for the structured preview without changing words. */
+export function plainResumeText(value: string): string {
+  return value.replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/\*([^*\n]+)\*/g, "$1").trim();
+}
+
+// Generated drafts can nest ATX markers ("### ### Role") or emphasis.
+// Only heading fields use this: hashes in ordinary prose/skills remain intact.
+function headingText(value: string): string {
+  return plainResumeText(value).replace(/^(?:#{1,6}\s+)+/, "").replace(/\s+#+\s*$/, "").trim();
+}
+
 /**
  * Parses markdown into structured resume sections according to markdown-contract.md
  */
 export function parseResumeMarkdown(markdown: string): ParsedResume {
   const lines = markdown.split(/\r?\n/);
-  
+
   const personalInfo: PersonalInfo = {
     name: "",
     title: "",
@@ -61,6 +75,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
     linkedin: "",
     github: "",
     location: "",
+    extraContacts: [],
   };
 
   const summary: string[] = [];
@@ -88,7 +103,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
       if (currentProjectItem) { projects.push(currentProjectItem); currentProjectItem = null; }
       if (currentEduItem) { education.push(currentEduItem); currentEduItem = null; }
 
-      const title = headerMatch[1].trim().toLowerCase();
+      const title = headingText(headerMatch[1]).toLowerCase();
       if (title.includes("summary") || title.includes("profile") || title.includes("objective") || title.includes("about")) {
         currentSection = "summary";
         if (!sectionOrder.includes("summary")) sectionOrder.push("summary");
@@ -115,23 +130,27 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
     if (currentSection === "header") {
       // Line with # Name
       if (line.startsWith("# ") && !personalInfo.name) {
-        personalInfo.name = line.replace(/^#\s+/, "").trim();
-      } else if (line.startsWith("**") && line.endsWith("**") && !line.includes("|") && !line.includes("@") && !personalInfo.title) {
+        personalInfo.name = headingText(line);
+      } else if (line.startsWith("**") && line.endsWith("**") && !extractContacts(plainResumeText(line)).emails.length && !extractContacts(plainResumeText(line)).phones.length && !extractContacts(plainResumeText(line)).links.length && !personalInfo.title) {
         // Line with **Title**
-        personalInfo.title = line.replace(/^\*\*|\*\*$/g, "").trim();
+        personalInfo.title = plainResumeText(line);
       } else if (!personalInfo.title && (line.startsWith("*") && line.endsWith("*") && !line.includes("|"))) {
         personalInfo.title = line.replace(/^\*|\*$/g, "").trim();
       } else {
         // Extract contacts from contact line
+        const extracted = extractContacts(line);
+        personalInfo.email ||= extracted.emails[0] || "";
+        personalInfo.phone ||= extracted.phones[0] || "";
+        for (const link of extracted.links) {
+          if (/linkedin\.com\/in\//i.test(link) && !personalInfo.linkedin) personalInfo.linkedin = link;
+          else if (/github\.com\//i.test(link) && !personalInfo.github) personalInfo.github = link;
+          else personalInfo.extraContacts!.push(link);
+        }
+        personalInfo.extraContacts!.push(...extracted.emails.filter(value => value !== personalInfo.email), ...extracted.phones.filter(value => value !== personalInfo.phone));
         // Email
         const emailMatch = line.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
         if (emailMatch && !personalInfo.email) {
           personalInfo.email = emailMatch[0];
-        }
-        // Phone
-        const phoneMatch = line.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-        if (phoneMatch && !personalInfo.phone) {
-          personalInfo.phone = phoneMatch[0].trim();
         }
         // LinkedIn
         const linkedinMatch = line.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+(?:\/)?/);
@@ -144,13 +163,19 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
           personalInfo.github = githubMatch[0].replace(/^https?:\/\/(?:www\.)?/, "");
         }
         // Location (e.g. San Francisco, CA or Bellevue, WA or City, Country)
-        const parts = line.split("|").map((p) => p.trim());
+        const parts = plainResumeText(line).split("|").map((p) => p.trim());
         for (const p of parts) {
           if (!p.includes("@") && !p.includes("http") && !p.includes("linkedin") && !p.includes("github") && !p.match(/\d{3}/)) {
             const cleanLoc = p.replace(/[^\w\s,.-]/g, "").trim();
             if (cleanLoc.length > 2 && cleanLoc.includes(",")) {
               personalInfo.location = cleanLoc;
             }
+          }
+        }
+        for (const p of parts) {
+          if (p && ![personalInfo.email,personalInfo.phone,personalInfo.location].some(value => value && p.includes(value)) &&
+              !extracted.links.some(value => p.includes(value)) && !extracted.emails.some(value => p.includes(value)) && !extracted.phones.some(value => p.includes(value))) {
+            personalInfo.extraContacts!.push(p);
           }
         }
       }
@@ -176,18 +201,29 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
             items: colonParts.slice(1).join(":").trim(),
           });
         } else if (line) {
-          skills.push({
-            category: "General",
-            items: line,
-          });
+          const previous = skills.at(-1);
+          if (previous && !/^[-*•●]\s*/.test(line) && lines[i - 1]?.trim()) {
+            previous.items = previous.items.endsWith("-")
+              ? previous.items.slice(0, -1) + line
+              : previous.items + " " + line;
+          } else {
+            skills.push({ category: "General", items: line });
+          }
         }
       }
     } else if (currentSection === "experience") {
-      if (line.startsWith("### ") || (line.startsWith("**") && line.includes("|"))) {
+      if (currentExpItem && !currentExpItem.company && !currentExpItem.bullets.length
+          && line.startsWith("**") && line.includes("|")) {
+        const parts = plainResumeText(line).split("|").map(p => p.trim());
+        currentExpItem.company = parts[0] || "";
+        const tail = parts.slice(1);
+        currentExpItem.duration = tail.find(p => /\d{4}|Present/i.test(p)) || "";
+        currentExpItem.location = tail.filter(p => p !== currentExpItem!.duration).join(" | ");
+      } else if (/^#{3,6}\s+/.test(line) || (line.startsWith("**") && line.includes("|"))) {
         if (currentExpItem) experience.push(currentExpItem);
-        const entryText = line.replace(/^###\s+/, "").replace(/^\*\*|\*\*$/g, "");
+        const entryText = headingText(line);
         const parts = entryText.split("|").map((p) => p.trim());
-        
+
         const role = parts[0] || "";
         const company = parts[1] || "";
         let location = parts[2] || "";
@@ -216,9 +252,9 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
         currentExpItem.bullets.push(line);
       }
     } else if (currentSection === "projects") {
-      if (line.startsWith("### ") || (line.startsWith("**") && line.includes("|"))) {
+      if (/^#{3,6}\s+/.test(line) || (line.startsWith("**") && line.includes("|"))) {
         if (currentProjectItem) projects.push(currentProjectItem);
-        const entryText = line.replace(/^###\s+/, "").replace(/^\*\*|\*\*$/g, "");
+        const entryText = headingText(line);
         const parts = entryText.split("|").map((p) => p.trim());
         currentProjectItem = {
           title: parts[0] || "",
@@ -235,9 +271,18 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
       }
     } else if (currentSection === "education") {
       // Lines: **School** — Location OR School | Location
-      if (line.startsWith("**") && (line.includes("—") || line.includes("-") || line.includes("|"))) {
+      const columns = plainResumeText(line).split(/\s{2,}/);
+      if (/^#{3,6}\s+/.test(line) || (columns.length > 1 && /(?:19|20)\d{2}/.test(columns[columns.length - 1]))) {
         if (currentEduItem) education.push(currentEduItem);
-        const cleaned = line.replace(/\*\*/g, "");
+        currentEduItem = {
+          institution: headingText(columns[0]),
+          location: "",
+          degree: "",
+          duration: columns.slice(1).join(" "),
+        };
+      } else if (line.startsWith("**") && (line.includes("—") || line.includes("-") || line.includes("|"))) {
+        if (currentEduItem) education.push(currentEduItem);
+        const cleaned = plainResumeText(line);
         const parts = cleaned.split(/—|-|\|/).map((p) => p.trim());
         currentEduItem = {
           institution: parts[0] || "",
@@ -246,7 +291,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
           duration: "",
         };
       } else if (line.startsWith("*") && line.includes("|")) {
-        const cleaned = line.replace(/\*/g, "");
+        const cleaned = plainResumeText(line);
         const parts = cleaned.split("|").map((p) => p.trim());
         if (currentEduItem) {
           currentEduItem.degree = parts[0] || "";
@@ -254,15 +299,18 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
         }
       } else if (line.toLowerCase().includes("coursework") || line.toLowerCase().includes("gpa")) {
         if (currentEduItem) {
-          currentEduItem.details = line.replace(/\*\*/g, "").trim();
+          currentEduItem.details = line.replace(/^\*\*|\*\*$/g, "").trim();
         }
       } else if (line && !currentEduItem) {
         currentEduItem = {
-          institution: line,
+          institution: plainResumeText(line),
           location: "",
           degree: "",
           duration: "",
         };
+      } else if (line && currentEduItem) {
+        if (!currentEduItem.degree) currentEduItem.degree = plainResumeText(line);
+        else currentEduItem.details = [currentEduItem.details, plainResumeText(line)].filter(Boolean).join(" ");
       }
     }
   }
@@ -272,6 +320,16 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
   if (currentProjectItem) projects.push(currentProjectItem);
   if (currentEduItem) education.push(currentEduItem);
 
+  const primaryContacts = [personalInfo.email, personalInfo.phone, personalInfo.linkedin, personalInfo.github, personalInfo.location];
+  const titleParts = personalInfo.title.split("|").map(value => contactKey(value));
+  personalInfo.extraContacts = uniqueContacts((personalInfo.extraContacts || []).map(plainResumeText)).filter(value =>
+    !primaryContacts.some(primary => primary && contactKey(primary) === contactKey(value)) &&
+    !titleParts.includes(contactKey(value)) &&
+    value !== personalInfo.email.split("@")[0]);
+  // Inline formatting belongs to the template; preserve the underlying text.
+  summary.splice(0, summary.length, ...summary.map(plainResumeText));
+  for (const skill of skills) { skill.category = plainResumeText(skill.category); skill.items = plainResumeText(skill.items); }
+  for (const entry of [...experience, ...projects]) entry.bullets = entry.bullets.map(plainResumeText);
   return {
     personalInfo,
     summary,
@@ -304,6 +362,7 @@ export function serializeResumeToMarkdown(data: ParsedResume): string {
   if (data.personalInfo.linkedin) contacts.push(data.personalInfo.linkedin);
   if (data.personalInfo.github) contacts.push(data.personalInfo.github);
   if (data.personalInfo.location) contacts.push(data.personalInfo.location);
+  contacts.push(...(data.personalInfo.extraContacts || []));
 
   if (contacts.length > 0) {
     parts.push(contacts.join(" | "));
@@ -358,7 +417,7 @@ export function serializeResumeToMarkdown(data: ParsedResume): string {
           parts.push(`*${edu.degree}* | ${edu.duration}`);
         }
         if (edu.details) {
-          parts.push(`**${edu.details.startsWith("**") ? edu.details : `Relevant Coursework: ${edu.details}`}**`);
+          parts.push(`**${plainResumeText(edu.details)}**`);
         }
         parts.push("");
       }

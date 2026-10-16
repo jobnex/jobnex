@@ -8,20 +8,25 @@ export const auth = createNeonAuth({
 });
 
 export async function getCurrentUser() {
-  const sessionRes = await auth.getSession();
-  // Safe type parsing for Neon Auth session response
-  if (!sessionRes) return null;
-  
-  if ('user' in sessionRes && sessionRes.user) {
-    return sessionRes.user as { id: string; email?: string; name?: string };
-  }
-  
-  if ('data' in sessionRes && typeof sessionRes.data === 'object' && sessionRes.data !== null) {
-    const data = sessionRes.data as { user?: { id: string; email?: string; name?: string } };
-    if (data.user) {
-      return data.user;
+  try {
+    const sessionRes = await auth.getSession();
+    // Safe type parsing for Neon Auth session response
+    if (!sessionRes) return null;
+
+    if ('user' in sessionRes && sessionRes.user) {
+      return sessionRes.user as { id: string; email?: string; name?: string };
     }
+
+    if ('data' in sessionRes && typeof sessionRes.data === 'object' && sessionRes.data !== null) {
+      const data = sessionRes.data as { user?: { id: string; email?: string; name?: string } };
+      if (data.user) {
+        return data.user;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to retrieve user session:", error);
+    return null;
   }
-  
-  return null;
 }

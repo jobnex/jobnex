@@ -1,10 +1,10 @@
 "use client";
 
-import { 
-  UploadCloud, 
-  MapPin, 
-  Check, 
-  X, 
+import {
+  UploadCloud,
+  MapPin,
+  Check,
+  X,
   Search,
   Plus,
   Minus,
@@ -26,10 +26,8 @@ import {
   Eye,
   FileCheck,
   Loader2,
-  Save
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
-import { preferenceSnapshot, samePreferences } from "@/lib/preferences-confirmation";
 
 import { ResumeModal } from "@/components/ResumeModal";
 import { PdfPreviewModal, PdfPreviewDocument } from "@/components/PdfPreviewModal";
@@ -40,9 +38,11 @@ import { FlagUS } from "@/components/LocationDropdown";
 import { useResumeStore } from "@/store/useResumeStore";
 import { useCreditStore } from "@/store/useCreditStore";
 import { getPreferenceTagOptions } from "@/app/actions/recommendations";
-import { getUserJobPreferences, confirmUserJobPreferences, saveResumeDetails } from "@/app/actions/preferences";
+import { getUserJobPreferences, saveUserJobPreferences, saveResumeDetails } from "@/app/actions/preferences";
+import type { JobPreferencesData, ResumeDetailsData } from "@/lib/db/schema/preferences";
 import { ManageJobHuntFormSkeleton } from "@/components/ManageJobHuntSkeleton";
 import { useR2Storage } from "@/lib/hooks/useR2Storage";
+import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import {
   getAllTemplatePresignedUrls,
   TemplateAssetUrls,
@@ -50,6 +50,7 @@ import {
   deleteUserResume,
   getUserActiveResume,
 } from "@/app/actions/storage";
+import { JobHuntMobileMenuButton } from "@/components/JobHuntSidebar";
 
 
 const COUNTRIES = [
@@ -165,6 +166,13 @@ const PEER_PILL_CLASSES = `${PILL_BASE_CLASSES} w-full ${PEER_PILL_UNSELECTED_CL
 
 const INPUT_BASE_CLASSES = "text-[0.875rem] font-medium text-gray-700 dark:text-gray-300 bg-bg-input border-[1.5px] border-transparent rounded-[10px] focus:outline-none focus:border-black dark:focus:border-white transition-all duration-200 ease-out";
 
+function formatFileSize(bytes: number): string {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 
 interface EducationEntry {
   id: string;
@@ -243,29 +251,6 @@ function useTagOptions() {
   return options;
 }
 
-/**
- * Reusable hook to handle outside clicks/touches for dropdowns and popups.
- */
-function useClickOutside<T extends HTMLElement>(
-  ref: React.RefObject<T | null>,
-  handler: () => void,
-  active: boolean = true
-) {
-  useEffect(() => {
-    if (!active) return;
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        handler();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("touchstart", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchstart", handleClickOutside);
-    };
-  }, [ref, handler, active]);
-}
 
 interface TagSelectorProps {
   entityName: "domain" | "skill";
@@ -368,7 +353,7 @@ function TagSelector({
 
         {/* Dropdown list from DB when searchbar is selected */}
         {isDropdownOpen && (
-          <div 
+          <div
             role="listbox"
             className="absolute z-50 top-full left-0 right-0 mt-1 bg-bg-card dark:bg-bg-input border border-border-subtle dark:border-gray-700 rounded-md shadow-lg dark:shadow-[0_8px_24px_rgba(0,0,0,0.6)] max-h-[220px] overflow-y-auto"
           >
@@ -513,7 +498,7 @@ function SkillsSelector({
 
 
 const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
 
@@ -534,8 +519,11 @@ function MonthYearPicker({
   const currentMonth = value ? parseInt(value.split("-")[1], 10) : 0; // 1-indexed
 
   const [viewingYear, setViewingYear] = useState(currentYear || new Date().getFullYear());
+  const [prevValue, setPrevValue] = useState(value);
 
-  useEffect(() => {
+  // Sync viewing year when value prop changes
+  if (prevValue !== value) {
+    setPrevValue(value);
     if (value) {
       const parts = value.split("-");
       if (parts[0]) {
@@ -543,7 +531,7 @@ function MonthYearPicker({
         if (!isNaN(y)) setViewingYear(y);
       }
     }
-  }, [value]);
+  }
 
   useClickOutside(containerRef, () => setIsOpen(false), isOpen);
 
@@ -656,6 +644,95 @@ function MonthYearPicker({
   );
 }
 
+export interface PreferencesStateValues extends Record<string, unknown> {
+  country: string;
+  cities: string[];
+  seniority: string;
+  jobTypes: string[];
+  experienceYears: number;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  domains: string[];
+  skills: string[];
+  selectedTemplateId: string;
+  includeSummarySections: boolean;
+  autofillFromResume: boolean;
+  resumeUploaded: boolean;
+  resumeFileName: string | null;
+  resumeFileKey: string | null;
+}
+
+export function serializePreferencesState(state: Partial<PreferencesStateValues>): string {
+  const normalized = {
+    country: (state.country || "us").trim().toLowerCase(),
+    cities: Array.isArray(state.cities) ? [...state.cities].map(s => s.trim().toLowerCase()).sort() : [],
+    seniority: (state.seniority || "Mid-level").trim(),
+    jobTypes: Array.isArray(state.jobTypes) ? [...state.jobTypes].map(s => s.trim().toLowerCase()).sort() : ["full-time"],
+    experienceYears: state.experienceYears != null ? Number(state.experienceYears) : 3,
+    salaryMin: state.salaryMin != null ? Number(state.salaryMin) : null,
+    salaryMax: state.salaryMax != null ? Number(state.salaryMax) : null,
+    domains: Array.isArray(state.domains) ? [...state.domains].map(s => s.trim().toLowerCase()).sort() : [],
+    skills: Array.isArray(state.skills) ? [...state.skills].map(s => s.trim().toLowerCase()).sort() : [],
+    selectedTemplateId: (state.selectedTemplateId || "mit-capd").trim(),
+    includeSummarySections: Boolean(state.includeSummarySections),
+    autofillFromResume: Boolean(state.autofillFromResume),
+    resumeUploaded: Boolean(state.resumeUploaded),
+    resumeFileName: state.resumeFileName ? state.resumeFileName.trim() : null,
+    resumeFileKey: state.resumeFileKey ? state.resumeFileKey.trim() : null,
+  };
+  return JSON.stringify(normalized);
+}
+
+type SaveStatus = "unconfirmed" | "saved";
+
+interface SaveStatusIndicatorProps {
+  status: SaveStatus;
+  className?: string;
+}
+
+function SaveStatusIndicator({ status, className = "" }: SaveStatusIndicatorProps) {
+  return (
+    <div
+      key={status}
+      className={`inline-flex items-center gap-2 h-9 px-3.5 rounded-full select-none border-0 transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] animate-pill-switch ${
+        status === "unconfirmed"
+          ? "bg-amber-500/[0.09] dark:bg-amber-500/[0.14] text-amber-800 dark:text-amber-300"
+          : "bg-emerald-500/[0.08] dark:bg-emerald-500/[0.12] text-emerald-800 dark:text-emerald-300"
+      } ${className}`}
+      role="status"
+      aria-live="polite"
+    >
+      {status === "unconfirmed" ? (
+        <>
+          <div className="w-[18px] h-[18px] rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0">
+            <svg
+              className="w-3 h-3 text-white"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <span className="text-xs font-semibold">Unconfirmed changes</span>
+        </>
+      ) : (
+        <>
+          <div className="w-[18px] h-[18px] rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+            <Check className="w-3 h-3 text-white stroke-[3]" strokeWidth={3} />
+          </div>
+          <span className="text-xs font-semibold">Changes saved</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ManageJobHuntPage() {
   // Resume
   const [dragActive, setDragActive] = useState(false);
@@ -665,16 +742,20 @@ export default function ManageJobHuntPage() {
   const [showDetailsForm, setShowDetailsForm] = useState(false);
   const [generatedMarkdown, setGeneratedMarkdown] = useState(sampleResumeMarkdown);
   const resumeStore = useResumeStore();
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(RESUME_TEMPLATES[0].id);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
+    resumeStore.selectedTemplateId || RESUME_TEMPLATES[0].id
+  );
+  const [prevStoreTemplateId, setPrevStoreTemplateId] = useState(resumeStore.selectedTemplateId);
 
-  useEffect(() => {
+  // Sync selected template from store during render
+  if (prevStoreTemplateId !== resumeStore.selectedTemplateId) {
+    setPrevStoreTemplateId(resumeStore.selectedTemplateId);
     if (resumeStore.selectedTemplateId) {
       setSelectedTemplateId(resumeStore.selectedTemplateId);
     }
-  }, [resumeStore.selectedTemplateId]);
+  }
   const [previewTemplate, setPreviewTemplate] = useState<ResumeTemplate | PdfPreviewDocument | null>(null);
   const [templateUrls, setTemplateUrls] = useState<TemplateAssetUrls>({});
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [includeSummarySections, setIncludeSummarySections] = useState(true);
 
   const [educations, setEducations] = useState<EducationEntry[]>([{
@@ -683,10 +764,10 @@ export default function ManageJobHuntPage() {
   const [experiences, setExperiences] = useState<ExperienceEntry[]>([{
     id: "1", company: "", role: "", startDate: "", endDate: "", jobDescription: "", skills: [], domains: [], responsibilities: ""
   }]);
-  
+
   const [expandedEduIds, setExpandedEduIds] = useState<string[]>(["1"]);
   const [expandedExpIds, setExpandedExpIds] = useState<string[]>(["1"]);
-  
+
   const addEducation = () => {
     const newId = Math.random().toString(36).slice(2, 11);
     setEducations([...educations, { id: newId, college: "", degree: "", field: "", startDate: "", endDate: "", grade: "", maxGrade: "", gradeType: "CGPA" }]);
@@ -696,7 +777,7 @@ export default function ManageJobHuntPage() {
     if (educations.length <= 1) return;
     setEducations(educations.filter(e => e.id !== id));
   };
-  
+
   const addExperience = () => {
     const newId = Math.random().toString(36).slice(2, 11);
     setExperiences([...experiences, { id: newId, company: "", role: "", startDate: "", endDate: "", jobDescription: "", skills: [], domains: [], responsibilities: "" }]);
@@ -717,8 +798,8 @@ export default function ManageJobHuntPage() {
   const filteredCities = useMemo(() => {
     const trimmedInput = cityInput.trim().toLowerCase();
     const selectedCitySet = new Set(cities.map(selected => selected.toLowerCase()));
-    return TOP_US_CITIES.filter(c => 
-      (!trimmedInput || c.toLowerCase().includes(trimmedInput)) && 
+    return TOP_US_CITIES.filter(c =>
+      (!trimmedInput || c.toLowerCase().includes(trimmedInput)) &&
       !selectedCitySet.has(c.toLowerCase())
     );
   }, [cityInput, cities]);
@@ -748,35 +829,41 @@ export default function ManageJobHuntPage() {
   const [resumeUploaded, setResumeUploaded] = useState(false);
   const [resumeFileName, setResumeFileName] = useState<string | null>(null);
   const [resumeFileKey, setResumeFileKey] = useState<string | null>(null);
+  const [resumeFileSize, setResumeFileSize] = useState<number | null>(null);
   const [isViewingResume, setIsViewingResume] = useState(false);
 
   const { uploadFile, getFileUrl, isUploading: isR2Uploading, progress: uploadProgress } = useR2Storage();
 
-  const [isSaving, setIsSaving] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [confirmedSnapshot, setConfirmedSnapshot] = useState<string | null>(null);
   const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false);
-  const [confirmation, setConfirmation] = useState<{ isConfirmed: boolean; confirmedAt: string | null; baseline: Record<string, unknown> }>({ isConfirmed: false, confirmedAt: null, baseline: {} });
-  const currentPreferences = {
-    country, cities: cities.slice(0, 3), seniority,
-    jobTypes: jobTypes.length ? jobTypes : ["Full-time"],
-    experienceYears: Math.min(60, Math.max(0, parseInt(experience || "0", 10) || 0)),
-    salaryMin: salaryFrom ? Math.max(0, parseInt(salaryFrom, 10)) : null,
-    salaryMax: salaryTo ? Math.max(0, parseInt(salaryTo, 10)) : null,
-    currency: "USD", domains: Array.from(new Set(domains)), skills: Array.from(new Set(skills)),
-    selectedTemplateId, includeSummarySections, autofillFromResume: autofill,
-    resumeUploaded: Boolean(selectedFile || resumeUploaded),
-    resumeFileName: selectedFile ? selectedFile.name : resumeFileName || null,
-    resumeFileKey: resumeFileKey || null,
-  };
-  const isDirty = !confirmation.isConfirmed || !samePreferences(currentPreferences, confirmation.baseline);
-
 
   const formRef = useRef<HTMLFormElement>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const resumeDetailsTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const lastConfirmedPreferencesRef = useRef<Record<string, unknown> | null>(null);
+  const isInitialMountRef = useRef(false);
+  const lastSavedResumeDetailsRef = useRef<string | null>(null);
+  const cloudRunExtractionCacheRef = useRef<{ preferences?: JobPreferencesData; resume_details?: ResumeDetailsData } | null>(null);
 
   // Load existing preferences and tag options from DB on mount
   useEffect(() => {
     let isMounted = true;
     async function loadPreferences() {
       try {
+        if (typeof window !== "undefined") {
+          try {
+            const cached = sessionStorage.getItem("cached_resume_extraction");
+            if (cached) {
+              cloudRunExtractionCacheRef.current = JSON.parse(cached);
+            }
+          } catch {
+            // Ignore
+          }
+        }
+
         const [res, , tplRes, activeResumeRes] = await Promise.all([
           getUserJobPreferences(),
           fetchTagOptions(),
@@ -786,20 +873,22 @@ export default function ManageJobHuntPage() {
         if (isMounted && tplRes?.success && tplRes.data) {
           setTemplateUrls(tplRes.data);
         }
-        if (isMounted) {
-          setIsLoadingTemplates(false);
-        }
         if (isMounted && activeResumeRes?.success && activeResumeRes?.data?.fileKey) {
           setResumeFileKey(activeResumeRes.data.fileKey);
           setResumeFileName(activeResumeRes.data.fileName || "Uploaded_Resume.pdf");
           setResumeUploaded(true);
+          if (activeResumeRes.data.fileSize) {
+            setResumeFileSize(activeResumeRes.data.fileSize);
+          }
         }
         if (isMounted && res.success && res.data) {
           const d = res.data;
-          const p = (d.preferences || {}) as Record<string, any>;
-          setConfirmation({ isConfirmed: p.isConfirmed === true, confirmedAt: p.confirmedAt ?? null,
-            baseline: p.lastConfirmedPreferences ?? preferenceSnapshot(p) });
-          const r = (d.resumeDetails || {}) as Record<string, any>;
+          const p = (d.preferences || {}) as JobPreferencesData;
+          const r = (d.resumeDetails || {}) as ResumeDetailsData;
+
+          const activeKey = activeResumeRes?.data?.fileKey || p.resumeFileKey || null;
+          const activeName = activeResumeRes?.data?.fileName || p.resumeFileName || null;
+          const activeUploaded = activeKey ? true : Boolean(p.resumeUploaded);
 
           if (p.country) setCountry(p.country);
           if (Array.isArray(p.cities)) setCities(p.cities);
@@ -812,37 +901,86 @@ export default function ManageJobHuntPage() {
           if (Array.isArray(p.skills)) setSkills(p.skills);
           if (p.selectedTemplateId) {
             setSelectedTemplateId(p.selectedTemplateId);
-            resumeStore.setSelectedTemplateId(p.selectedTemplateId);
+            useResumeStore.getState().setSelectedTemplateId(p.selectedTemplateId);
           }
           if (p.includeSummarySections != null) setIncludeSummarySections(p.includeSummarySections);
           if (p.autofillFromResume != null) setAutofill(p.autofillFromResume);
-          if (p.resumeUploaded != null) setResumeUploaded(Boolean(p.resumeUploaded));
-          if (p.resumeFileName) setResumeFileName(p.resumeFileName);
-          if (p.resumeFileKey) setResumeFileKey(p.resumeFileKey);
+          if (activeUploaded != null) setResumeUploaded(activeUploaded);
+          if (activeName) setResumeFileName(activeName);
+          if (activeKey) setResumeFileKey(activeKey);
 
-          if (r.personalDetails || r.header || r.form) {
-            const personal = r.personalDetails || r.form || r.header;
+          const loadedValues: PreferencesStateValues = {
+            country: p.country || "us",
+            cities: Array.isArray(p.cities) ? p.cities : [],
+            seniority: p.seniority || "Mid-level",
+            jobTypes: Array.isArray(p.jobTypes) && p.jobTypes.length > 0 ? p.jobTypes : ["Full-time"],
+            experienceYears: p.experienceYears != null ? Number(p.experienceYears) : 3,
+            salaryMin: p.salaryMin != null ? Number(p.salaryMin) : null,
+            salaryMax: p.salaryMax != null ? Number(p.salaryMax) : null,
+            domains: Array.isArray(p.domains) ? p.domains : [],
+            skills: Array.isArray(p.skills) ? p.skills : [],
+            selectedTemplateId: p.selectedTemplateId || "mit-capd",
+            includeSummarySections: p.includeSummarySections != null ? Boolean(p.includeSummarySections) : true,
+            autofillFromResume: p.autofillFromResume != null ? Boolean(p.autofillFromResume) : true,
+            resumeUploaded: activeUploaded,
+            resumeFileName: activeName,
+            resumeFileKey: activeKey,
+          };
+
+          const currentSer = serializePreferencesState(loadedValues);
+          lastSavedSnapshotRef.current = currentSer;
+
+          if (p.lastConfirmedPreferences && typeof p.lastConfirmedPreferences === "object") {
+            const baselineSer = serializePreferencesState(p.lastConfirmedPreferences);
+            setConfirmedSnapshot(baselineSer);
+            lastConfirmedPreferencesRef.current = p.lastConfirmedPreferences;
+          } else {
+            setConfirmedSnapshot(currentSer);
+            lastConfirmedPreferencesRef.current = loadedValues;
+          }
+
+          if (r.personalDetails) {
             setPersonalDetails({
-              fullName: personal.fullName || personal.name || "",
-              email: personal.email || "",
-              phoneNumber: personal.phoneNumber || personal.phone || "",
-              location: personal.location || p.cities?.[0] || "",
+              fullName: r.personalDetails.fullName || "",
+              email: r.personalDetails.email || "",
+              phoneNumber: r.personalDetails.phoneNumber || "",
+              location: r.personalDetails.location || "",
             });
           }
           if (Array.isArray(r.educationHistory) && r.educationHistory.length > 0) {
             setEducations(r.educationHistory);
-          } else if (Array.isArray(r.form?.educations)) {
-            setEducations(r.form.educations);
-          } else if (typeof r.education === 'string' && r.education) {
-            setEducations([{ id: '1', college: r.education, degree: '', field: '', startDate: '', endDate: '', grade: '', maxGrade: '', gradeType: 'CGPA' }]);
           }
           if (Array.isArray(r.experienceHistory) && r.experienceHistory.length > 0) {
             setExperiences(r.experienceHistory);
-          } else if (Array.isArray(r.form?.experiences)) {
-            setExperiences(r.form.experiences);
-          } else if (Array.isArray(r.experience)) {
-            setExperiences(r.experience.map((entry: { company?: string; title?: string; bullets?: string[] }, index: number) => ({ id: String(index + 1), company: entry.company || '', role: entry.title || '', startDate: '', endDate: '', jobDescription: (entry.bullets || []).join('\n'), skills: [], domains: [], responsibilities: '' })));
           }
+
+          lastSavedResumeDetailsRef.current = JSON.stringify({
+            personalDetails: r.personalDetails || null,
+            educationHistory: r.educationHistory || [],
+            experienceHistory: r.experienceHistory || [],
+          });
+        } else if (isMounted) {
+          const defaultValues: PreferencesStateValues = {
+            country: "us",
+            cities: [],
+            seniority: "Mid-level",
+            jobTypes: ["Full-time"],
+            experienceYears: 3,
+            salaryMin: null,
+            salaryMax: null,
+            domains: [],
+            skills: [],
+            selectedTemplateId: "mit-capd",
+            includeSummarySections: true,
+            autofillFromResume: true,
+            resumeUploaded: false,
+            resumeFileName: null,
+            resumeFileKey: null,
+          };
+          const defSer = serializePreferencesState(defaultValues);
+          lastSavedSnapshotRef.current = defSer;
+          setConfirmedSnapshot(defSer);
+          lastConfirmedPreferencesRef.current = defaultValues;
         }
       } catch (err) {
         console.error("Error loading user preferences:", err);
@@ -872,10 +1010,169 @@ export default function ManageJobHuntPage() {
     }
   };
 
+  const currentValues = useMemo<PreferencesStateValues>(() => {
+    const parsedSalaryMin = salaryFrom ? Math.max(0, parseInt(salaryFrom, 10)) : null;
+    const parsedSalaryMax = salaryTo ? Math.max(0, parseInt(salaryTo, 10)) : null;
+    return {
+      country,
+      cities: cities.slice(0, 3),
+      seniority,
+      jobTypes: jobTypes.length > 0 ? jobTypes : ["Full-time"],
+      experienceYears: Math.min(60, Math.max(0, parseInt(experience || "0", 10) || 0)),
+      salaryMin: parsedSalaryMin !== null && !isNaN(parsedSalaryMin) ? parsedSalaryMin : null,
+      salaryMax: parsedSalaryMax !== null && !isNaN(parsedSalaryMax) ? parsedSalaryMax : null,
+      domains,
+      skills,
+      selectedTemplateId,
+      includeSummarySections,
+      autofillFromResume: autofill,
+      resumeUploaded: Boolean(selectedFile || resumeUploaded),
+      resumeFileName: selectedFile ? selectedFile.name : (resumeFileName || null),
+      resumeFileKey: resumeFileKey || null,
+    };
+  }, [
+    country,
+    cities,
+    seniority,
+    jobTypes,
+    experience,
+    salaryFrom,
+    salaryTo,
+    domains,
+    skills,
+    selectedTemplateId,
+    includeSummarySections,
+    autofill,
+    selectedFile,
+    resumeUploaded,
+    resumeFileName,
+    resumeFileKey,
+  ]);
+
+  const currentSerialized = useMemo(() => serializePreferencesState(currentValues), [currentValues]);
+
+  const isDirty = useMemo(() => {
+    if (!hasLoadedPreferences || !confirmedSnapshot) return false;
+    return currentSerialized !== confirmedSnapshot;
+  }, [hasLoadedPreferences, confirmedSnapshot, currentSerialized]);
+
+  const saveStatus: SaveStatus = isDirty ? "unconfirmed" : "saved";
+
+  const isSalaryInvalid = useMemo(() => {
+    return (
+      currentValues.salaryMin !== null &&
+      currentValues.salaryMax !== null &&
+      currentValues.salaryMin > currentValues.salaryMax
+    );
+  }, [currentValues.salaryMin, currentValues.salaryMax]);
+
+  // Debounced background auto-save for preferences changes to PostgreSQL
+  useEffect(() => {
+    if (!hasLoadedPreferences) return;
+
+    if (!isInitialMountRef.current) {
+      isInitialMountRef.current = true;
+      return;
+    }
+
+    // If current values match what is already stored in PostgreSQL, do nothing
+    if (currentSerialized === lastSavedSnapshotRef.current) {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      return;
+    }
+
+    // If salary is temporarily invalid while typing (min > max), pause auto-save until valid
+    if (isSalaryInvalid) {
+      return;
+    }
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const payload = {
+          country: currentValues.country,
+          cities: currentValues.cities,
+          seniority: currentValues.seniority,
+          jobTypes: currentValues.jobTypes,
+          experienceYears: currentValues.experienceYears,
+          salaryMin: currentValues.salaryMin,
+          salaryMax: currentValues.salaryMax,
+          currency: "USD",
+          domains: Array.from(new Set(currentValues.domains)),
+          skills: Array.from(new Set(currentValues.skills)),
+          selectedTemplateId: currentValues.selectedTemplateId,
+          includeSummarySections: currentValues.includeSummarySections,
+          autofillFromResume: currentValues.autofillFromResume,
+          resumeUploaded: currentValues.resumeUploaded,
+          resumeFileName: currentValues.resumeFileName,
+          resumeFileKey: currentValues.resumeFileKey,
+          isConfirmed: false,
+          lastConfirmedPreferences: lastConfirmedPreferencesRef.current,
+        };
+
+        const res = await saveUserJobPreferences(payload);
+        if (res.success) {
+          lastSavedSnapshotRef.current = currentSerialized;
+        }
+      } catch (err) {
+        console.error("Background auto-save preferences failed:", err);
+      }
+    }, 700);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [currentSerialized, currentValues, hasLoadedPreferences, isSalaryInvalid]);
+
+  // Debounced auto-save for resume sub-form details (education, experience, personal info)
+  useEffect(() => {
+    if (!hasLoadedPreferences || !showDetailsForm) return;
+
+    const resumeData = {
+      personalDetails: personalDetails.fullName || personalDetails.email || personalDetails.phoneNumber || personalDetails.location ? personalDetails : null,
+      educationHistory: educations,
+      experienceHistory: experiences,
+    };
+    const serializedResume = JSON.stringify(resumeData);
+
+    if (serializedResume === lastSavedResumeDetailsRef.current) return;
+
+    if (resumeDetailsTimerRef.current) {
+      clearTimeout(resumeDetailsTimerRef.current);
+    }
+
+    resumeDetailsTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await saveResumeDetails(resumeData);
+        if (res.success) {
+          lastSavedResumeDetailsRef.current = serializedResume;
+        }
+      } catch (err) {
+        console.error("Auto-save resume details failed:", err);
+      }
+    }, 1200);
+
+    return () => {
+      if (resumeDetailsTimerRef.current) {
+        clearTimeout(resumeDetailsTimerRef.current);
+      }
+    };
+  }, [hasLoadedPreferences, showDetailsForm, personalDetails, educations, experiences]);
+
   // Handlers
+  const hasResume = Boolean(selectedFile || resumeUploaded);
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (hasResume) return;
     if (e.type === "dragenter" || e.type === "dragover") {
       setDragActive(true);
     } else if (e.type === "dragleave") {
@@ -884,9 +1181,33 @@ export default function ManageJobHuntPage() {
   };
 
   const handleResumeFileUpload = async (file: File) => {
+    if (hasResume) {
+      toast.info("A resume is already uploaded. Please remove it first to upload a new file.");
+      return;
+    }
+
+    if (isR2Uploading) {
+      toast.info("Upload is already in progress. Please wait.");
+      return;
+    }
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("File size exceeds 10MB limit. Please upload a smaller file.");
+      return;
+    }
+
+    const allowedExtensions = [".pdf", ".doc", ".docx"];
+    const fileExt = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    if (!allowedExtensions.includes(fileExt)) {
+      toast.error("Invalid file format. Please upload a PDF, DOC, or DOCX file.");
+      return;
+    }
+
     setSelectedFile(file);
     setResumeUploaded(true);
     setResumeFileName(file.name);
+    setResumeFileSize(file.size);
 
     toast.loading("Uploading resume to Cloudflare R2...", { id: "resume-upload-toast" });
     const res = await uploadFile({
@@ -906,35 +1227,123 @@ export default function ManageJobHuntPage() {
       });
 
       if (commitRes.success) {
+        setIsExtracting(true);
+        toast.loading("Resume saved! Extracting details and skills with AI...", { id: "resume-upload-toast" });
+
         try {
-          const response = await fetch("/api/job-hunt/profile", { method: "POST",
-            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objectKey: res.objectKey, fileName: file.name }) });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Resume extraction failed");
-          const details = data.resume_details || {};
-          const preferences = data.preferences || {};
-          setConfirmation({ isConfirmed: false, confirmedAt: preferences.confirmedAt ?? null,
-            baseline: preferences.lastConfirmedPreferences ?? confirmation.baseline });
-          if (autofill) {
-            if (details.personalDetails) setPersonalDetails(details.personalDetails);
-            setEducations(details.educationHistory || []);
-            setExperiences(details.experienceHistory || []);
-            if (Array.isArray(preferences.skills)) setSkills(preferences.skills);
-            if (Array.isArray(preferences.domains)) setDomains(preferences.domains);
-            if (Array.isArray(preferences.cities)) setCities(preferences.cities);
-            if (preferences.country) setCountry(preferences.country);
-            if (preferences.seniority) setSeniority(preferences.seniority);
-            if (preferences.experienceYears != null) setExperience(String(preferences.experienceYears));
+          const profileRes = await fetch("/api/job-hunt/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              objectKey: res.objectKey,
+              fileName: file.name,
+            }),
+          });
+
+          const profileData = await profileRes.json();
+          if (profileRes.ok && profileData.success) {
+            const extPref = profileData.preferences;
+            const extDetails = profileData.resume_details;
+
+            // 1. Always cache the raw Cloud Run extraction in memory and sessionStorage
+            cloudRunExtractionCacheRef.current = {
+              preferences: extPref,
+              resume_details: extDetails,
+            };
+            if (typeof window !== "undefined") {
+              try {
+                sessionStorage.setItem(
+                  "cached_resume_extraction",
+                  JSON.stringify({ preferences: extPref, resume_details: extDetails })
+                );
+              } catch {
+                // Ignore storage error
+              }
+            }
+
+            // 2. If 'Autofill from resume' is ON, auto-fill form immediately
+            if (autofill) {
+              if (extPref) {
+                if (Array.isArray(extPref.skills) && extPref.skills.length > 0) {
+                  setSkills(extPref.skills);
+                }
+                if (Array.isArray(extPref.domains) && extPref.domains.length > 0) {
+                  setDomains(extPref.domains);
+                }
+                if (extPref.seniority) {
+                  setSeniority(extPref.seniority);
+                }
+                if (Array.isArray(extPref.cities) && extPref.cities.length > 0) {
+                  setCities(extPref.cities.slice(0, 3));
+                }
+                if (extPref.country) {
+                  setCountry(extPref.country.toLowerCase());
+                }
+                if (Array.isArray(extPref.jobTypes) && extPref.jobTypes.length > 0) {
+                  setJobTypes(extPref.jobTypes);
+                }
+                if (extPref.experienceYears != null) {
+                  setExperience(String(extPref.experienceYears));
+                }
+                if (extPref.selectedTemplateId) {
+                  setSelectedTemplateId(extPref.selectedTemplateId);
+                  useResumeStore.getState().setSelectedTemplateId(extPref.selectedTemplateId);
+                }
+              }
+
+              if (extDetails) {
+                if (extDetails.personalDetails) {
+                  setPersonalDetails({
+                    fullName: extDetails.personalDetails.fullName || "",
+                    email: extDetails.personalDetails.email || "",
+                    phoneNumber: extDetails.personalDetails.phoneNumber || "",
+                    location: extDetails.personalDetails.location || "",
+                  });
+                }
+                if (Array.isArray(extDetails.educationHistory) && extDetails.educationHistory.length > 0) {
+                  setEducations(extDetails.educationHistory);
+                }
+                if (Array.isArray(extDetails.experienceHistory) && extDetails.experienceHistory.length > 0) {
+                  setExperiences(extDetails.experienceHistory);
+                }
+              }
+
+              toast.success("Resume processed & details auto-filled! Please review and confirm your changes.", {
+                id: "resume-upload-toast",
+                duration: 5000,
+              });
+            } else {
+              // Autofill is OFF: Do NOT touch screen fields!
+              toast.success("Resume uploaded! 'Autofill from resume' is OFF, so your form was not modified. Turn on the toggle anytime to apply extracted details.", {
+                id: "resume-upload-toast",
+                duration: 6000,
+              });
+            }
+          } else {
+            console.warn("Profile extraction returned non-ok:", profileData);
+            toast.success("Resume uploaded! (Auto-fill was unavailable, enter details manually)", {
+              id: "resume-upload-toast",
+              duration: 4000,
+            });
           }
-        } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Resume details extraction failed", { id: "resume-upload-toast" });
-          return;
+        } catch (extractErr) {
+          console.error("Error calling profile extraction:", extractErr);
+          toast.success("Resume uploaded! (Auto-fill was unavailable, enter details manually)", {
+            id: "resume-upload-toast",
+            duration: 4000,
+          });
+        } finally {
+          setIsExtracting(false);
         }
-        toast.success("Resume updated & previous version pruned from cloud!", { id: "resume-upload-toast" });
       } else {
-        toast.error(commitRes.error || "File uploaded, but database save failed. Retry upload.", { id: "resume-upload-toast" });
+        toast.error(commitRes.error || "Failed to commit resume record to database.", { id: "resume-upload-toast" });
       }
     } else {
+      setSelectedFile(null);
+      setResumeUploaded(false);
+      setResumeFileName(null);
+      setResumeFileKey(null);
+      setResumeFileSize(null);
       toast.error(res.error || "Failed to upload resume to Cloudflare R2.", { id: "resume-upload-toast" });
     }
   };
@@ -951,6 +1360,15 @@ export default function ManageJobHuntPage() {
           setResumeUploaded(false);
           setResumeFileName(null);
           setResumeFileKey(null);
+          setResumeFileSize(null);
+          cloudRunExtractionCacheRef.current = null;
+          if (typeof window !== "undefined") {
+            try {
+              sessionStorage.removeItem("cached_resume_extraction");
+            } catch {
+              // Ignore
+            }
+          }
           toast.success("Resume removed from Cloudflare R2 & database.", { id: "resume-delete-toast" });
         } else {
           toast.error(res.error || "Failed to remove resume.", { id: "resume-delete-toast" });
@@ -963,6 +1381,7 @@ export default function ManageJobHuntPage() {
       setResumeUploaded(false);
       setResumeFileName(null);
       setResumeFileKey(null);
+      setResumeFileSize(null);
     }
   };
 
@@ -1016,12 +1435,12 @@ export default function ManageJobHuntPage() {
     try {
       const url = await getFileUrl(resumeFileKey);
       if (url) {
-        setPreviewTemplate((prev) => 
+        setPreviewTemplate((prev) =>
           prev ? { ...prev, filePath: url } : null
         );
       } else {
         setPreviewTemplate(null);
-        toast.error("Unable to generate preview link for this resume.");
+        toast.error("Resume file not found in storage. Please re-upload your resume.");
       }
     } catch (err) {
       console.error("Failed to load resume preview:", err);
@@ -1043,6 +1462,10 @@ export default function ManageJobHuntPage() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
+    if (hasResume) {
+      toast.info("A resume is already uploaded. Please remove it first to upload a new file.");
+      return;
+    }
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       handleResumeFileUpload(file);
@@ -1058,7 +1481,7 @@ export default function ManageJobHuntPage() {
     // 1. Deduct Credit
     const { deductCredit } = useCreditStore.getState();
     const res = await deductCredit("generate_resume");
-    
+
     if (!res.success) {
       toast.error(res.error || "Failed to deduct credit. Insufficient balance.");
       return;
@@ -1102,7 +1525,7 @@ export default function ManageJobHuntPage() {
       : `### Senior ${primaryRole}\n**TechFlow Innovations** | *${candidateLocation}* | *2021 – Present*\n- Spearheaded the modernization of web application architecture, improving performance and SEO metrics.\n- Designed and implemented clean modular components, establishing unified patterns across key features.`;
 
     const customResume = `# ${candidateName}
-**${primaryRole}**  
+**${primaryRole}**
 ${candidateLocation} • ${candidatePhone} • ${candidateEmail} • [LinkedIn](#) • [GitHub](#)
 
 ---
@@ -1133,6 +1556,7 @@ ${educationSection}
     setSelectedFile(generatedFile);
     setResumeUploaded(true);
     setResumeFileName(safeFileName);
+    setResumeFileSize(generatedFile.size);
     setGeneratedMarkdown(customResume);
     setIsResumeModalOpen(true);
 
@@ -1162,6 +1586,58 @@ ${educationSection}
     setCities(prev => prev.filter(c => c !== cityToRemove));
   };
 
+  const handleToggleAutofill = (enabled: boolean) => {
+    setAutofill(enabled);
+    if (enabled) {
+      let extraction = cloudRunExtractionCacheRef.current;
+      if (!extraction && typeof window !== "undefined") {
+        try {
+          const stored = sessionStorage.getItem("cached_resume_extraction");
+          if (stored) {
+            extraction = JSON.parse(stored);
+            cloudRunExtractionCacheRef.current = extraction;
+          }
+        } catch {
+          // Ignore
+        }
+      }
+
+      if (extraction) {
+        const { preferences: extPref, resume_details: extDetails } = extraction;
+        if (extPref) {
+          if (Array.isArray(extPref.skills) && extPref.skills.length > 0) setSkills(extPref.skills);
+          if (Array.isArray(extPref.domains) && extPref.domains.length > 0) setDomains(extPref.domains);
+          if (extPref.seniority) setSeniority(extPref.seniority);
+          if (Array.isArray(extPref.cities) && extPref.cities.length > 0) setCities(extPref.cities.slice(0, 3));
+          if (extPref.country) setCountry(extPref.country.toLowerCase());
+          if (Array.isArray(extPref.jobTypes) && extPref.jobTypes.length > 0) setJobTypes(extPref.jobTypes);
+          if (extPref.experienceYears != null) setExperience(String(extPref.experienceYears));
+          if (extPref.selectedTemplateId) {
+            setSelectedTemplateId(extPref.selectedTemplateId);
+            useResumeStore.getState().setSelectedTemplateId(extPref.selectedTemplateId);
+          }
+        }
+        if (extDetails) {
+          if (extDetails.personalDetails) {
+            setPersonalDetails({
+              fullName: extDetails.personalDetails.fullName || "",
+              email: extDetails.personalDetails.email || "",
+              phoneNumber: extDetails.personalDetails.phoneNumber || "",
+              location: extDetails.personalDetails.location || "",
+            });
+          }
+          if (Array.isArray(extDetails.educationHistory) && extDetails.educationHistory.length > 0) {
+            setEducations(extDetails.educationHistory);
+          }
+          if (Array.isArray(extDetails.experienceHistory) && extDetails.experienceHistory.length > 0) {
+            setExperiences(extDetails.experienceHistory);
+          }
+        }
+        toast.success("Applied extracted resume details to the form!");
+      }
+    }
+  };
+
   useClickOutside(cityDropdownRef, () => setIsCityDropdownOpen(false), isCityDropdownOpen);
 
 
@@ -1177,91 +1653,140 @@ ${educationSection}
       return;
     }
 
-    setIsSaving(true);
+    // Untouched since last confirm
+    if (!isDirty) {
+      return;
+    }
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    setIsConfirming(true);
     try {
       // 1. Sync local resume store
       resumeStore.setSelectedTemplateId(selectedTemplateId);
       resumeStore.saveResume(undefined, selectedTemplateId);
 
       // 2. Validate salary bounds
-      const parsedSalaryMin = salaryFrom ? Math.max(0, parseInt(salaryFrom, 10)) : null;
-      const parsedSalaryMax = salaryTo ? Math.max(0, parseInt(salaryTo, 10)) : null;
+      const parsedSalaryMin = currentValues.salaryMin;
+      const parsedSalaryMax = currentValues.salaryMax;
 
       if (parsedSalaryMin !== null && parsedSalaryMax !== null && parsedSalaryMin > parsedSalaryMax) {
         toast.error("Salary Range Error", {
           description: "Minimum salary cannot exceed maximum salary.",
         });
-        setIsSaving(false);
+        setIsConfirming(false);
         return;
       }
 
-      // 3. Persist Preferences to PostgreSQL via Server Action
-      const payload = currentPreferences;
+      // 3. Confirm & Persist Preferences to PostgreSQL via Server Action
+      const nowIso = new Date().toISOString();
+      const payload = {
+        country: currentValues.country,
+        cities: currentValues.cities,
+        seniority: currentValues.seniority,
+        jobTypes: currentValues.jobTypes,
+        experienceYears: currentValues.experienceYears,
+        salaryMin: parsedSalaryMin,
+        salaryMax: parsedSalaryMax,
+        currency: "USD",
+        domains: Array.from(new Set(currentValues.domains)),
+        skills: Array.from(new Set(currentValues.skills)),
+        selectedTemplateId: currentValues.selectedTemplateId,
+        includeSummarySections: currentValues.includeSummarySections,
+        autofillFromResume: currentValues.autofillFromResume,
+        resumeUploaded: currentValues.resumeUploaded,
+        resumeFileName: currentValues.resumeFileName,
+        resumeFileKey: currentValues.resumeFileKey,
+        isConfirmed: true,
+        confirmedAt: nowIso,
+        lastConfirmedPreferences: currentValues,
+      };
 
-      const res = await confirmUserJobPreferences(payload);
+      const res = await saveUserJobPreferences(payload);
 
-      if (res.success && res.data) {
-        const confirmed = res.data.preferences || {};
-        setConfirmation({ isConfirmed: confirmed.isConfirmed === true, confirmedAt: confirmed.confirmedAt ?? null,
-          baseline: confirmed.lastConfirmedPreferences ?? preferenceSnapshot(payload) });
+      if (res.success) {
         if (selectedFile) {
           setResumeFileName(selectedFile.name);
         }
+        cloudRunExtractionCacheRef.current = null;
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.removeItem("cached_resume_extraction");
+          } catch {
+            // Ignore
+          }
+        }
+        lastSavedSnapshotRef.current = currentSerialized;
+        lastConfirmedPreferencesRef.current = currentValues;
+        setConfirmedSnapshot(currentSerialized);
+
         const chosenTemplate = RESUME_TEMPLATES.find((t) => t.id === selectedTemplateId);
-        toast.success("Preferences confirmed!", {
-          description: chosenTemplate 
-            ? `Saved to database. Active template: "${chosenTemplate.name}".`
-            : "Your preferences have been persisted to the database.",
+        toast.success("Changes confirmed successfully!", {
+          description: chosenTemplate
+            ? `Your job hunt preferences are finalised. Active template: "${chosenTemplate.name}".`
+            : "Your job hunt preferences are finalised and locked in.",
         });
       } else {
-        toast.error(res.error || "Failed to save preferences.");
+        toast.error(res.error || "Failed to confirm preferences.");
       }
-    } catch (err: any) {
-      console.error("Save preferences failed:", err);
-      toast.error("An unexpected error occurred while saving preferences.");
+    } catch (err: unknown) {
+      console.error("Confirm preferences failed:", err);
+      toast.error("An unexpected error occurred while confirming preferences.");
     } finally {
-      setIsSaving(false);
+      setIsConfirming(false);
     }
   };
 
   return (
     <div className="w-full max-w-5xl pb-16 mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-      
+
       {/* Header with Top Action Button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight mb-1">
-            {showDetailsForm ? "Resume Details" : "Manage Job Hunt"}
-          </h1>
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {showDetailsForm ? "Resume Details" : "Manage Job Hunt"}
+            </h1>
+            <JobHuntMobileMenuButton />
+          </div>
           <p className="text-text-muted text-base">
-            {showDetailsForm 
-              ? "Fill in your details to generate a customized professional resume." 
+            {showDetailsForm
+              ? "Fill in your details to generate a customized professional resume."
               : "Fine-tune your preferences to get better curated job matches."}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto flex-wrap">
           {!hasLoadedPreferences ? (
-            <div className="h-[38px] w-40 rounded-sm bg-[#DDE2E7] dark:bg-[#2C3246] animate-skeleton-pulse" />
+            <div className="h-[42px] w-44 rounded-md bg-[#DDE2E7] dark:bg-[#2C3246] animate-skeleton-pulse" />
           ) : (
             <>
+              {!showDetailsForm && (
+                <div className="flex items-center select-none">
+                  <SaveStatusIndicator status={saveStatus} />
+                </div>
+              )}
               {showDetailsForm && (
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowDetailsForm(false)}
-                  className="inline-flex items-center justify-center gap-1.5 p-[0.38rem_1rem] rounded-sm font-heading text-[0.85rem] font-semibold text-text-muted hover:text-black dark:hover:text-white transition-colors cursor-pointer border-[1.5px] border-transparent"
+                  className="inline-flex items-center justify-center gap-1.5 h-[42px] px-4 rounded-md font-heading text-sm font-semibold text-text-muted hover:text-black dark:hover:text-white transition-colors cursor-pointer border-[1.5px] border-transparent hover:bg-black/5 dark:hover:bg-white/5 active:scale-[0.98]"
                 >
-                  <X className="w-3.5 h-3.5" strokeWidth={2.5} />
-                  Cancel
+                  <X className="w-4 h-4" strokeWidth={2.5} />
+                  <span>Cancel</span>
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => formRef.current?.requestSubmit()}
                 type="button"
-                disabled={isSaving || (!showDetailsForm && (!hasLoadedPreferences || !isDirty || isR2Uploading))}
+                disabled={showDetailsForm ? false : (!isDirty || isConfirming)}
                 className={
-                  showDetailsForm 
-                    ? "inline-flex items-center justify-center gap-2 p-[0.38rem_1rem] rounded-sm border-[1.5px] border-transparent bg-brand-lime text-[#111827] font-heading text-[0.85rem] font-semibold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:border-border-color hover:bg-white hover:text-[#111827] active:scale-[0.98] dark:hover:bg-white dark:hover:text-[#111827] dark:hover:border-black disabled:opacity-60 disabled:cursor-not-allowed"
-                    : "inline-flex items-center justify-center gap-2 p-[0.38rem_1rem] rounded-sm border-[1.5px] border-transparent bg-brand-dark text-white font-heading text-[0.85rem] font-semibold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:opacity-90 active:scale-[0.98] dark:bg-[#F3F4F6] dark:text-[#111827] dark:hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+                  showDetailsForm
+                    ? "inline-flex items-center justify-center gap-2 h-[42px] px-5 sm:px-6 rounded-md border-[1.5px] border-transparent bg-brand-lime text-[#111827] font-heading text-sm font-bold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:border-border-color hover:bg-white hover:text-[#111827] active:scale-[0.98] dark:hover:bg-white dark:hover:text-[#111827] dark:hover:border-black disabled:opacity-60 disabled:cursor-not-allowed shadow-xs"
+                    : !isDirty || isConfirming
+                    ? "inline-flex items-center justify-center gap-2 h-[42px] px-5 sm:px-6 rounded-md border-[1.5px] border-border-subtle dark:border-transparent bg-[#F3F4F6] text-[#9CA3AF] font-heading text-sm font-bold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-not-allowed dark:bg-[#1E212D] dark:text-[#6B7280] opacity-60"
+                    : "inline-flex items-center justify-center gap-2 h-[42px] px-5 sm:px-6 rounded-md border-[1.5px] border-transparent bg-brand-dark text-white font-heading text-sm font-bold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:opacity-90 active:scale-[0.98] dark:bg-[#F3F4F6] dark:text-[#111827] dark:hover:opacity-90 shadow-xs"
                 }
               >
                 {showDetailsForm ? (
@@ -1269,14 +1794,14 @@ ${educationSection}
                     <Sparkles className="w-4 h-4 shrink-0" />
                     <span>Generate</span>
                   </>
-                ) : isSaving ? (
+                ) : isConfirming ? (
                   <>
                     <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
-                    <span>Saving...</span>
+                    <span>Confirming...</span>
                   </>
                 ) : (
                   <>
-                    <Save className="w-4 h-4 shrink-0" />
+                    <Check className="w-4 h-4 shrink-0" strokeWidth={2.5} />
                     <span>Confirm Changes</span>
                   </>
                 )}
@@ -1289,14 +1814,8 @@ ${educationSection}
       {!hasLoadedPreferences ? (
         <ManageJobHuntFormSkeleton />
       ) : (
-        <>
-        {!showDetailsForm && hasLoadedPreferences && (
-          <p role="status" className={isDirty ? "text-amber-600 text-sm font-semibold" : "text-green-600 text-sm font-semibold"}>
-            {isDirty ? "Unconfirmed changes" : "Preferences confirmed"}
-          </p>
-        )}
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
-        
+
         {/* SECTION 1: Resume */}
         {!showDetailsForm && (
           <section className="bg-bg-card border border-border-subtle rounded-lg p-5 md:p-6 shadow-sm">
@@ -1305,8 +1824,8 @@ ${educationSection}
               <FileText className="w-4 h-4 text-black dark:text-brand-lime" />
               Resume
             </h2>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-text-muted hidden sm:inline">
+            <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap w-full sm:w-auto">
+              <span className="text-xs sm:text-sm font-medium sm:font-semibold text-text-muted">
                 Don&apos;t have a resume?
               </span>
               <button
@@ -1319,91 +1838,99 @@ ${educationSection}
               </button>
             </div>
           </div>
-          
-          <div 
-            className={`relative flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed rounded-md transition-colors mb-4
-              ${dragActive ? "border-brand-lime bg-brand-lime/10" : "border-border-input hover:border-text-subtle"}
-              ${(selectedFile || resumeUploaded) ? "bg-bg-input border-solid" : ""}
-            `}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-          >
-            <input 
-              type="file" 
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  const file = e.target.files[0];
-                  handleResumeFileUpload(file);
-                }
-              }}
-              accept=".pdf,.doc,.docx"
-            />
-            
-            {(selectedFile || resumeUploaded) ? (
-              <div className="flex items-center justify-between w-full px-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-brand-lime/20 text-brand-lime dark:bg-white/20 dark:text-[#F3F4F6] flex items-center justify-center shrink-0">
-                    {isR2Uploading ? (
-                      <Loader2 className="w-5 h-5 animate-spin text-brand-dark dark:text-brand-lime" />
-                    ) : (
-                      <Check className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-sm">
-                      {selectedFile ? selectedFile.name : (resumeFileName || "Uploaded_Resume.pdf")}
-                    </p>
-                    <p className="text-xs text-text-muted">
-                      {isR2Uploading ? `Uploading directly to R2... ${uploadProgress}%` : "Click or drag to replace"}
-                    </p>
-                  </div>
+
+          {hasResume ? (
+            <div
+              className="flex items-center justify-between w-full p-3 sm:px-4 sm:py-3.5 rounded-md bg-bg-input transition-colors mb-4 border border-border-subtle/50"
+            >
+              <div className="flex items-center gap-3 min-w-0 pr-3">
+                <div className="w-10 h-10 rounded-full bg-black/10 text-black dark:bg-white/20 dark:text-[#F3F4F6] flex items-center justify-center shrink-0">
+                  {isR2Uploading || isExtracting ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-black dark:text-[#F3F4F6]" />
+                  ) : (
+                    <Check className="w-5 h-5 stroke-[2.5] shrink-0" strokeWidth={2.5} />
+                  )}
                 </div>
-
-                <div className="flex items-center gap-2">
-                  {(resumeFileKey || selectedFile) && (
-                    <button
-                      type="button"
-                      onClick={handlePreviewStoredResume}
-                      disabled={isViewingResume}
-                      className="relative z-20 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white dark:bg-zinc-800 shadow-sm border border-border-subtle hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors pointer-events-auto cursor-pointer"
-                    >
-                      {isViewingResume ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Eye className="w-3.5 h-3.5" />
-                      )}
-                      <span>Preview File</span>
-                    </button>
-                  )}
-
-                  {(resumeFileKey || selectedFile) && (
-                    <button
-                      type="button"
-                      onClick={handleDeleteResume}
-                      title="Delete resume from cloud"
-                      className="relative z-20 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-900/40 transition-colors pointer-events-auto cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Remove</span>
-                    </button>
-                  )}
+                <div className="text-left min-w-0">
+                  <p className="font-bold text-sm truncate text-text-primary">
+                    {selectedFile ? selectedFile.name : (resumeFileName || "Uploaded_Resume.pdf")}
+                  </p>
+                  <p className="text-xs text-text-muted truncate">
+                    {isR2Uploading
+                      ? `Uploading directly to R2... ${uploadProgress}%`
+                      : isExtracting
+                        ? "Extracting skills & profile details via AI..."
+                        : resumeFileSize
+                          ? `${formatFileSize(resumeFileSize)} • Uploaded resume`
+                          : "Uploaded resume • Ready for applications"}
+                  </p>
                 </div>
               </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-center">
+
+              {/* Action buttons inside container: pushed cleanly to the right with symmetrical container padding */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handlePreviewStoredResume}
+                  disabled={isViewingResume || isR2Uploading || isExtracting}
+                  className="h-10 px-4 rounded-full font-heading text-xs sm:text-[13px] font-semibold bg-white dark:bg-[#202330] text-text-primary border-0 shadow-xs hover:bg-zinc-100 dark:hover:bg-[#2B3042] transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap inline-flex items-center justify-center gap-2"
+                  title="Preview resume document"
+                  aria-label="Preview resume"
+                >
+                  {isViewingResume ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-text-muted dark:text-gray-300" strokeWidth={2} />
+                  )}
+                  <span>Preview</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteResume}
+                  disabled={isR2Uploading || isExtracting}
+                  title="Delete resume from cloud"
+                  aria-label="Delete resume"
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 bg-red-100/80 dark:bg-red-950/40 hover:bg-red-200/90 dark:hover:bg-red-900/60 border-0 shadow-xs transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" strokeWidth={2} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className={`relative flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed rounded-md transition-colors mb-4
+                ${dragActive ? "border-brand-lime bg-brand-lime/10" : "border-border-input hover:border-text-subtle"}
+              `}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <input
+                type="file"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    const file = e.target.files[0];
+                    handleResumeFileUpload(file);
+                    e.target.value = "";
+                  }
+                }}
+                accept=".pdf,.doc,.docx"
+                title="Click or drag to upload resume"
+              />
+              <div className="flex flex-col items-center gap-2 text-center pointer-events-none">
                 <div className="w-10 h-10 rounded-full bg-bg-input flex items-center justify-center">
                   <UploadCloud className="w-5 h-5 text-text-muted" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm">Click to upload or drag and drop</p>
+                  <p className="font-bold text-sm text-text-primary">Click to upload or drag and drop</p>
                   <p className="text-xs text-text-muted mt-0.5">PDF, DOCX up to 10MB</p>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-end">
             <label className="flex items-center gap-3 cursor-pointer group select-none">
@@ -1411,25 +1938,25 @@ ${educationSection}
                 Autofill from resume
               </span>
               <div className="relative inline-flex items-center">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   className="sr-only"
                   checked={autofill}
-                  onChange={(e) => setAutofill(e.target.checked)}
+                  onChange={(e) => handleToggleAutofill(e.target.checked)}
                 />
-                <div 
+                <div
                   className={`w-[48px] h-[25px] rounded-full p-[2.5px] transition-colors duration-700 ease-[cubic-bezier(0.2,1,0.3,1)] ${
-                    autofill 
-                      ? "bg-brand-dark dark:bg-[#F3F4F6]" 
+                    autofill
+                      ? "bg-brand-dark dark:bg-[#F3F4F6]"
                       : "bg-[#D1D5DB] dark:bg-[#383D4E]"
                   }`}
                 >
-                  <div 
+                  <div
                     className={`w-[25px] h-[20px] rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.2)] transition-all duration-700 ease-[cubic-bezier(0.2,1,0.3,1)] ${
-                      autofill 
-                        ? "translate-x-[18px] bg-white dark:bg-[#111827] dark:shadow-none" 
+                      autofill
+                        ? "translate-x-[18px] bg-white dark:bg-[#111827] dark:shadow-none"
                         : "translate-x-0 bg-white"
-                    }`} 
+                    }`}
                   />
                 </div>
               </div>
@@ -1456,42 +1983,42 @@ ${educationSection}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2.5">
                   <label className="block text-sm font-bold">Full Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="John Doe" 
+                  <input
+                    type="text"
+                    placeholder="John Doe"
                     value={personalDetails.fullName}
                     onChange={(e) => setPersonalDetails(prev => ({ ...prev, fullName: e.target.value }))}
-                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                   />
                 </div>
                 <div className="space-y-2.5">
                   <label className="block text-sm font-bold">Email</label>
-                  <input 
-                    type="email" 
-                    placeholder="john@example.com" 
+                  <input
+                    type="email"
+                    placeholder="john@example.com"
                     value={personalDetails.email}
                     onChange={(e) => setPersonalDetails(prev => ({ ...prev, email: e.target.value }))}
-                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                   />
                 </div>
                 <div className="space-y-2.5">
                   <label className="block text-sm font-bold">Phone Number</label>
-                  <input 
-                    type="tel" 
-                    placeholder="+1 (555) 000-0000" 
+                  <input
+                    type="tel"
+                    placeholder="+1 (555) 000-0000"
                     value={personalDetails.phoneNumber}
                     onChange={(e) => setPersonalDetails(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                   />
                 </div>
                 <div className="space-y-2.5">
                   <label className="block text-sm font-bold">Location</label>
-                  <input 
-                    type="text" 
-                    placeholder="San Francisco, CA" 
+                  <input
+                    type="text"
+                    placeholder="San Francisco, CA"
                     value={personalDetails.location}
                     onChange={(e) => setPersonalDetails(prev => ({ ...prev, location: e.target.value }))}
-                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                    className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                   />
                 </div>
               </div>
@@ -1500,16 +2027,16 @@ ${educationSection}
               <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider flex items-center gap-2">
                 <GraduationCap className="w-4 h-4" /> Education
               </h3>
-              
+
               <div className="space-y-4">
                 {educations.map((edu, index) => {
                   const isExpanded = expandedEduIds.includes(edu.id) || educations.length === 1;
                   const canCollapse = educations.length > 1;
-                  
+
                   return (
                     <div key={edu.id} className="border border-[#D1D5DB] dark:border-[#31364A] rounded-lg overflow-hidden bg-bg-card shadow-2xs">
                       {canCollapse && (
-                        <div 
+                        <div
                           className="flex items-center justify-between p-4 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors border-b border-transparent"
                           onClick={() => {
                             if (isExpanded) {
@@ -1524,9 +2051,9 @@ ${educationSection}
                             {edu.college || edu.degree ? `${edu.degree} at ${edu.college}` : `Education Entry ${index + 1}`}
                           </div>
                           <div className="flex items-center gap-3">
-                            <button 
-                              type="button" 
-                              onClick={(e) => { e.stopPropagation(); removeEducation(edu.id); }} 
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); removeEducation(edu.id); }}
                               className="text-brand-red hover:opacity-80 text-xs font-bold flex items-center gap-1.5 p-1 transition-opacity cursor-pointer shrink-0"
                               title="Remove education"
                             >
@@ -1544,37 +2071,37 @@ ${educationSection}
                         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-2.5 md:col-span-2">
                             <label className="block text-sm font-bold">College / University</label>
-                            <input 
-                              type="text" 
-                              placeholder="e.g. Stanford University" 
-                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                            <input
+                              type="text"
+                              placeholder="e.g. Stanford University"
+                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                               value={edu.college}
                               onChange={e => setEducations(educations.map(x => x.id === edu.id ? { ...x, college: e.target.value } : x))}
                             />
                           </div>
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Degree</label>
-                            <input 
-                              type="text" 
-                              placeholder="e.g. Bachelor of Science" 
-                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                            <input
+                              type="text"
+                              placeholder="e.g. Bachelor of Science"
+                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                               value={edu.degree}
                               onChange={e => setEducations(educations.map(x => x.id === edu.id ? { ...x, degree: e.target.value } : x))}
                             />
                           </div>
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Field of Study</label>
-                            <input 
-                              type="text" 
-                              placeholder="e.g. Computer Science" 
-                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                            <input
+                              type="text"
+                              placeholder="e.g. Computer Science"
+                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                               value={edu.field}
                               onChange={e => setEducations(educations.map(x => x.id === edu.id ? { ...x, field: e.target.value } : x))}
                             />
                           </div>
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Start Date</label>
-                            <MonthYearPicker 
+                            <MonthYearPicker
                               value={edu.startDate}
                               onChange={val => setEducations(educations.map(x => x.id === edu.id ? { ...x, startDate: val } : x))}
                               placeholder="Select start date"
@@ -1582,7 +2109,7 @@ ${educationSection}
                           </div>
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">End Date</label>
-                            <MonthYearPicker 
+                            <MonthYearPicker
                               value={edu.endDate}
                               onChange={val => setEducations(educations.map(x => x.id === edu.id ? { ...x, endDate: val } : x))}
                               placeholder="Select end date"
@@ -1591,18 +2118,18 @@ ${educationSection}
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Grade Details</label>
                             <div className="grid grid-cols-3 gap-2">
-                              <input 
-                                type="number" 
-                                placeholder="Grade" 
-                                className={`w-full px-3 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                              <input
+                                type="number"
+                                placeholder="Grade"
+                                className={`w-full px-3 py-2.5 ${INPUT_BASE_CLASSES}`}
                                 value={edu.grade}
                                 onChange={e => setEducations(educations.map(x => x.id === edu.id ? { ...x, grade: e.target.value } : x))}
                               />
                               <span className="flex items-center justify-center text-text-muted font-bold text-sm">out of</span>
-                              <input 
-                                type="number" 
-                                placeholder="Max" 
-                                className={`w-full px-3 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                              <input
+                                type="number"
+                                placeholder="Max"
+                                className={`w-full px-3 py-2.5 ${INPUT_BASE_CLASSES}`}
                                 value={edu.maxGrade}
                                 onChange={e => setEducations(educations.map(x => x.id === edu.id ? { ...x, maxGrade: e.target.value } : x))}
                               />
@@ -1611,7 +2138,7 @@ ${educationSection}
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Grade Type</label>
                             <div className="relative">
-                              <select 
+                              <select
                                 className={`w-full px-4 py-2.5 appearance-none ${INPUT_BASE_CLASSES}`}
                                 value={edu.gradeType}
                                 onChange={e => setEducations(educations.map(x => x.id === edu.id ? { ...x, gradeType: e.target.value } : x))}
@@ -1631,8 +2158,8 @@ ${educationSection}
               </div>
 
               <div className="flex justify-end pt-1">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={addEducation}
                   className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-md border border-border-input hover:border-brand-dark dark:hover:border-white text-brand-dark dark:text-white bg-bg-card hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer active:scale-[0.99]"
                 >
@@ -1655,7 +2182,7 @@ ${educationSection}
                   return (
                     <div key={exp.id} className="border border-[#D1D5DB] dark:border-[#31364A] rounded-lg overflow-hidden bg-bg-card shadow-2xs">
                       {canCollapse && (
-                        <div 
+                        <div
                           className="flex items-center justify-between p-4 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors border-b border-transparent"
                           onClick={() => {
                             if (isExpanded) {
@@ -1670,9 +2197,9 @@ ${educationSection}
                             {exp.role || exp.company ? `${exp.role} at ${exp.company}` : `Experience Entry ${index + 1}`}
                           </div>
                           <div className="flex items-center gap-3">
-                            <button 
-                              type="button" 
-                              onClick={(e) => { e.stopPropagation(); removeExperience(exp.id); }} 
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); removeExperience(exp.id); }}
                               className="text-brand-red hover:opacity-80 text-xs font-bold flex items-center gap-1.5 p-1 transition-opacity cursor-pointer shrink-0"
                               title="Remove experience"
                             >
@@ -1690,27 +2217,27 @@ ${educationSection}
                         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Company</label>
-                            <input 
-                              type="text" 
-                              placeholder="e.g. Google" 
-                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                            <input
+                              type="text"
+                              placeholder="e.g. Google"
+                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                               value={exp.company}
                               onChange={e => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, company: e.target.value } : x))}
                             />
                           </div>
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Role</label>
-                            <input 
-                              type="text" 
-                              placeholder="e.g. Software Engineer" 
-                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`} 
+                            <input
+                              type="text"
+                              placeholder="e.g. Software Engineer"
+                              className={`w-full px-4 py-2.5 ${INPUT_BASE_CLASSES}`}
                               value={exp.role}
                               onChange={e => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, role: e.target.value } : x))}
                             />
                           </div>
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">Start Date</label>
-                            <MonthYearPicker 
+                            <MonthYearPicker
                               value={exp.startDate}
                               onChange={val => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, startDate: val } : x))}
                               placeholder="Select start date"
@@ -1718,19 +2245,19 @@ ${educationSection}
                           </div>
                           <div className="space-y-2.5">
                             <label className="block text-sm font-bold">End Date</label>
-                            <MonthYearPicker 
+                            <MonthYearPicker
                               value={exp.endDate}
                               onChange={val => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, endDate: val } : x))}
                               placeholder="Select end date"
                             />
                           </div>
-                          
+
                           <div className="space-y-2.5 md:col-span-2">
                             <label className="block text-sm font-bold">Job Description</label>
-                            <textarea 
-                              rows={2} 
+                            <textarea
+                              rows={2}
                               placeholder="Brief description of the job..."
-                              className={`w-full px-4 py-2.5 resize-none ${INPUT_BASE_CLASSES}`} 
+                              className={`w-full px-4 py-2.5 resize-none ${INPUT_BASE_CLASSES}`}
                               value={exp.jobDescription}
                               onChange={e => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, jobDescription: e.target.value } : x))}
                             />
@@ -1738,26 +2265,26 @@ ${educationSection}
 
                           <div className="flex flex-col h-full gap-2.5">
                             <label className="block text-sm font-bold shrink-0">Domains</label>
-                            <DomainsSelector 
-                              selectedDomains={exp.domains} 
+                            <DomainsSelector
+                              selectedDomains={exp.domains}
                               onChange={(newDomains) => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, domains: newDomains } : x))}
                             />
                           </div>
 
                           <div className="flex flex-col h-full gap-2.5">
                             <label className="block text-sm font-bold shrink-0">Skills</label>
-                            <SkillsSelector 
-                              selectedSkills={exp.skills} 
+                            <SkillsSelector
+                              selectedSkills={exp.skills}
                               onChange={(newSkills) => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, skills: newSkills } : x))}
                             />
                           </div>
 
                           <div className="space-y-2.5 md:col-span-2">
                             <label className="block text-sm font-bold">Responsibilities & Achievements</label>
-                            <textarea 
-                              rows={4} 
+                            <textarea
+                              rows={4}
                               placeholder="Describe your responsibilities, achievements, and impact..."
-                              className={`w-full px-4 py-2.5 resize-none ${INPUT_BASE_CLASSES}`} 
+                              className={`w-full px-4 py-2.5 resize-none ${INPUT_BASE_CLASSES}`}
                               value={exp.responsibilities}
                               onChange={e => setExperiences(experiences.map(x => x.id === exp.id ? { ...x, responsibilities: e.target.value } : x))}
                             />
@@ -1770,8 +2297,8 @@ ${educationSection}
               </div>
 
               <div className="flex justify-end pt-1">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={addExperience}
                   className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-md border border-border-input hover:border-brand-dark dark:hover:border-white text-brand-dark dark:text-white bg-bg-card hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer active:scale-[0.99]"
                 >
@@ -1809,16 +2336,16 @@ ${educationSection}
                 <span>Cities (Max 3)</span>
                 <span className="text-text-muted text-xs">{cities.length}/3</span>
               </label>
-              
+
               <div ref={cityDropdownRef} className="relative">
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={cityInput}
-                    onChange={(e) => { 
-                      setCityInput(e.target.value); 
-                      if (cities.length < 3) setIsCityDropdownOpen(true); 
+                    onChange={(e) => {
+                      setCityInput(e.target.value);
+                      if (cities.length < 3) setIsCityDropdownOpen(true);
                     }}
                     onClick={() => { if (cities.length < 3) setIsCityDropdownOpen(true); }}
                     onFocus={() => { if (cities.length < 3) setIsCityDropdownOpen(true); }}
@@ -1840,7 +2367,7 @@ ${educationSection}
                 {isCityDropdownOpen && cities.length < 3 && (
                   <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-bg-card dark:bg-bg-input border border-border-subtle dark:border-gray-700 rounded-md shadow-lg dark:shadow-[0_8px_24px_rgba(0,0,0,0.6)] max-h-[220px] overflow-y-auto">
                     {filteredCities.map(c => (
-                      <div 
+                      <div
                         key={c}
                         className="px-3.5 py-2.5 hover:bg-bg-input dark:hover:bg-[#202330] cursor-pointer text-sm font-semibold flex items-center justify-between transition-colors text-text-primary dark:text-gray-200"
                         onClick={() => handleAddCity(c)}
@@ -1848,10 +2375,10 @@ ${educationSection}
                         <span>{c}</span>
                       </div>
                     ))}
-                    {cityInput.trim() && 
-                      !TOP_US_CITIES.some(c => c.toLowerCase() === cityInput.trim().toLowerCase()) && 
+                    {cityInput.trim() &&
+                      !TOP_US_CITIES.some(c => c.toLowerCase() === cityInput.trim().toLowerCase()) &&
                       !cities.some(c => c.toLowerCase() === cityInput.trim().toLowerCase()) && (
-                      <div 
+                      <div
                         className="px-3.5 py-2.5 hover:bg-bg-input dark:hover:bg-[#202330] cursor-pointer text-sm font-semibold text-brand-lime flex items-center gap-2 border-t border-border-subtle dark:border-gray-700 transition-colors"
                         onClick={() => handleAddCity(cityInput.trim())}
                       >
@@ -1866,7 +2393,7 @@ ${educationSection}
                   </div>
                 )}
               </div>
-              
+
               {/* Pre-allocated fixed height for city tags to avoid layout shifts */}
               <div className="min-h-[30px] flex flex-wrap gap-2">
                 {cities.map((city) => (
@@ -1896,13 +2423,13 @@ ${educationSection}
                   const isChecked = seniority === level.label;
                   return (
                     <label key={level.label} className="relative flex cursor-pointer select-none group">
-                      <input 
-                        type="radio" 
-                        name="seniority" 
-                        value={level.label} 
+                      <input
+                        type="radio"
+                        name="seniority"
+                        value={level.label}
                         checked={isChecked}
                         onChange={() => setSeniority(level.label)}
-                        className="peer absolute opacity-0 w-0 h-0" 
+                        className="peer absolute opacity-0 w-0 h-0"
                       />
                       <div className={PEER_PILL_CLASSES}>
                         <Icon className="w-3.5 h-3.5" />
@@ -1927,13 +2454,13 @@ ${educationSection}
                   const isChecked = jobTypes.includes(type.label);
                   return (
                     <label key={type.label} className="relative flex cursor-pointer select-none group">
-                      <input 
-                        type="checkbox" 
-                        name="jobType" 
-                        value={type.label} 
+                      <input
+                        type="checkbox"
+                        name="jobType"
+                        value={type.label}
                         checked={isChecked}
                         onChange={() => toggleJobType(type.label)}
-                        className="peer absolute opacity-0 w-0 h-0" 
+                        className="peer absolute opacity-0 w-0 h-0"
                       />
                       <div className={PEER_PILL_CLASSES}>
                         <Icon className="w-3.5 h-3.5" />
@@ -1951,21 +2478,21 @@ ${educationSection}
             <div className="space-y-2.5">
               <label className="text-sm font-bold flex gap-1">Experience (Years) <span className="text-brand-red">*</span></label>
               <div className="flex items-center bg-bg-input border-[1.5px] border-transparent rounded-[10px] w-fit overflow-hidden focus-within:border-black dark:focus-within:border-white transition-all duration-200 ease-out text-gray-700 dark:text-gray-300">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setExperience(String(Math.max(0, parseInt(experience || "0") - 1)))}
                   className="px-3 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 text-text-muted transition-colors active:bg-black/10 dark:active:bg-white/10 cursor-pointer"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
-                <input 
+                <input
                   type="number"
                   value={experience}
                   onChange={(e) => setExperience(e.target.value)}
                   className="w-12 text-center font-bold text-[0.875rem] bg-transparent outline-none p-0 hide-arrows text-gray-700 dark:text-gray-300"
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setExperience(String(parseInt(experience || "0") + 1))}
                   className="px-3 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 text-text-muted transition-colors active:bg-black/10 dark:active:bg-white/10 cursor-pointer"
                 >
@@ -1992,7 +2519,7 @@ ${educationSection}
               <div className="flex items-center gap-3">
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted font-bold text-sm">$</span>
-                  <input 
+                  <input
                     type="number"
                     placeholder="Min"
                     value={salaryFrom}
@@ -2003,7 +2530,7 @@ ${educationSection}
                 <span className="font-bold text-text-muted text-sm">to</span>
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted font-bold text-sm">$</span>
-                  <input 
+                  <input
                     type="number"
                     placeholder="Max"
                     value={salaryTo}
@@ -2017,7 +2544,7 @@ ${educationSection}
 
           {/* Domains & Skills Group */}
           <div className="p-5 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
+
             {/* Domains */}
             <div className="space-y-2.5">
               <label className="text-sm font-bold flex gap-1">Domains <span className="text-brand-red">*</span></label>
@@ -2054,25 +2581,25 @@ ${educationSection}
                       Include summary section
                     </span>
                     <div className="relative inline-flex items-center">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         className="sr-only"
                         checked={includeSummarySections}
                         onChange={(e) => setIncludeSummarySections(e.target.checked)}
                       />
-                      <div 
+                      <div
                         className={`w-[48px] h-[25px] rounded-full p-[2.5px] transition-colors duration-700 ease-[cubic-bezier(0.2,1,0.3,1)] ${
-                          includeSummarySections 
-                            ? "bg-brand-dark dark:bg-[#F3F4F6]" 
+                          includeSummarySections
+                            ? "bg-brand-dark dark:bg-[#F3F4F6]"
                             : "bg-[#D1D5DB] dark:bg-[#383D4E]"
                         }`}
                       >
-                        <div 
+                        <div
                           className={`w-[25px] h-[20px] rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.2)] transition-all duration-700 ease-[cubic-bezier(0.2,1,0.3,1)] ${
-                            includeSummarySections 
-                              ? "translate-x-[18px] bg-white dark:bg-[#111827] dark:shadow-none" 
+                            includeSummarySections
+                              ? "translate-x-[18px] bg-white dark:bg-[#111827] dark:shadow-none"
                               : "translate-x-0 bg-white"
-                          }`} 
+                          }`}
                         />
                       </div>
                     </div>
@@ -2102,16 +2629,15 @@ ${educationSection}
                       {/* Top: Actual PDF Preview */}
                       <div className="relative h-[220px] w-full bg-white overflow-hidden group/preview">
                         {isSelected && (
-                          <div className="absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 bg-brand-lime text-[#111827] pl-1.5 pr-3 py-1.5 rounded-full text-[0.65rem] font-bold shadow-md uppercase tracking-wide">
-                            <div className="bg-[#111827] text-brand-lime rounded-full p-0.5">
-                              <Check className="w-3 h-3" strokeWidth={3} />
-                            </div>
+                          <div className="absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 bg-brand-lime text-[#111827] px-2.5 py-1 rounded-full text-[0.65rem] font-bold shadow-md uppercase tracking-wide">
+                            <Check className="w-3.5 h-3.5 text-[#111827]" strokeWidth={3} />
                             Selected
                           </div>
                         )}
-                        
+
                         {urls?.thumbnailUrl ? (
-                          <img 
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
                             src={urls.thumbnailUrl}
                             alt={`${tmpl.name} preview`}
                             className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.02]"
@@ -2122,8 +2648,8 @@ ${educationSection}
                             <span className="text-[0.68rem] font-bold tracking-wider uppercase text-text-muted">Loading from R2...</span>
                           </div>
                         )}
-                        
-                        {/* Preview button on bottom right */}
+
+                        {/* Preview button on bottom right: expands smoothly into a pill with physical weight and smooth asymptotic deceleration */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -2138,9 +2664,17 @@ ${educationSection}
                               toast.info("Loading template preview from Cloudflare R2...");
                             }
                           }}
-                          className="absolute bottom-3 right-3 z-10 w-9 h-9 rounded-full bg-black/80 text-white backdrop-blur-sm shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-black hover:scale-105 cursor-pointer"
+                          className="group/btn absolute bottom-3 right-3 z-10 h-9 rounded-full bg-black/85 hover:bg-black text-white backdrop-blur-md border border-white/15 shadow-md flex items-center justify-center pl-2.5 pr-2.5 hover:pr-3.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-[padding,background-color,box-shadow,opacity] duration-550 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer hover:shadow-xl will-change-[padding]"
+                          aria-label={`Preview ${tmpl.name}`}
                         >
-                          <Eye className="w-[1.1rem] h-[1.1rem]" />
+                          <Eye className="w-4 h-4 shrink-0 text-white/90 group-hover/btn:text-white transition-colors duration-300" />
+                          <span className="grid grid-cols-[1fr] sm:grid-cols-[0fr] sm:group-hover/btn:grid-cols-[1fr] transition-[grid-template-columns] duration-550 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[grid-template-columns]">
+                            <span className="overflow-hidden min-w-0">
+                              <span className="pl-1.5 whitespace-nowrap text-[0.76rem] font-semibold tracking-wide select-none opacity-100 sm:opacity-0 sm:group-hover/btn:opacity-100 sm:translate-x-1 sm:group-hover/btn:translate-x-0 transition-[opacity,transform] duration-450 ease-[cubic-bezier(0.16,1,0.3,1)] delay-75 block text-white">
+                                Preview
+                              </span>
+                            </span>
+                          </span>
                         </button>
                       </div>
 
@@ -2161,7 +2695,7 @@ ${educationSection}
                             </span>
                           )}
                         </div>
-                        
+
                         <div className="flex flex-wrap gap-1.5">
                           {tmpl.tags.map((tag) => (
                             <span
@@ -2183,24 +2717,31 @@ ${educationSection}
         )}
 
         {/* Bottom Save Action */}
-        <div className="pt-2 flex justify-end gap-3">
+        <div className="pt-4 flex flex-wrap items-center justify-end gap-3">
+          {!showDetailsForm && (
+            <div className="flex items-center select-none">
+              <SaveStatusIndicator status={saveStatus} />
+            </div>
+          )}
           {showDetailsForm && (
-            <button 
+            <button
               type="button"
               onClick={() => setShowDetailsForm(false)}
-              className="inline-flex items-center justify-center gap-1.5 p-[0.38rem_1rem] rounded-sm font-heading text-[0.85rem] font-semibold text-text-muted hover:text-black dark:hover:text-white transition-colors cursor-pointer border-[1.5px] border-transparent"
+              className="inline-flex items-center justify-center gap-1.5 h-[42px] px-4 rounded-md font-heading text-sm font-semibold text-text-muted hover:text-black dark:hover:text-white transition-colors cursor-pointer border-[1.5px] border-transparent hover:bg-black/5 dark:hover:bg-white/5 active:scale-[0.98]"
             >
-              <X className="w-3.5 h-3.5" strokeWidth={2.5} />
-              Cancel
+              <X className="w-4 h-4" strokeWidth={2.5} />
+              <span>Cancel</span>
             </button>
           )}
-          <button 
+          <button
             type="submit"
-            disabled={isSaving || (!showDetailsForm && (!hasLoadedPreferences || !isDirty || isR2Uploading))}
+            disabled={showDetailsForm ? false : (!isDirty || isConfirming)}
             className={
-              showDetailsForm 
-                ? "inline-flex items-center justify-center gap-2 p-[0.38rem_1.25rem] rounded-sm border-[1.5px] border-transparent bg-brand-lime text-[#111827] font-heading text-[0.85rem] font-semibold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:border-border-color hover:bg-white hover:text-[#111827] active:scale-[0.98] dark:hover:bg-white dark:hover:text-[#111827] dark:hover:border-black disabled:opacity-60 disabled:cursor-not-allowed"
-                : "inline-flex items-center justify-center gap-2 p-[0.38rem_1.25rem] rounded-sm border-[1.5px] border-transparent bg-brand-dark text-white font-heading text-[0.85rem] font-semibold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:opacity-90 active:scale-[0.98] dark:bg-[#F3F4F6] dark:text-[#111827] dark:hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
+              showDetailsForm
+                ? "inline-flex items-center justify-center gap-2 h-[42px] px-5 sm:px-6 rounded-md border-[1.5px] border-transparent bg-brand-lime text-[#111827] font-heading text-sm font-bold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:border-border-color hover:bg-white hover:text-[#111827] active:scale-[0.98] dark:hover:bg-white dark:hover:text-[#111827] dark:hover:border-black disabled:opacity-60 disabled:cursor-not-allowed shadow-xs"
+                : !isDirty || isConfirming
+                ? "inline-flex items-center justify-center gap-2 h-[42px] px-5 sm:px-6 rounded-md border-[1.5px] border-border-subtle dark:border-transparent bg-[#F3F4F6] text-[#9CA3AF] font-heading text-sm font-bold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-not-allowed dark:bg-[#1E212D] dark:text-[#6B7280] opacity-60"
+                : "inline-flex items-center justify-center gap-2 h-[42px] px-5 sm:px-6 rounded-md border-[1.5px] border-transparent bg-brand-dark text-white font-heading text-sm font-bold transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] whitespace-nowrap cursor-pointer hover:opacity-90 active:scale-[0.98] dark:bg-[#F3F4F6] dark:text-[#111827] dark:hover:opacity-90 shadow-xs"
             }
           >
             {showDetailsForm ? (
@@ -2208,25 +2749,24 @@ ${educationSection}
                 <Sparkles className="w-4 h-4 shrink-0" />
                 <span>Generate</span>
               </>
-            ) : isSaving ? (
+            ) : isConfirming ? (
               <>
                 <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
-                <span>Saving...</span>
+                <span>Confirming...</span>
               </>
             ) : (
               <>
-                <Save className="w-4 h-4 shrink-0" />
+                <Check className="w-4 h-4 shrink-0" strokeWidth={2.5} />
                 <span>Confirm Changes</span>
               </>
             )}
           </button>
         </div>
       </form>
-        </>
       )}
 
 
-      <ResumeModal 
+      <ResumeModal
         isOpen={isResumeModalOpen}
         initialMode="view"
         initialMarkdown={generatedMarkdown}

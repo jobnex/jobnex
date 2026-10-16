@@ -1,20 +1,21 @@
 "use server";
 
+import { profileService } from "@/lib/profile-service";
+
 import {
+  HeadObjectCommand,
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
-  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
 import { getCurrentUser } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { userPrefResumes, userJobPreferences } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
-import { preferenceWrite } from "@/lib/db/preferences-confirmation";
 
 export type StorageCategory = "resume" | "avatar";
 
@@ -83,11 +84,12 @@ export async function getPresignedUploadUrl({
       uploadUrl,
       objectKey,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to generate upload URL.";
     console.error("Failed to generate presigned upload URL:", error);
     return {
       success: false,
-      error: error?.message || "Failed to generate upload URL.",
+      error: message,
     };
   }
 }
@@ -137,11 +139,12 @@ export async function getPresignedDownloadUrl(objectKey: string): Promise<Presig
       success: true,
       downloadUrl,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to generate download URL.";
     console.error("Failed to generate presigned download URL:", error);
     return {
       success: false,
-      error: error?.message || "Failed to generate download URL.",
+      error: message,
     };
   }
 }
@@ -157,12 +160,22 @@ export interface TemplateAssetUrls {
  * Returns temporary presigned direct R2 URLs for all 6 PDF templates and thumbnails.
  * Authenticated: only logged-in users can request this.
  * Direct: the client streams the files directly from Cloudflare R2 (0 Vercel bandwidth).
+ * Resilient: falls back to bundled public assets if R2 credentials or requests fail.
  */
 export async function getAllTemplatePresignedUrls(): Promise<{
   success: boolean;
   data?: TemplateAssetUrls;
   error?: string;
 }> {
+  const fallbackUrls: TemplateAssetUrls = {
+    "mit-capd": { pdfUrl: "/resume-templates/MITCAPD.pdf", thumbnailUrl: "/resume-templates/MITCAPD-1.jpg" },
+    "modern-ivy": { pdfUrl: "/resume-templates/dhmkrwtksdgy.pdf", thumbnailUrl: "/resume-templates/dhmkrwtksdgy-1.jpg" },
+    "tech-specialist": { pdfUrl: "/resume-templates/bznbzdprjfyy.pdf", thumbnailUrl: "/resume-templates/bznbzdprjfyy-1.jpg" },
+    "minimalist-exec": { pdfUrl: "/resume-templates/cxtjgrmpsrvh.pdf", thumbnailUrl: "/resume-templates/cxtjgrmpsrvh-1.jpg" },
+    "contemporary-compact": { pdfUrl: "/resume-templates/hmhyxvxfspsw.pdf", thumbnailUrl: "/resume-templates/hmhyxvxfspsw-1.jpg" },
+    "standard-overleaf": { pdfUrl: "/resume-templates/Untitled.pdf", thumbnailUrl: "/resume-templates/Untitled-1.jpg" },
+  };
+
   try {
     const user = await getCurrentUser();
     if (!user || !user.id) {
@@ -210,11 +223,11 @@ export async function getAllTemplatePresignedUrls(): Promise<{
     );
 
     return { success: true, data: result };
-  } catch (error: any) {
-    console.error("Failed to generate template presigned URLs:", error);
+  } catch (error: unknown) {
+    console.warn("Failed to generate template presigned URLs from R2, falling back to local public assets:", error);
     return {
-      success: false,
-      error: error?.message || "Failed to load template assets.",
+      success: true,
+      data: fallbackUrls,
     };
   }
 }
@@ -242,9 +255,10 @@ export async function deleteStorageObject(objectKey: string): Promise<{ success:
     await r2Client.send(command);
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to delete file.";
     console.error("Failed to delete storage object:", error);
-    return { success: false, error: error?.message || "Failed to delete file." };
+    return { success: false, error: message };
   }
 }
 
@@ -260,132 +274,62 @@ export interface CommitResumeParams {
  * ONLY ONE RESUME PER ACCOUNT IN CLOUDFLARE R2 AT ANY POINT IN TIME.
  * Any older resume versions in R2 for this user account are pruned/deleted.
  */
-export async function commitResumeUpload({
-  objectKey,
-  fileName,
-  fileSize,
-}: CommitResumeParams): Promise<{
-  success: boolean;
-  data?: any;
-  error?: string;
+export type UserPrefResumeRecord = typeof userPrefResumes.$inferSelect;
+
+export async function commitResumeUpload({ objectKey, fileName }: CommitResumeParams): Promise<{
+  success: boolean; data?: typeof userPrefResumes.$inferSelect; error?: string; cleanupPending?: boolean;
 }> {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.id) {
-      return { success: false, error: "Authentication required." };
+    if (!user) return { success: false, error: "Authentication required." };
+    const prefix = "user_pref_resumes/" + user.id + "/";
+    if (!objectKey?.startsWith(prefix) || objectKey.includes("..")) return { success: false, error: "Unauthorized file key." };
+    const head = await r2Client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: objectKey }));
+    if (!head.ContentLength || head.ContentLength > 10 * 1024 * 1024) throw new Error("Upload a nonempty resume up to 10 MB.");
+    const object = await r2Client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: objectKey, Range: "bytes=0-7" }));
+    const signature = await object.Body?.transformToByteArray();
+    const pdf = fileName.toLowerCase().endsWith(".pdf") && signature && Buffer.from(signature).subarray(0,5).toString() === "%PDF-";
+    const docx = fileName.toLowerCase().endsWith(".docx") && signature?.[0] === 0x50 && signature?.[1] === 0x4b;
+    if (!pdf && !docx) throw new Error("The file contents do not match a PDF or DOCX resume.");
+    // Parse before replacement: malformed/image-only files must not detach a working base.
+    const downloadUrl = await getSignedUrl(r2Client, new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: objectKey }), { expiresIn: 120 });
+    await profileService(user.id, "/profile/resume-from-r2", { objectKey, fileName, downloadUrl, validateOnly: true });
+    const committed = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${user.id},0))`);
+      const pending = await tx.execute(sql`SELECT id FROM resume_generation_requests WHERE user_id=${user.id}
+        AND status IN ('queued','running') LIMIT 1`);
+      if (pending.rows.length) throw new Error("Wait for generation to finish before replacing your base resume.");
+      const [previous] = await tx.select().from(userPrefResumes).where(eq(userPrefResumes.userId,user.id)).limit(1);
+      const now = new Date();
+      const changed = previous?.fileKey !== objectKey;
+      const [saved] = await tx.insert(userPrefResumes).values({
+        userId:user.id,title:fileName,fileName,fileKey:objectKey,fileUrl:objectKey,fileSize:head.ContentLength,isPrimary:true,updatedAt:now,
+      }).onConflictDoUpdate({ target:userPrefResumes.userId, set:{
+        title:fileName,fileName,fileKey:objectKey,fileUrl:objectKey,fileSize:head.ContentLength,isPrimary:true,updatedAt:now,
+        ...(changed ? { content:null, parsedData:{} } : {}),
+      }}).returning();
+      await tx.insert(userJobPreferences).values({ userId:user.id }).onConflictDoNothing();
+      const updates = JSON.stringify({ resumeUploaded:true,resumeFileName:fileName,resumeFileKey:objectKey });
+      await tx.execute(sql`UPDATE user_job_preferences SET active_resume_id=${saved.id},
+        resume_details=CASE WHEN ${changed} THEN '{}'::jsonb ELSE resume_details END,
+        preferences=COALESCE(preferences,'{}'::jsonb) || ${updates}::jsonb ||
+          jsonb_build_object('isConfirmed',false,'lastConfirmedPreferences',
+            COALESCE(NULLIF(preferences->'lastConfirmedPreferences','null'::jsonb),preferences-'isConfirmed'-'confirmedAt')),
+        updated_at=now() WHERE user_id=${user.id}`);
+      return { saved, previousKey: previous?.fileKey };
+    });
+    let cleanupPending = false;
+    if (committed.previousKey && committed.previousKey !== objectKey && committed.previousKey.startsWith(prefix)) {
+      try { await r2Client.send(new DeleteObjectCommand({ Bucket:R2_BUCKET_NAME,Key:committed.previousKey })); }
+      catch { cleanupPending=true; console.error("Detached resume file cleanup pending"); }
     }
-
-    if (!objectKey || typeof objectKey !== "string") {
-      return { success: false, error: "Invalid object key." };
-    }
-
-    // Security validation: verify key ownership & path
-    const expectedPrefix = `user_pref_resumes/${user.id}/`;
-    if (!objectKey.startsWith(expectedPrefix)) {
-      return { success: false, error: "Unauthorized file key." };
-    }
-
-    // 1. Storage Invariant Enforcement:
-    // List and delete ALL existing objects in Cloudflare R2 under user_pref_resumes/{user.id}/
-    // EXCEPT the newly uploaded objectKey. Never delete the persistent directory marker (.keep).
-    try {
-      const listCommand = new ListObjectsV2Command({
-        Bucket: R2_BUCKET_NAME,
-        Prefix: expectedPrefix,
-      });
-      const listRes = await r2Client.send(listCommand);
-      if (listRes.Contents && listRes.Contents.length > 0) {
-        for (const item of listRes.Contents) {
-          if (item.Key && item.Key !== objectKey && !item.Key.endsWith("/.keep")) {
-            console.log(`[R2 Prune] Deleting old resume version: ${item.Key}`);
-            await r2Client.send(
-              new DeleteObjectCommand({
-                Bucket: R2_BUCKET_NAME,
-                Key: item.Key,
-              })
-            );
-          }
-        }
-      }
-    } catch (r2Err) {
-      console.error("Failed to prune old R2 resumes:", r2Err);
-      // Non-fatal if R2 list fails, but we continue to DB commit
-    }
-
-    const now = new Date();
-    const cleanFileName = fileName || "Uploaded_Resume.pdf";
-
-    // 2. Database Upsert into normalized 'user_pref_resumes' table
-    const [savedResume] = await db
-      .insert(userPrefResumes)
-      .values({
-        userId: user.id,
-        title: cleanFileName,
-        fileName: cleanFileName,
-        fileKey: objectKey,
-        fileSize: fileSize || null,
-        fileUrl: objectKey,
-        isPrimary: true,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: userPrefResumes.userId,
-        set: {
-          title: cleanFileName,
-          fileName: cleanFileName,
-          fileKey: objectKey,
-          content: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN NULL ELSE ${userPrefResumes.content} END`,
-          parsedData: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN '{}'::jsonb ELSE ${userPrefResumes.parsedData} END`,
-          fileSize: fileSize || null,
-          fileUrl: objectKey,
-          isPrimary: true,
-          updatedAt: now,
-        },
-      })
-      .returning();
-
-    // 3. Update user_job_preferences with activeResumeId foreign key
-    // and sync JSON document for backward compatibility
-    const [existingPref] = await db
-      .select()
-      .from(userJobPreferences)
-      .where(eq(userJobPreferences.userId, user.id))
-      .limit(1);
-
-    if (existingPref) {
-      await db
-        .update(userJobPreferences)
-        .set({
-          activeResumeId: savedResume.id,
-          preferences: preferenceWrite({ resumeUploaded: true, resumeFileName: cleanFileName, resumeFileKey: objectKey }),
-          updatedAt: now,
-        })
-        .where(eq(userJobPreferences.userId, user.id));
-    }
-
-    revalidatePath("/job-hunt/manage");
-    revalidatePath("/job-hunt");
-    revalidatePath("/(main)/job-hunt/manage", "page");
-
-    return {
-      success: true,
-      data: savedResume,
-    };
-  } catch (error: any) {
-    console.error("Failed to commit resume upload:", error);
-    return {
-      success: false,
-      error: error?.message || "Failed to register resume in database.",
-    };
+    revalidatePath("/job-hunt/manage"); revalidatePath("/job-hunt");
+    return { success:true,data:committed.saved,cleanupPending };
+  } catch(error) {
+    return { success:false,error:error instanceof Error ? error.message : "Could not save the uploaded resume." };
   }
 }
 
-/**
- * Permanently deletes the candidate's active resume from Cloudflare R2
- * and clears the record in PostgreSQL.
- * Guarantees zero orphaned files remain in the cloud while preserving
- * the persistent folder marker in the bucket.
- */
 export async function deleteUserResume(): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await getCurrentUser();
@@ -395,50 +339,38 @@ export async function deleteUserResume(): Promise<{ success: boolean; error?: st
 
     const expectedPrefix = `user_pref_resumes/${user.id}/`;
 
-    // 1. Purge all files in Cloudflare R2 under user_pref_resumes/{user.id}/
-    // (Never purges the root user_pref_resumes/.keep folder marker)
+    // Commit database removal before touching files. Historical audits remain intact.
+    const removedKeys = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${user.id},0))`);
+      const locked = await tx.execute(sql`SELECT id, file_key FROM user_pref_resumes WHERE user_id=${user.id} FOR UPDATE`);
+      const pending = await tx.execute(sql`SELECT id FROM resume_generation_requests
+        WHERE user_id=${user.id} AND base_resume_id IN
+          (SELECT id FROM user_pref_resumes WHERE user_id=${user.id})
+        AND status IN ('queued', 'running') LIMIT 1`);
+      if (pending.rows.length) {
+        throw new Error("Wait for your resume generation to finish before removing the base resume.");
+      }
+      await tx.update(userJobPreferences).set({ activeResumeId: null, updatedAt: new Date() })
+        .where(eq(userJobPreferences.userId, user.id));
+      await tx.update(userPrefResumes).set({
+        isPrimary: false, fileKey: null, fileUrl: null, fileName: null, fileSize: null,
+        updatedAt: new Date(),
+      }).where(eq(userPrefResumes.userId, user.id));
+      await tx.execute(sql`UPDATE user_job_preferences SET preferences=
+        COALESCE(preferences, '{}'::jsonb) ||
+        '{"resumeUploaded":false,"resumeFileName":null,"resumeFileKey":null}'::jsonb
+        WHERE user_id=${user.id}`);
+      return locked.rows.map((row) => row.file_key).filter((key): key is string =>
+        typeof key === "string" && key.startsWith(expectedPrefix) && !key.endsWith("/.keep"));
+    });
+
+    // Do not purge the prefix: a concurrent upload may already have added a replacement.
     try {
-      const listCommand = new ListObjectsV2Command({
-        Bucket: R2_BUCKET_NAME,
-        Prefix: expectedPrefix,
-      });
-      const listRes = await r2Client.send(listCommand);
-      if (listRes.Contents && listRes.Contents.length > 0) {
-        for (const item of listRes.Contents) {
-          if (item.Key && !item.Key.endsWith("/.keep")) {
-            console.log(`[R2 Delete] Removing resume: ${item.Key}`);
-            await r2Client.send(
-              new DeleteObjectCommand({
-                Bucket: R2_BUCKET_NAME,
-                Key: item.Key,
-              })
-            );
-          }
-        }
+      for (const key of removedKeys) {
+        await r2Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
       }
     } catch (r2Err) {
       console.error("Failed to purge R2 files on resume delete:", r2Err);
-    }
-
-    // 2. Remove from 'user_pref_resumes' table
-    await db.delete(userPrefResumes).where(eq(userPrefResumes.userId, user.id));
-
-    // 3. Clear active_resume_id and JSON fields in user_job_preferences
-    const [existingPref] = await db
-      .select()
-      .from(userJobPreferences)
-      .where(eq(userJobPreferences.userId, user.id))
-      .limit(1);
-
-    if (existingPref) {
-      await db
-        .update(userJobPreferences)
-        .set({
-          activeResumeId: null,
-          preferences: preferenceWrite({ resumeUploaded: false, resumeFileName: null, resumeFileKey: null }),
-          updatedAt: new Date(),
-        })
-        .where(eq(userJobPreferences.userId, user.id));
     }
 
     revalidatePath("/job-hunt/manage");
@@ -446,9 +378,10 @@ export async function deleteUserResume(): Promise<{ success: boolean; error?: st
     revalidatePath("/(main)/job-hunt/manage", "page");
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to delete resume.";
     console.error("Failed to delete user resume:", error);
-    return { success: false, error: error?.message || "Failed to delete resume." };
+    return { success: false, error: message };
   }
 }
 
@@ -457,7 +390,7 @@ export async function deleteUserResume(): Promise<{ success: boolean; error?: st
  */
 export async function getUserActiveResume(): Promise<{
   success: boolean;
-  data?: any;
+  data?: UserPrefResumeRecord | null;
   error?: string;
 }> {
   try {
@@ -469,20 +402,20 @@ export async function getUserActiveResume(): Promise<{
     const [record] = await db
       .select()
       .from(userPrefResumes)
-      .where(eq(userPrefResumes.userId, user.id))
+      .where(and(eq(userPrefResumes.userId, user.id), eq(userPrefResumes.isPrimary, true)))
       .limit(1);
 
     return {
       success: true,
       data: record || null,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to load resume record.";
     console.error("Failed to fetch active resume:", error);
     return {
       success: false,
       data: null,
-      error: error?.message || "Failed to load resume record.",
+      error: message,
     };
   }
 }
-

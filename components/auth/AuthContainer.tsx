@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { X, ArrowRight, RefreshCw } from "lucide-react";
 import { LoaderDots } from "@/components/ui/LoaderDots";
-import { StrawberryLogo } from "@/components/ui/StrawberryLogo";
+import { JobnexLogo } from "@/components/ui/JobnexLogo";
 import { maskEmail } from "@/lib/utils";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth/client";
@@ -46,11 +46,11 @@ export function AuthContainer() {
     }
     setIsLoading(true);
     try {
-      const { data, error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+      const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
       if (error) throw new Error(error.message || "Failed to send code");
-      
+
       toast.success("Verification code sent to your email!");
-      
+
       setStep("code");
       setResendTimer(30);
       setCanResend(false);
@@ -82,19 +82,19 @@ export function AuthContainer() {
     }
     setIsLoading(true);
     try {
-      const { data, error } = await authClient.signIn.emailOtp({ 
-        email, 
+      const { error } = await authClient.signIn.emailOtp({
+        email,
         otp: code,
         // In Better Auth, rememberMe sets the session to be persistent rather than session-only
         rememberMe: true
       });
       if (error) throw new Error(error.message || "Invalid code");
-      
+
       toast.success("Successfully authenticated!");
-      
+
       // Force Next.js to refresh server components and update session states natively
       router.refresh();
-      
+
       // Give the toast a moment, then redirect
       setTimeout(() => {
         router.push(callbackUrl);
@@ -113,9 +113,9 @@ export function AuthContainer() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      const { error } = await authClient.signIn.social({ 
-        provider: 'google', 
-        callbackURL: callbackUrl 
+      const { error } = await authClient.signIn.social({
+        provider: 'google',
+        callbackURL: callbackUrl
       });
       if (error) {
         toast.error(error.message || "Failed to initialize Google sign in");
@@ -136,7 +136,7 @@ export function AuthContainer() {
 
   return (
     <div className="relative w-full min-h-screen bg-bg-page text-text-primary flex flex-col lg:flex-row transition-colors duration-200">
-      
+
       {/* Top Header Utility: Close (X) button */}
       <div className="absolute top-5 left-5 sm:top-7 sm:left-8 z-30 flex items-center">
         <Link
@@ -158,7 +158,7 @@ export function AuthContainer() {
             WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 3px, black calc(100% - 3px), transparent 100%)",
           }}
         >
-          
+
           {/* 2-Slide Horizontal Carousel Track with Exponential Deceleration Curve */}
           <div
             className="w-[200%] flex transition-transform duration-500 ease-[cubic-bezier(0.08,0.85,0.18,1)]"
@@ -166,7 +166,7 @@ export function AuthContainer() {
               transform: step === "email" ? "translateX(0%)" : "translateX(-50%)",
             }}
           >
-            
+
             {/* SLIDE 1: Email Form */}
             <div
               className={`w-1/2 px-1 flex flex-col items-center shrink-0 transition-all duration-500 ease-[cubic-bezier(0.08,0.85,0.18,1)] ${
@@ -182,7 +182,7 @@ export function AuthContainer() {
                   Create an account or sign in
                 </h1>
               </div>
-              
+
               {/* Section 2: Google Button + 'or' Separator (Total exact 132px height) */}
               <div className="w-full flex flex-col items-center pt-5">
                 {/* Google Sign In */}
@@ -209,7 +209,7 @@ export function AuthContainer() {
                     </>
                   )}
                 </button>
-  
+
                 {/* Equidistant 'or' separator centered between Google button & Email input */}
                 <div className="my-[26px] flex items-center justify-center text-[0.85rem] font-bold uppercase text-text-subtle select-none leading-none tracking-widest">
                   OR
@@ -241,7 +241,7 @@ export function AuthContainer() {
                     className="w-full h-11 px-3.5 bg-bg-input border-[1.5px] border-border-input rounded-[var(--border-radius-sm)] font-medium text-text-primary placeholder:text-text-subtle focus:outline-none focus:border-border-color focus:ring-1 focus:ring-border-color transition-all text-sm disabled:opacity-50"
                   />
                 </div>
-                
+
                 {/* Continue Button */}
                 <button
                   type="submit"
@@ -315,7 +315,7 @@ export function AuthContainer() {
               </div>
 
               {/* Section 3: Form with OTP Input + Verify Button + Resend */}
-              <form 
+              <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleVerifyCode();
@@ -387,7 +387,7 @@ export function AuthContainer() {
 
               {/* Section 4: Privacy & Terms Note */}
               <p className="text-center text-[0.75rem] text-text-subtle mt-8 whitespace-nowrap">
-                By continuing, you agree to Strawberry Jobs&apos;{" "}
+                By continuing, you agree to Jobnex&apos;{" "}
                 <Link href="/" className="underline hover:text-text-primary">Terms</Link>{" "}
                 and{" "}
                 <Link href="/" className="underline hover:text-text-primary">Privacy Policy</Link>.
@@ -399,15 +399,16 @@ export function AuthContainer() {
         </div>
       </div>
 
-      {/* Right Half: Perfectly Centered Strawberry Jobs Logo & Wordmark */}
+      {/* Right Half: Perfectly Centered Jobnex Logo & Wordmark */}
       <div className="hidden lg:flex lg:w-1/2 min-h-screen relative items-center justify-center p-8 lg:p-12 select-none">
         <div className="relative flex flex-col items-center justify-center text-center gap-5">
           <div className="relative group cursor-default">
-            <StrawberryLogo size="xl" showHoverEffect={false} className="hover:scale-105" />
+            <JobnexLogo size="xl" showHoverEffect={false} className="hover:scale-105" />
           </div>
 
-          <h2 className="font-heading font-semibold text-3xl sm:text-4xl lg:text-[2.6rem] text-text-primary select-none">
-            strawberry jobs
+          <h2 className="font-wordmark font-bold text-3xl sm:text-4xl lg:text-[2.6rem] tracking-tight select-none">
+            <span className="text-[#111827] dark:text-white transition-colors duration-200">Job</span>
+            <span className="text-brand-lime">nex</span>
           </h2>
         </div>
       </div>

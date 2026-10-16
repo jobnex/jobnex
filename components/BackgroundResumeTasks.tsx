@@ -1,96 +1,167 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { authClient } from "@/lib/auth/client";
-import { getResumeRequestStatus, listResumeRequests, type ResumeRequestSummary } from "@/app/actions/tailored-resume";
+import { useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { listResumeRequests } from "@/app/actions/tailored-resume";
 import { useCreditStore } from "@/store/useCreditStore";
-import { ResumeModal } from "@/components/ResumeModal";
 import { toast } from "sonner";
 
-/** The worker owns execution. This layout component only observes durable DB state. */
+/**
+ * Headless Background Resume Watcher
+ *
+ * Runs silently in the background across the entire application:
+ * - Completely strips away floating UI elements, drawers, and pills (0 DOM footprint).
+ * - Monitors active ("queued" | "running") resume tailoring requests.
+ * - Shuts down polling completely when idle (zero network requests when no jobs are active).
+ * - Fires global Sonner toasts when jobs transition to terminal states (completed / failed).
+ * - Synchronizes credit balances and dispatches "resume-requests-changed" events.
+ */
 export function BackgroundResumeTasks() {
-  const { data: session } = authClient.useSession();
-  const userId = session?.user?.id;
-  const [snapshot, setSnapshot] = useState<{ userId: string | null; requests: ResumeRequestSummary[] }>({ userId: null, requests: [] });
-  const [unavailable, setUnavailable] = useState(false);
-  const [expanded, setExpanded] = useState(true);
-  const [opening, setOpening] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ userId: string; id: string; markdown: string; review: boolean } | null>(null);
+  const router = useRouter();
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isFetchingRef = useRef<boolean>(false);
+  const activeIdsRef = useRef<Set<string>>(new Set());
+  const prevStatusesRef = useRef<Map<string, string>>(new Map());
 
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false, inFlight = false, refreshPending = false;
-    let timer: ReturnType<typeof setTimeout>;
-    let previous = new Map<string, string>();
-    async function refresh() {
-      if (inFlight) { refreshPending = true; return; }
-      inFlight = true;
-      clearTimeout(timer);
-      let delay = 4000;
-      try {
-        const result = await listResumeRequests();
-        if (cancelled || result.userId !== userId) return;
-        for (const request of result.requests) {
-          if (["queued", "running"].includes(previous.get(request.id) || "") && !["queued", "running"].includes(request.status)) {
-            const label = `${request.title} • ${request.company}`;
-            if (request.has_draft) {
-              if (request.status === "needs_review") toast.warning(`Draft saved for ${label}. Review required.`);
-              else toast.success(`Resume saved for ${label}.`);
-            } else toast.error(`Generation finished for ${label} without a usable draft. Check its credit status.`);
-            void useCreditStore.getState().fetchCredits();
+  // Stop polling timer cleanly
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  // Authoritative status check loop
+  // ONLY schedules subsequent ticks if there are active ("queued" or "running") requests.
+  // Shuts down completely (0 network requests) when idle or all jobs reach terminal state.
+  const pollTick = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    try {
+      const res = await listResumeRequests();
+      if (!res.success || !res.requests) {
+        return;
+      }
+
+      const newActiveIds = new Set<string>();
+      let anyJustFinished = false;
+
+      for (const req of res.requests) {
+        const isNowActive = req.status === "queued" || req.status === "running";
+        if (isNowActive) {
+          newActiveIds.add(req.id);
+        }
+
+        const prevStatus = prevStatusesRef.current.get(req.id);
+        const wasActive = prevStatus === "queued" || prevStatus === "running";
+
+        // Detect status transition from active -> terminal state
+        if (wasActive && !isNowActive) {
+          anyJustFinished = true;
+          if (req.status === "completed" || req.hasDraft) {
+            if (req.status === "needs_review") {
+              toast.info(`Tailored resume ready for ${req.companyName} (Review suggested)`, {
+                description: req.reviewReason || "Review bullet points in My Applications.",
+                action: {
+                  label: "View in Applications",
+                  onClick: () => router.push("/job-hunt/applications"),
+                },
+                duration: 7000,
+              });
+            } else {
+              toast.success(`Tailored resume ready for ${req.companyName}!`, {
+                description: req.jobTitle ? `${req.jobTitle}` : undefined,
+                action: {
+                  label: "View in Applications",
+                  onClick: () => router.push("/job-hunt/applications"),
+                },
+                duration: 6000,
+              });
+            }
+          } else if (req.status === "failed") {
+            toast.error(`Tailoring failed for ${req.companyName}`, {
+              description: req.errorCode || "Your credit has been refunded.",
+              action: {
+                label: "View in Applications",
+                onClick: () => router.push("/job-hunt/applications"),
+              },
+              duration: 6000,
+            });
           }
         }
-        previous = new Map(result.requests.map(request => [request.id, request.status]));
-        setSnapshot(result);
-        setUnavailable(false);
-        delay = result.requests.some(request => ["queued", "running"].includes(request.status)) ? 4000 : 30000;
-      } catch {
-        if (!cancelled) setUnavailable(true);
-      } finally {
-        inFlight = false;
-        if (!cancelled) { timer = setTimeout(refresh, refreshPending ? 0 : delay); refreshPending = false; }
+
+        prevStatusesRef.current.set(req.id, req.status);
       }
+
+      if (anyJustFinished) {
+        // Sync candidate credit wallet across the application
+        useCreditStore.getState().fetchCredits().catch(() => {});
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("resume-requests-changed"));
+        }
+      }
+
+      activeIdsRef.current = newActiveIds;
+
+      // Stop any existing timer before scheduling next tick
+      stopPolling();
+
+      // Controlled polling schedule:
+      // If there are still active jobs in progress, check again in 4 seconds.
+      // If ALL jobs have finished (or none exist), STOP polling completely. Zero idle network calls.
+      if (newActiveIds.size > 0) {
+        pollTimerRef.current = setTimeout(() => {
+          pollTick();
+        }, 4000);
+      }
+    } catch (err) {
+      console.warn("[BackgroundResumeWatcher] Polling check encountered error:", err);
+      stopPolling();
+      // On network failure, retry once in 8s if active jobs were pending
+      if (activeIdsRef.current.size > 0) {
+        pollTimerRef.current = setTimeout(() => {
+          pollTick();
+        }, 8000);
+      }
+    } finally {
+      isFetchingRef.current = false;
     }
-    const wake = () => { setExpanded(true); void refresh(); };
-    window.addEventListener("resume-requests-changed", wake);
-    window.addEventListener("focus", wake);
-    void refresh();
-    return () => { cancelled = true; clearTimeout(timer); window.removeEventListener("resume-requests-changed", wake); window.removeEventListener("focus", wake); };
-  }, [userId]);
+  }, [stopPolling, router]);
 
-  // Do not expose a previous account's cached requests or draft after a session switch.
-  const requests = userId && snapshot.userId === userId ? snapshot.requests : [];
-  async function openDraft(request: ResumeRequestSummary) {
-    if (!userId) return;
-    setOpening(request.id);
-    try {
-      const result = await getResumeRequestStatus(request.id);
-      if (!result.success || !result.markdown) throw new Error(result.error || "Saved draft is unavailable. Retry shortly.");
-      setDraft({ userId, id: request.id, markdown: result.markdown, review: result.status === "needs_review" });
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not open draft."); }
-    finally { setOpening(null); }
-  }
+  // Mount, external event listener, and tab visibility management
+  useEffect(() => {
+    // 1. Initial status fetch on mount
+    pollTick();
 
-  if (!userId || (!requests.length && !unavailable)) return null;
-  const active = requests.filter(request => ["queued", "running"].includes(request.status)).length;
-  return <>
-    <aside aria-label="Resume generations" className="fixed bottom-20 right-3 z-40 w-[min(25rem,calc(100vw-1.5rem))] rounded-xl border border-border-input bg-bg-card p-3 shadow-xl dark:border-[#374151] dark:bg-[#161822]">
-      <button aria-expanded={expanded} onClick={() => setExpanded(value => !value)} className="flex w-full items-center justify-between text-left text-sm font-bold">
-        <span>Resume generations{active ? ` (${active} active)` : ""}</span><span aria-hidden="true">{expanded ? "−" : "+"}</span>
-      </button>
-      {expanded && <div className="mt-2 max-h-64 space-y-3 overflow-y-auto text-xs">
-        <p className="text-text-muted">Runs continue in the background. Reload to restore saved status.</p>
-        {unavailable && <p role="status">Status temporarily unavailable. Retrying; this does not stop the worker.</p>}
-        {requests.map(request => <div key={request.id} className="border-t border-border-input pt-2">
-          <p className="font-semibold">{request.title || "Resume"} • {request.company || "Job"}</p>
-          <p role="status" className="mt-1">{request.status.replaceAll("_", " ")} · {request.credit_state === "consumed" ? "1 credit charged" : request.credit_state === "held" ? "1 credit reserved" : request.credit_state === "released" ? "Credit refunded" : request.credit_state}</p>
-          {request.status === "needs_review" && request.has_draft && <p className="mt-1 text-amber-700 dark:text-amber-300">Review this draft against your original experience before using it.</p>}
-          {!request.has_draft && !["queued", "running"].includes(request.status) && <p className="mt-1 text-text-muted">No usable saved draft.</p>}
-          {request.has_draft && <button onClick={() => void openDraft(request)} disabled={opening !== null} className="mt-2 rounded bg-brand-lime px-3 py-1 font-bold text-[#111827] disabled:opacity-50">{opening === request.id ? "Opening…" : "View draft"}</button>}
-        </div>)}
-      </div>}
-    </aside>
-    {draft?.userId === userId && <ResumeModal key={draft.id} isOpen onClose={() => setDraft(null)} initialMarkdown={draft.markdown} initialMode="view"
-      reviewWarning={draft.review ? "Needs review: check this draft against your original experience before using it. It has not passed all generation checks." : undefined} />}
-  </>;
+    // 2. React to tailoring initiation from modal
+    const handleRequestsChanged = () => {
+      stopPolling();
+      pollTick();
+    };
+
+    // 3. Tab visibility handler: pause timer when backgrounded, resume when focused
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        if (activeIdsRef.current.size > 0) {
+          stopPolling();
+          pollTick();
+        }
+      } else {
+        stopPolling();
+      }
+    };
+
+    window.addEventListener("resume-requests-changed", handleRequestsChanged);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("resume-requests-changed", handleRequestsChanged);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stopPolling();
+    };
+  }, [pollTick, stopPolling]);
+
+  // Zero DOM footprint: 100% headless watcher service
+  return null;
 }

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 export const userProfiles = pgTable("user_profiles", {
   userId: text("user_id").primaryKey().notNull(), // Links to neon_auth.users.id
@@ -13,8 +13,4 @@ export const userProfiles = pgTable("user_profiles", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
     .defaultNow()
     .notNull(),
-}, (table) => [
-  index("idx_user_profiles_user_id").on(table.userId),
-]);
-
-
+});

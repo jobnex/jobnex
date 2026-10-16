@@ -26,6 +26,7 @@ export interface ExperienceEntry {
 }
 
 export interface PersonalDetails {
+  [key: string]: string | string[] | undefined;
   fullName?: string;
   email?: string;
   phoneNumber?: string;
@@ -33,9 +34,6 @@ export interface PersonalDetails {
 }
 
 export interface JobPreferencesData {
-  isConfirmed?: boolean;
-  confirmedAt?: string | null;
-  lastConfirmedPreferences?: Record<string, unknown> | null;
   country?: string;
   cities?: string[];
   seniority?: string;
@@ -52,6 +50,10 @@ export interface JobPreferencesData {
   resumeUploaded?: boolean;
   resumeFileName?: string | null;
   resumeFileKey?: string | null;
+  isConfirmed?: boolean;
+  confirmedAt?: string | null;
+  lastConfirmedPreferences?: Record<string, unknown> | null;
+  manualEdits?: Record<string, unknown> | null;
 }
 
 export interface ResumeDetailsData {
@@ -63,7 +65,7 @@ export interface ResumeDetailsData {
 /**
  * User Job Preferences Schema
  * Production-grade consolidated JSON document model.
- * 
+ *
  * - Strictly 1-to-1 relationship per authenticated user account (unique user_id index).
  * - Stores preferences and resume details in structured JSONB columns rather than dozens of rigid columns.
  * - Maintains independent lifecycle status and audit timestamps:

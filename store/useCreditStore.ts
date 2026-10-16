@@ -50,10 +50,11 @@ export const useCreditStore = create<CreditState>((set, get) => ({
       // Revert on server logic failure
       if (currentBalance !== null) set({ balance: currentBalance });
       return { success: false, error: 'error' in res ? String(res.error) : "Failed to deduct credit" };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Revert on network/unexpected error
       if (currentBalance !== null) set({ balance: currentBalance });
-      return { success: false, error: error.message };
+      const message = error instanceof Error ? error.message : "Failed to deduct credit";
+      return { success: false, error: message };
     }
   },
 }));

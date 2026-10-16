@@ -1,34 +1,25 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
-import { matchUserJobs, UserPreferencesInput, MatchedJobRecord } from "@/lib/db/job-preference-matching";
-import { formatSalary, mapDBJobTypeToUI } from "@/lib/job-utils";
-import { Job } from "@/types";
+import { getMatchedJobs, JobMatchingParams, MatchingMode } from "@/lib/db/job-matching";
 
 export const dynamic = "force-dynamic";
 
-function mapRecordToUIJob(row: MatchedJobRecord): Job & { similarityScore?: number; tierRank?: number } {
-  const displayLocation = row.countryName 
-    ? `${row.location}, ${row.countryName}` 
-    : row.location;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  return {
-    id: row.id,
-    jobRoleTitle: row.jobRoleTitle,
-    company: row.companyName || "Unknown Company",
-    type: mapDBJobTypeToUI(row.employmentType),
-    location: displayLocation,
-    salary: formatSalary(row.salaryMin, row.salaryMax, row.currency),
-    jobDescription: row.jobDescription,
-    categories: [],
-    postedAt: row.publishedAt ? new Date(row.publishedAt).toISOString() : new Date().toISOString(),
-    isRemote: row.workModel === "remote",
-    isHybrid: row.workModel === "hybrid",
-    workModel: row.workModel ?? undefined,
-    visaSponsorship: row.visaSponsorship ?? undefined,
-    experienceRequired: row.experienceRequired ?? undefined,
-    similarityScore: row.similarityScore,
-    tierRank: row.tierRank,
-  };
+function sanitizeStringList(param: string | null, maxItems = 25, maxLen = 100): string[] | undefined {
+  if (!param) return undefined;
+  const items = param
+    .split(",")
+    .map((s) => s.trim().slice(0, maxLen))
+    .filter(Boolean)
+    .slice(0, maxItems);
+  return items.length > 0 ? items : undefined;
+}
+
+function sanitizeText(param: string | null, maxLen = 100): string | undefined {
+  if (!param) return undefined;
+  const clean = param.trim().slice(0, maxLen);
+  return clean.length > 0 ? clean : undefined;
 }
 
 export async function GET(request: Request) {
@@ -36,63 +27,57 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const user = await getCurrentUser().catch(() => null);
 
-    const userId = searchParams.get("userId") || user?.id || null;
-    const cursor = searchParams.get("cursor");
-    const limitParam = searchParams.get("limit");
-    const limit = limitParam ? parseInt(limitParam, 10) : 24;
+    // OWASP API1:2023 - Lock candidate ID strictly to verified session
+    const authenticatedUserId = user?.id && UUID_REGEX.test(user.id) ? user.id : null;
+    const userId = authenticatedUserId;
+    if (!userId) return NextResponse.json({ error: "Sign in to view your curated jobs" }, { status: 401 });
+
+    // OWASP API4:2023 - Resource Consumption Clamping
+    const rawPage = parseInt(searchParams.get("page") || "1", 10);
+    const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+
+    const rawLimit = parseInt(searchParams.get("limit") || "24", 10);
+    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(1, rawLimit), 50) : 24;
+
+    const rawKeyword = searchParams.get("keyword") || "";
+    const keyword = rawKeyword.slice(0, 100);
+
+    const rawTab = searchParams.get("tab");
+    const tab: "jobs" | "requested" = rawTab === "requested" ? "requested" : "jobs";
+
+    const rawMode = searchParams.get("mode");
+    const mode: MatchingMode = rawMode === "strict" || rawMode === "broad" ? rawMode : "balanced";
 
     // Optional query overrides
-    const country = searchParams.get("country");
-    const seniority = searchParams.get("seniority");
-    const domainsParam = searchParams.get("domains");
-    const domains = domainsParam ? domainsParam.split(",").map(d => d.trim()).filter(Boolean) : null;
-    const skillsParam = searchParams.get("skills");
-    const skills = skillsParam ? skillsParam.split(",").map(s => s.trim()).filter(Boolean) : null;
-    const citiesParam = searchParams.get("cities");
-    const cities = citiesParam ? citiesParam.split(",").map(c => c.trim()).filter(Boolean) : null;
-    const jobTypesParam = searchParams.get("jobTypes");
-    const jobTypes = jobTypesParam ? jobTypesParam.split(",").map(t => t.trim()).filter(Boolean) : null;
-    const modeParam = searchParams.get("mode");
-    const mode = (modeParam === "strict" || modeParam === "balanced" || modeParam === "broad") 
-      ? modeParam 
-      : undefined;
+    const country = sanitizeText(searchParams.get("country"), 60);
+    const seniority = sanitizeText(searchParams.get("seniority"), 50);
+    const domains = sanitizeStringList(searchParams.get("domains"));
+    const skills = sanitizeStringList(searchParams.get("skills"));
+    const cities = sanitizeStringList(searchParams.get("cities"));
+    const jobTypes = sanitizeStringList(searchParams.get("jobTypes"));
 
-    let preferences: UserPreferencesInput | null = null;
-    if (country || seniority || domains || skills || cities || jobTypes || mode) {
-      preferences = {
-        country: country || null,
-        seniority: seniority || null,
-        domains: domains || null,
-        skills: skills || null,
-        cities: cities || null,
-        jobTypes: jobTypes || null,
-        mode: mode || null,
-      };
-    }
-
-    const result = await matchUserJobs({
+    const matchingParams: JobMatchingParams = {
       userId,
-      preferences,
-      cursor,
+      page,
       limit,
+      keyword,
+      tab,
       mode,
-    });
+      postedWithin: searchParams.get("postedWithin") === "all" ? "all" : searchParams.get("postedWithin") === "7d" ? "7d" : "24h",
+      sort: searchParams.get("sort") === "match" ? "match" : "newest",
+      country,
+      seniority,
+      domains,
+      skills,
+      cities,
+      jobTypes,
+    };
 
-    const mappedJobs = result.jobs.map(mapRecordToUIJob);
-
-    return NextResponse.json({
-      jobs: mappedJobs,
-      nextCursor: result.nextCursor,
-      nextKeyset: result.nextKeyset,
-      hasMore: result.hasMore,
-      executionTimeMs: result.executionTimeMs,
-    });
-  } catch (error: any) {
+    const result = await getMatchedJobs(matchingParams);
+    return NextResponse.json(result);
+  } catch (error) {
     console.error("Failed to fetch matched jobs:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch matched jobs", details: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch matched jobs" }, { status: 500 });
   }
 }
 
@@ -101,37 +86,43 @@ export async function POST(request: Request) {
     const user = await getCurrentUser().catch(() => null);
     const body = await request.json().catch(() => ({}));
 
-    const userId = body.userId || user?.id || null;
-    const preferences: UserPreferencesInput = body.preferences || body;
-    const cursor = body.cursor || null;
-    const limit = typeof body.limit === "number" ? body.limit : 24;
-    const rawMode = body.mode !== undefined ? body.mode : preferences?.mode;
-    const mode = (rawMode === "strict" || rawMode === "balanced" || rawMode === "broad")
-      ? rawMode
-      : (rawMode !== undefined && rawMode !== null ? "balanced" : undefined);
+    const authenticatedUserId = user?.id && UUID_REGEX.test(user.id) ? user.id : null;
+    const userId = authenticatedUserId;
+    if (!userId) return NextResponse.json({ error: "Sign in to view your curated jobs" }, { status: 401 });
 
-    const result = await matchUserJobs({
+    const rawPage = typeof body.page === "number" ? body.page : 1;
+    const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+
+    const rawLimit = typeof body.limit === "number" ? body.limit : 24;
+    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(1, rawLimit), 50) : 24;
+
+    const keyword = typeof body.keyword === "string" ? body.keyword.slice(0, 100) : "";
+    const tab = body.tab === "requested" ? "requested" : "jobs";
+    const mode: MatchingMode = body.mode === "strict" || body.mode === "broad" ? body.mode : "balanced";
+
+    const preferences = body.preferences || body;
+
+    const matchingParams: JobMatchingParams = {
       userId,
-      preferences,
-      cursor,
+      page,
       limit,
+      keyword,
+      tab,
       mode,
-    });
+      postedWithin: body.postedWithin === "all" ? "all" : body.postedWithin === "7d" ? "7d" : "24h",
+      sort: body.sort === "match" ? "match" : "newest",
+      country: preferences.country ? sanitizeText(preferences.country, 60) : undefined,
+      seniority: preferences.seniority ? sanitizeText(preferences.seniority, 50) : undefined,
+      domains: Array.isArray(preferences.domains) ? preferences.domains.slice(0, 25).map(String) : undefined,
+      skills: Array.isArray(preferences.skills) ? preferences.skills.slice(0, 25).map(String) : undefined,
+      cities: Array.isArray(preferences.cities) ? preferences.cities.slice(0, 25).map(String) : undefined,
+      jobTypes: Array.isArray(preferences.jobTypes) ? preferences.jobTypes.slice(0, 25).map(String) : undefined,
+    };
 
-    const mappedJobs = result.jobs.map(mapRecordToUIJob);
-
-    return NextResponse.json({
-      jobs: mappedJobs,
-      nextCursor: result.nextCursor,
-      nextKeyset: result.nextKeyset,
-      hasMore: result.hasMore,
-      executionTimeMs: result.executionTimeMs,
-    });
-  } catch (error: any) {
+    const result = await getMatchedJobs(matchingParams);
+    return NextResponse.json(result);
+  } catch (error) {
     console.error("Failed to match jobs by preferences:", error);
-    return NextResponse.json(
-      { error: "Failed to match jobs by preferences", details: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to match jobs by preferences" }, { status: 500 });
   }
 }

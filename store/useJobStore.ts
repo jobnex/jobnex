@@ -1,12 +1,9 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { Job } from "@/types";
 import { toggleSavedJobAction } from "@/app/actions/jobs";
 
 export interface JobState {
-  isTailorModalOpen: boolean;
-  tailoringJob: Job | null;
-  openTailorModal: (job: Job) => void;
-  closeTailorModal: () => void;
   // Shared
   location: string;
   setLocation: (location: string) => void;
@@ -22,14 +19,24 @@ export interface JobState {
   openJd: (job: Job) => void;
   closeJd: () => void;
   setActiveJdJob: (job: Job) => void;
+  isTailorModalOpen: boolean;
+  tailoringJob: Job | null;
+  openTailorModal: (job: Job) => void;
+  closeTailorModal: () => void;
   savedJobIds: string[];
   savedJobIdsMap: Record<string, boolean>;
   setSavedJobIds: (ids: string[]) => void;
   toggleSavedJob: (jobId: string) => Promise<void>;
+  isHeaderHidden: boolean;
+  setIsHeaderHidden: (isHeaderHidden: boolean) => void;
+  isHeaderScrolled: boolean;
+  setIsHeaderScrolled: (isHeaderScrolled: boolean) => void;
 
   // Default Filters
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  locationQuery: string;
+  setLocationQuery: (query: string) => void;
   searchBy: string;
   setSearchBy: (searchBy: string) => void;
   categories: string[];
@@ -54,6 +61,8 @@ export interface JobState {
   // Saved Jobs Filters
   savedSearchQuery: string;
   setSavedSearchQuery: (query: string) => void;
+  savedLocationQuery: string;
+  setSavedLocationQuery: (query: string) => void;
   savedSearchBy: string;
   setSavedSearchBy: (searchBy: string) => void;
   savedCategories: string[];
@@ -77,10 +86,6 @@ export interface JobState {
 }
 
 export const useJobStore = create<JobState>((set) => ({
-  isTailorModalOpen: false,
-  tailoringJob: null,
-  openTailorModal: (job) => set({ isTailorModalOpen: true, tailoringJob: job }),
-  closeTailorModal: () => set({ isTailorModalOpen: false, tailoringJob: null }),
   // Shared
   location: "United States",
   setLocation: (location) => {
@@ -103,6 +108,14 @@ export const useJobStore = create<JobState>((set) => ({
   openJd: (job) => set({ isJdOpen: true, activeJdJob: job }),
   closeJd: () => set({ isJdOpen: false, activeJdJob: null }),
   setActiveJdJob: (job) => set({ activeJdJob: job, isJdOpen: true }),
+  isTailorModalOpen: false,
+  tailoringJob: null,
+  openTailorModal: (job) => set({ isTailorModalOpen: true, tailoringJob: job }),
+  closeTailorModal: () => set({ isTailorModalOpen: false, tailoringJob: null }),
+  isHeaderHidden: false,
+  setIsHeaderHidden: (isHeaderHidden) => set({ isHeaderHidden }),
+  isHeaderScrolled: false,
+  setIsHeaderScrolled: (isHeaderScrolled) => set({ isHeaderScrolled }),
   savedJobIds: [],
   savedJobIdsMap: {},
   setSavedJobIds: (ids: string[]) => {
@@ -111,13 +124,15 @@ export const useJobStore = create<JobState>((set) => ({
     set({ savedJobIds: ids, savedJobIdsMap: map });
   },
   toggleSavedJob: async (jobId: string) => {
+    let isNowSaved = false;
     set((state) => {
-      const isSaved = !!state.savedJobIdsMap[jobId];
-      const newIds = isSaved
+      const wasSaved = !!state.savedJobIdsMap[jobId];
+      isNowSaved = !wasSaved;
+      const newIds = wasSaved
         ? state.savedJobIds.filter((id) => id !== jobId)
         : [...state.savedJobIds, jobId];
       const newMap = { ...state.savedJobIdsMap };
-      if (isSaved) {
+      if (wasSaved) {
         delete newMap[jobId];
       } else {
         newMap[jobId] = true;
@@ -125,8 +140,6 @@ export const useJobStore = create<JobState>((set) => ({
       return { savedJobIds: newIds, savedJobIdsMap: newMap };
     });
     
-    const state = useJobStore.getState();
-    const isNowSaved = !!state.savedJobIdsMap[jobId];
     try {
       const res = await toggleSavedJobAction(jobId, isNowSaved);
       if (!res.success) throw new Error(res.error);
@@ -134,11 +147,12 @@ export const useJobStore = create<JobState>((set) => ({
       console.error("Failed to toggle save status:", error);
       // Revert on failure
       set((state) => {
-        const revertedIds = isNowSaved
+        const currentlySaved = !!state.savedJobIdsMap[jobId];
+        const revertedIds = currentlySaved
           ? state.savedJobIds.filter((id) => id !== jobId)
           : [...state.savedJobIds, jobId];
         const revertedMap = { ...state.savedJobIdsMap };
-        if (isNowSaved) {
+        if (currentlySaved) {
           delete revertedMap[jobId];
         } else {
           revertedMap[jobId] = true;
@@ -151,6 +165,8 @@ export const useJobStore = create<JobState>((set) => ({
   // Default Filters
   searchQuery: "",
   setSearchQuery: (query) => set({ searchQuery: query, page: 1 }),
+  locationQuery: "",
+  setLocationQuery: (locationQuery) => set({ locationQuery, page: 1 }),
   searchBy: "all",
   setSearchBy: (searchBy) => set({ searchBy, page: 1 }),
   categories: [],
@@ -178,11 +194,13 @@ export const useJobStore = create<JobState>((set) => ({
   setWorkMode: (workMode) => set((state) => ({ workMode: state.workMode === workMode || workMode === "all" ? "" : workMode, page: 1 })),
   page: 1,
   setPage: (page) => set({ page }),
-  resetFilters: () => set({ searchQuery: "", searchBy: "all", categories: [], jobType: "", seniority: "", minSalary: 0, postedTime: "", visaSponsorship: "", workMode: "", page: 1 }),
+  resetFilters: () => set({ categories: [], jobType: "", seniority: "", minSalary: 0, postedTime: "", visaSponsorship: "", workMode: "", page: 1 }),
 
   // Saved Jobs Filters
   savedSearchQuery: "",
   setSavedSearchQuery: (query) => set({ savedSearchQuery: query, savedPage: 1 }),
+  savedLocationQuery: "",
+  setSavedLocationQuery: (locationQuery) => set({ savedLocationQuery: locationQuery, savedPage: 1 }),
   savedSearchBy: "all",
   setSavedSearchBy: (searchBy) => set({ savedSearchBy: searchBy, savedPage: 1 }),
   savedCategories: [],
@@ -210,63 +228,70 @@ export const useJobStore = create<JobState>((set) => ({
   setSavedWorkMode: (workMode) => set((state) => ({ savedWorkMode: state.savedWorkMode === workMode || workMode === "all" ? "" : workMode, savedPage: 1 })),
   savedPage: 1,
   setSavedPage: (page) => set({ savedPage: page }),
-  resetSavedFilters: () => set({ savedSearchQuery: "", savedCategories: [], savedJobType: "", savedSeniority: "", savedMinSalary: 0, savedPostedTime: "", savedVisaSponsorship: "", savedWorkMode: "", savedPage: 1 }),
+  resetSavedFilters: () => set({ savedCategories: [], savedJobType: "", savedSeniority: "", savedMinSalary: 0, savedPostedTime: "", savedVisaSponsorship: "", savedWorkMode: "", savedPage: 1 }),
 }));
 
 export function useAppFilters(variant: "default" | "saved" = "default") {
-  const store = useJobStore();
-  if (variant === "saved") {
-    return {
-      searchQuery: store.savedSearchQuery,
-      setSearchQuery: store.setSavedSearchQuery,
-      searchBy: store.savedSearchBy,
-      setSearchBy: store.setSavedSearchBy,
-      categories: store.savedCategories,
-      toggleCategory: store.toggleSavedCategory,
-      clearCategories: store.clearSavedCategories,
-      jobType: store.savedJobType,
-      setJobType: store.setSavedJobType,
-      seniority: store.savedSeniority,
-      setSeniority: store.setSavedSeniority,
-      minSalary: store.savedMinSalary,
-      setMinSalary: store.setSavedMinSalary,
-      postedTime: store.savedPostedTime,
-      setPostedTime: store.setSavedPostedTime,
-      visaSponsorship: store.savedVisaSponsorship,
-      setVisaSponsorship: store.setSavedVisaSponsorship,
-      workMode: store.savedWorkMode,
-      setWorkMode: store.setSavedWorkMode,
-      page: store.savedPage,
-      setPage: store.setSavedPage,
-      resetFilters: store.resetSavedFilters,
-      location: store.location,
-      setLocation: store.setLocation
-    };
-  }
-  return {
-    searchQuery: store.searchQuery,
-    setSearchQuery: store.setSearchQuery,
-    searchBy: store.searchBy,
-    setSearchBy: store.setSearchBy,
-    categories: store.categories,
-    toggleCategory: store.toggleCategory,
-    clearCategories: store.clearCategories,
-    jobType: store.jobType,
-    setJobType: store.setJobType,
-    seniority: store.seniority,
-    setSeniority: store.setSeniority,
-    minSalary: store.minSalary,
-    setMinSalary: store.setMinSalary,
-    postedTime: store.postedTime,
-    setPostedTime: store.setPostedTime,
-    visaSponsorship: store.visaSponsorship,
-    setVisaSponsorship: store.setVisaSponsorship,
-    workMode: store.workMode,
-    setWorkMode: store.setWorkMode,
-    page: store.page,
-    setPage: store.setPage,
-    resetFilters: store.resetFilters,
-    location: store.location,
-    setLocation: store.setLocation
-  };
+  return useJobStore(
+    useShallow((store) => {
+      if (variant === "saved") {
+        return {
+          searchQuery: store.savedSearchQuery,
+          setSearchQuery: store.setSavedSearchQuery,
+          locationQuery: store.savedLocationQuery,
+          setLocationQuery: store.setSavedLocationQuery,
+          searchBy: store.savedSearchBy,
+          setSearchBy: store.setSavedSearchBy,
+          categories: store.savedCategories,
+          toggleCategory: store.toggleSavedCategory,
+          clearCategories: store.clearSavedCategories,
+          jobType: store.savedJobType,
+          setJobType: store.setSavedJobType,
+          seniority: store.savedSeniority,
+          setSeniority: store.setSavedSeniority,
+          minSalary: store.savedMinSalary,
+          setMinSalary: store.setSavedMinSalary,
+          postedTime: store.savedPostedTime,
+          setPostedTime: store.setSavedPostedTime,
+          visaSponsorship: store.savedVisaSponsorship,
+          setVisaSponsorship: store.setSavedVisaSponsorship,
+          workMode: store.savedWorkMode,
+          setWorkMode: store.setSavedWorkMode,
+          page: store.savedPage,
+          setPage: store.setSavedPage,
+          resetFilters: store.resetSavedFilters,
+          location: store.location,
+          setLocation: store.setLocation,
+        };
+      }
+      return {
+        searchQuery: store.searchQuery,
+        setSearchQuery: store.setSearchQuery,
+        locationQuery: store.locationQuery,
+        setLocationQuery: store.setLocationQuery,
+        searchBy: store.searchBy,
+        setSearchBy: store.setSearchBy,
+        categories: store.categories,
+        toggleCategory: store.toggleCategory,
+        clearCategories: store.clearCategories,
+        jobType: store.jobType,
+        setJobType: store.setJobType,
+        seniority: store.seniority,
+        setSeniority: store.setSeniority,
+        minSalary: store.minSalary,
+        setMinSalary: store.setMinSalary,
+        postedTime: store.postedTime,
+        setPostedTime: store.setPostedTime,
+        visaSponsorship: store.visaSponsorship,
+        setVisaSponsorship: store.setVisaSponsorship,
+        workMode: store.workMode,
+        setWorkMode: store.setWorkMode,
+        page: store.page,
+        setPage: store.setPage,
+        resetFilters: store.resetFilters,
+        location: store.location,
+        setLocation: store.setLocation,
+      };
+    })
+  );
 }

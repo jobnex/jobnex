@@ -17,7 +17,8 @@ export async function loadAvailableGeneration(userId: string, requestId: string)
     WHERE g.id=$1 AND g.user_id=$2 AND g.job_id=r.job_id AND g.base_resume_id=r.base_resume_id
       AND ((r.status='completed' AND r.credit_state='consumed' AND g.status IN ('completed','completed_with_estimates'))
         OR (r.status='needs_review' AND r.credit_state IN ('consumed','released') AND g.status='needs_review'))
-      AND length(trim(g.resume_markdown))>0`, [requestId, userId]);
+      AND length(trim(g.resume_markdown))>0
+      AND public.resume_generation_is_publishable(g.id,g.user_id)`, [requestId, userId]);
   return result.rows[0] as { id: string; job_id: string; resume_markdown: string; version: number; status: string; review_reason: string | null } | undefined;
 }
 
@@ -59,6 +60,13 @@ export async function enqueueTailoring(userId: string, jobId: string, resume: Ta
     const existing = await client.query(`SELECT id,status,credit_state FROM resume_generation_requests
       WHERE user_id=$1 AND idempotency_key=$2 FOR UPDATE`, [userId, idempotencyKey]);
     if (existing.rows[0]) { await client.query("COMMIT"); return { ...existing.rows[0], duplicate: true }; }
+    // Serialize replacement/delete with admission, then reject a stale preloaded base before holding credit.
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [userId]);
+    const currentBase = await client.query(`SELECT r.id,r.content,r.parsed_data FROM user_pref_resumes r
+      JOIN user_job_preferences p ON p.user_id=r.user_id AND p.active_resume_id=r.id
+      WHERE r.user_id=$1 AND r.id=$2 FOR SHARE OF r,p`,[userId,resume.id]);
+    if (!currentBase.rows[0] || resumeText(currentBase.rows[0].content,currentBase.rows[0].parsed_data) !== resume.markdown)
+      throw new Error("Your base resume changed. Refresh the preview and try again.");
     const job = await client.query(`SELECT job_description FROM jobs WHERE id=$1 AND status='published' FOR SHARE`, [jobId]);
     if (!job.rows[0]) throw new Error("Job is unavailable");
     await client.query(`INSERT INTO wallets(user_id,balance) VALUES($1,0) ON CONFLICT(user_id) DO NOTHING`, [userId]);

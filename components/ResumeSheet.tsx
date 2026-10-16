@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useMemo, useCallback } from "react";
+import React, { useMemo } from "react";
+import { A4ResumePages } from "@/components/A4ResumePages";
+import { uniqueContacts } from "@/lib/resume-contacts";
 import { TypstThemeId } from "@/data/resume-templates";
 import { parseResumeMarkdown, ParsedResume, serializeResumeToMarkdown } from "@/lib/resume-parser";
 
@@ -10,7 +12,7 @@ interface ResumeSheetProps {
   zoom?: number;
   isEditable?: boolean;
   onMarkdownChange?: (newMarkdown: string) => void;
-  onOverflowChange?: (isOverflow: boolean) => void;
+  onPageCountChange?: (count: number) => void;
 }
 
 export function ResumeSheet({
@@ -19,44 +21,21 @@ export function ResumeSheet({
   zoom = 1,
   isEditable = false,
   onMarkdownChange,
-  onOverflowChange,
+  onPageCountChange,
 }: ResumeSheetProps) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const [isOverflowing, setIsOverflowing] = useState(false);
 
   // Parse markdown into structured model
   const parsedData = useMemo(() => {
     return parseResumeMarkdown(markdown);
   }, [markdown]);
 
-  // Overflow checking
-  const checkOverflow = useCallback(() => {
-    const el = sheetRef.current;
-    if (!el) return;
-    // 11 inches at 96 DPI is 1056px
-    const overflow = el.scrollHeight > el.clientHeight + 2;
-    setIsOverflowing(overflow);
-    onOverflowChange?.(overflow);
-  }, [onOverflowChange]);
-
-  useEffect(() => {
-    checkOverflow();
-    const el = sheetRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver(() => {
-      checkOverflow();
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [checkOverflow, markdown, themeId]);
 
   // Inline edit handlers that update structured data and re-serialize
   const handleFieldChange = (
     updater: (data: ParsedResume) => void
   ) => {
     if (!onMarkdownChange) return;
-    const clone: ParsedResume = JSON.parse(JSON.stringify(parsedData));
+    const clone: ParsedResume = structuredClone(parsedData);
     updater(clone);
     const newMd = serializeResumeToMarkdown(clone);
     onMarkdownChange(newMd);
@@ -106,7 +85,7 @@ export function ResumeSheet({
     className = "",
     tag: "div" | "span" | "p" | "h1" | "h2" | "h3" = "span"
   ) => {
-    const Tag = tag as any;
+    const Tag = tag;
     if (!isEditable) {
       return <Tag className={className}>{value}</Tag>;
     }
@@ -131,20 +110,21 @@ export function ResumeSheet({
   // Header Rendering based on Theme
   const renderHeader = () => {
     const info = parsedData.personalInfo;
-    const contacts = [
+    const contacts = uniqueContacts([
       info.phone,
       info.email,
       info.linkedin,
       info.github,
       info.location,
-    ].filter(Boolean);
+      ...(info.extraContacts || []),
+    ]);
 
     // Theme 5: Classic Executive — Two-Column Split Grid
     if (themeId === 5) {
       return (
-        <div className="flex justify-between items-start pb-[0.35em] mb-[0.4em] border-b-[0.5pt] border-black">
+        <div className="flex justify-between items-start gap-4 pb-[0.35em] mb-[0.4em] border-b-[0.5pt] border-black">
           {/* Left Column: Name & Title & Profiles */}
-          <div className="flex flex-col">
+          <div className="flex flex-col min-w-0 flex-1">
             <h1 className="text-[19pt] font-bold leading-tight tracking-tight">
               {renderEditable(info.name || "Full Name", (val) =>
                 handleFieldChange((d) => { d.personalInfo.name = val; })
@@ -157,7 +137,8 @@ export function ResumeSheet({
                 )}
               </div>
             )}
-            <div className="text-[8.5pt] text-black mt-1 flex gap-3">
+            <div className="text-[8.5pt] text-black mt-1 flex flex-wrap gap-x-3 gap-y-1 [overflow-wrap:anywhere]">
+              {(info.extraContacts || []).map((value, index) => <span key={index}>{value}</span>)}
               {info.linkedin && (
                 <span>
                   {renderEditable(info.linkedin, (val) =>
@@ -176,7 +157,7 @@ export function ResumeSheet({
           </div>
 
           {/* Right Column: Contacts & Location */}
-          <div className="flex flex-col items-end text-[8.5pt] text-black leading-snug">
+          <div className="flex flex-col items-end max-w-[45%] text-right text-[8.5pt] text-black leading-snug [overflow-wrap:anywhere]">
             {info.email && (
               <div>
                 {renderEditable(info.email, (val) =>
@@ -222,10 +203,10 @@ export function ResumeSheet({
           {contacts.length > 0 && (
             <div className="text-[8.8pt] text-[#444444] mt-1 flex flex-wrap items-center gap-1.5">
               {contacts.map((c, i) => (
-                <React.Fragment key={i}>
-                  <span>{c}</span>
+                <span key={i} className="inline-flex max-w-full min-w-0 items-baseline gap-2">
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{c}</span>
                   {i < contacts.length - 1 && <span className="opacity-60">•</span>}
-                </React.Fragment>
+                </span>
               ))}
             </div>
           )}
@@ -252,10 +233,10 @@ export function ResumeSheet({
           {contacts.length > 0 && (
             <div className="text-[8.5pt] text-[#555555] mt-1 flex justify-center items-center gap-2 flex-wrap">
               {contacts.map((c, i) => (
-                <React.Fragment key={i}>
-                  <span>{c}</span>
-                  {i < contacts.length - 1 && <span className="text-[#aaaaaa]">|</span>}
-                </React.Fragment>
+                <span key={i} className="inline-flex max-w-full min-w-0 items-baseline gap-2">
+                  {i > 0 && <span className="shrink-0 text-[#aaaaaa]">|</span>}
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{c}</span>
+                </span>
               ))}
             </div>
           )}
@@ -281,10 +262,10 @@ export function ResumeSheet({
         {contacts.length > 0 && (
           <div className="text-[8.5pt] text-black mt-1 flex justify-center items-center gap-2 flex-wrap">
             {contacts.map((c, i) => (
-              <React.Fragment key={i}>
-                <span>{c}</span>
-                {i < contacts.length - 1 && <span className="opacity-75">|</span>}
-              </React.Fragment>
+              <span key={i} className="inline-flex max-w-full min-w-0 items-baseline gap-2">
+                {i > 0 && <span className="shrink-0 opacity-75">|</span>}
+                <span className="min-w-0 [overflow-wrap:anywhere]">{c}</span>
+              </span>
             ))}
           </div>
         )}
@@ -338,36 +319,7 @@ export function ResumeSheet({
   };
 
   return (
-    <div className="resume-sheet-root relative flex flex-col items-center select-text">
-      {/* Zoom Scaled Wrapper */}
-      <div
-        style={{
-          transform: `scale(${zoom})`,
-          transformOrigin: "top center",
-          transition: "transform 0.15s ease",
-          width: "8.5in",
-          minHeight: "11in",
-          height: "max-content",
-        }}
-        className="pseudo-pdf-container"
-      >
-        {/* Physical Paper Element: US Letter (8.5in x 11in) */}
-        <div
-          ref={sheetRef}
-          style={{
-            width: "8.5in",
-            minHeight: "11in",
-            maxHeight: "11in",
-            boxSizing: "border-box",
-            backgroundColor: "#ffffff",
-            color: "#000000",
-            overflow: "hidden",
-            ...themeStyles,
-          }}
-          className={`resume-paper relative shadow-[0_15px_45px_rgba(0,0,0,0.3)] bg-white transition-shadow duration-200 ${
-            isOverflowing ? "border-b-2 border-dashed border-red-500" : ""
-          }`}
-        >
+    <A4ResumePages style={themeStyles} zoom={zoom} onPageCountChange={onPageCountChange}>
           {/* Top Header */}
           {renderHeader()}
 
@@ -379,7 +331,7 @@ export function ResumeSheet({
                   {renderSectionHeader("Professional Summary")}
                   <ul className="list-disc pl-[1.15em] mt-[0.15em] mb-[0.2em] space-y-[0.12em]">
                     {parsedData.summary.map((bullet, idx) => (
-                      <li key={idx} className="leading-snug text-black">
+                      <li key={idx} className="leading-snug text-black [overflow-wrap:anywhere]">
                         {renderEditable(bullet, (val) =>
                           handleFieldChange((d) => { d.summary[idx] = val; })
                         )}
@@ -422,7 +374,7 @@ export function ResumeSheet({
                   <div className="space-y-[0.35em] mt-[0.2em]">
                     {parsedData.experience.map((exp, idx) => (
                       <div key={idx}>
-                        <div className="flex justify-between items-baseline leading-snug">
+                        <div className="flex flex-wrap justify-between items-baseline gap-x-3 gap-y-0.5 leading-snug [overflow-wrap:anywhere]">
                           <div>
                             <span className="font-bold">
                               {renderEditable(exp.role, (val) =>
@@ -439,7 +391,7 @@ export function ResumeSheet({
                               </span>
                             )}
                           </div>
-                          <div className="text-right text-[8.2pt] font-normal shrink-0 ml-2">
+                          <div className="text-right text-[8.2pt] font-normal max-w-full ml-auto [overflow-wrap:anywhere]">
                             {exp.location && <span>{exp.location} | </span>}
                             <span>
                               {renderEditable(exp.duration, (val) =>
@@ -452,7 +404,7 @@ export function ResumeSheet({
                         {exp.bullets.length > 0 && (
                           <ul className="list-disc pl-[1.15em] mt-[0.12em] mb-[0.15em] space-y-[0.12em]">
                             {exp.bullets.map((bullet, bIdx) => (
-                              <li key={bIdx} className="leading-snug text-black">
+                              <li key={bIdx} className="leading-snug text-black [overflow-wrap:anywhere]">
                                 {renderEditable(bullet, (val) =>
                                   handleFieldChange((d) => { d.experience[idx].bullets[bIdx] = val; })
                                 )}
@@ -474,7 +426,7 @@ export function ResumeSheet({
                   <div className="space-y-[0.35em] mt-[0.2em]">
                     {parsedData.projects.map((proj, idx) => (
                       <div key={idx}>
-                        <div className="flex justify-between items-baseline leading-snug">
+                        <div className="flex flex-wrap justify-between items-baseline gap-x-3 gap-y-0.5 leading-snug [overflow-wrap:anywhere]">
                           <div>
                             <span className="font-bold">
                               {renderEditable(proj.title, (val) =>
@@ -489,7 +441,7 @@ export function ResumeSheet({
                             )}
                           </div>
                           {proj.duration && (
-                            <div className="text-right text-[8.2pt] font-normal shrink-0 ml-2">
+                            <div className="text-right text-[8.2pt] font-normal max-w-full ml-auto [overflow-wrap:anywhere]">
                               {renderEditable(proj.duration, (val) =>
                                 handleFieldChange((d) => { d.projects[idx].duration = val; })
                               )}
@@ -500,7 +452,7 @@ export function ResumeSheet({
                         {proj.bullets.length > 0 && (
                           <ul className="list-disc pl-[1.15em] mt-[0.12em] mb-[0.15em] space-y-[0.12em]">
                             {proj.bullets.map((bullet, bIdx) => (
-                              <li key={bIdx} className="leading-snug text-black">
+                              <li key={bIdx} className="leading-snug text-black [overflow-wrap:anywhere]">
                                 {renderEditable(bullet, (val) =>
                                   handleFieldChange((d) => { d.projects[idx].bullets[bIdx] = val; })
                                 )}
@@ -522,7 +474,7 @@ export function ResumeSheet({
                   <div className="space-y-[0.3em] mt-[0.2em]">
                     {parsedData.education.map((edu, idx) => (
                       <div key={idx} className="leading-snug">
-                        <div className="flex justify-between items-baseline font-bold">
+                        <div className="flex flex-wrap justify-between items-baseline gap-x-3 gap-y-0.5 font-bold [overflow-wrap:anywhere]">
                           <span>
                             {renderEditable(edu.institution, (val) =>
                               handleFieldChange((d) => { d.education[idx].institution = val; })
@@ -533,7 +485,7 @@ export function ResumeSheet({
                           </span>
                         </div>
                         {(edu.degree || edu.duration) && (
-                          <div className="flex justify-between items-baseline text-[8.2pt] italic">
+                          <div className="flex flex-wrap justify-between items-baseline gap-x-3 gap-y-0.5 text-[8.2pt] italic [overflow-wrap:anywhere]">
                             <span>
                               {renderEditable(edu.degree, (val) =>
                                 handleFieldChange((d) => { d.education[idx].degree = val; })
@@ -560,8 +512,6 @@ export function ResumeSheet({
 
             return null;
           })}
-        </div>
-      </div>
-    </div>
+    </A4ResumePages>
   );
 }

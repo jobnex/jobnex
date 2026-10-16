@@ -24,7 +24,7 @@ export async function getProfile() {
       .from(userProfiles)
       .where(eq(userProfiles.userId, user.id))
       .limit(1);
-      
+
     return { data: profile || null };
   } catch (error) {
     console.error("Error fetching profile:", error);
@@ -35,7 +35,7 @@ export async function getProfile() {
 export async function updateProfile(data: UpdateProfileInput) {
   try {
     const user = await getCurrentUser();
-    
+
     if (!user) {
       return { success: false, error: "Unauthorized" };
     }
@@ -66,8 +66,9 @@ export async function updateProfile(data: UpdateProfileInput) {
     revalidatePath("/(main)/profile", "page");
 
     return { success: true, data: updatedProfile };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to update profile";
     console.error("Failed to update profile:", error);
-    return { success: false, error: error.message || "Failed to update profile" };
+    return { success: false, error: message };
   }
 }

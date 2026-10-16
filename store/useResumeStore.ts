@@ -1,10 +1,10 @@
 import { create } from "zustand";
 import { sampleResumeMarkdown } from "@/data/sample-resume";
-import {
-  RESUME_TEMPLATES,
-  ResumeTemplate,
-  TypstThemeId,
-  getTemplateById
+import { 
+  RESUME_TEMPLATES, 
+  ResumeTemplate, 
+  TypstThemeId, 
+  getTemplateById 
 } from "@/data/resume-templates";
 import { saveResumePayloadLocally } from "@/lib/resumeApi";
 
@@ -31,8 +31,8 @@ const getInitialTemplateId = (): string => {
   if (typeof window !== "undefined") {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_TEMPLATE);
-      if (saved) {
-        return getTemplateById(saved).id;
+      if (saved && RESUME_TEMPLATES.some((t) => t.id === saved)) {
+        return saved;
       }
     } catch {}
   }
@@ -66,13 +66,13 @@ export const useResumeStore = create<ResumeState>((set, get) => ({
   setSelectedTemplateId: (templateId: string) => {
     const template = getTemplateById(templateId);
     set({
-      selectedTemplateId: template.id,
+      selectedTemplateId: templateId,
       activeTemplate: template,
       activeThemeId: template.themeId,
     });
     if (typeof window !== "undefined") {
       try {
-        localStorage.setItem(STORAGE_KEY_TEMPLATE, template.id);
+        localStorage.setItem(STORAGE_KEY_TEMPLATE, templateId);
       } catch {}
     }
     // Update local file payload in the background
@@ -110,7 +110,7 @@ export const useResumeStore = create<ResumeState>((set, get) => ({
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(STORAGE_KEY_MARKDOWN, markdown);
-        localStorage.setItem(STORAGE_KEY_TEMPLATE, template.id);
+        localStorage.setItem(STORAGE_KEY_TEMPLATE, templateId);
       } catch {}
     }
 
@@ -125,7 +125,7 @@ export const useResumeStore = create<ResumeState>((set, get) => ({
     const now = new Date().toISOString();
     set({
       resumeMarkdown: markdown,
-      selectedTemplateId: template.id,
+      selectedTemplateId: templateId,
       activeTemplate: template,
       activeThemeId: template.themeId,
       isSaving: false,

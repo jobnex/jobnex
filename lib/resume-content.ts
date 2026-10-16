@@ -1,3 +1,4 @@
+import { contactValues, extractContacts, preserveContactHeader } from "./resume-contacts";
 type Details = Record<string, unknown>;
 const object = (value: unknown): Details => value && typeof value === "object" && !Array.isArray(value) ? value as Details : {};
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
@@ -6,14 +7,20 @@ const list = (value: unknown): Details[] => Array.isArray(value) ? value.map(obj
 // Keep non-builder sections (projects, skills, summary, etc.) from extracted Markdown.
 export function resumeMarkdown(details: Details, edited = false): string {
   const original = text(object(details.compiler_payload).markdown);
-  if (original && !edited) return original;
+  const personal = object("personalDetails" in details ? details.personalDetails : details.header);
+  const header = object(details.header);
+  if (original && !edited) {
+    const recovered = object(details.compiler_payload).contactsEdited ? {emails:[],phones:[],links:[]} : extractContacts(text(details.text));
+    return preserveContactHeader(original, [...contactValues(personal,header), ...recovered.emails, ...recovered.phones, ...recovered.links]);
+  }
   if (!original && !edited && text(details.text)) return "# Resume\n\n" + text(details.text);
   const sections = original.split(/^##\s+/m);
   const extra = sections.slice(1).filter(section => !/^(education|experience|professional experience|work experience)\s*\n/i.test(section));
-  const personal = object("personalDetails" in details ? details.personalDetails : details.header);
   const name = text(personal.fullName ?? personal.name);
   const lines = name ? ["# " + name] : [];
-  const contact = [personal.email, personal.phoneNumber ?? personal.phone, personal.location].map(text).filter(Boolean);
+  const title = text(personal.title ?? header.title);
+  if (title) lines.push("**" + title + "**");
+  const contact = contactValues(personal,header);
   if (contact.length) lines.push(contact.join(" | "));
   if (!original || sections.length === 1) {
     for (const [title, field] of [["Professional Summary", "summary"], ["Skills & Technologies", "skills"], ["Projects", "projects"], ["Certifications", "certifications"], ["Awards", "awards"], ["Publications", "publications"], ["Volunteering", "volunteering"], ["Languages", "languages"], ["Training", "training"], ["Research", "research"], ["Leadership", "leadership"], ["Achievements", "achievements"], ["Additional Information", "additional_information"]]) {
@@ -48,7 +55,7 @@ export function resumeMarkdown(details: Details, edited = false): string {
 
 export function normalizeResume(details: Details, edited = false): Details {
   const markdown = resumeMarkdown(details, edited);
-  return { ...details, compiler_payload: { ...object(details.compiler_payload), markdown } };
+  return { ...details, compiler_payload: { ...object(details.compiler_payload), ...(edited ? {contactsEdited:true} : {}), markdown } };
 }
 
 export function resumeText(content: unknown, parsed: unknown): string {
@@ -56,5 +63,5 @@ export function resumeText(content: unknown, parsed: unknown): string {
   if (source.startsWith("{")) {
     try { return resumeMarkdown(object(JSON.parse(source))); } catch { return ""; }
   }
-  return source || resumeMarkdown(object(parsed));
+  return source ? preserveContactHeader(source, contactValues(object(object(parsed).personalDetails), object(object(parsed).header))) : resumeMarkdown(object(parsed));
 }

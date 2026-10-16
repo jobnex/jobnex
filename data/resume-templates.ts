@@ -67,13 +67,16 @@ export const RESUME_TEMPLATES: ResumeTemplate[] = [
     themeId: 5,
     themeName: "Classic Executive (Sourabh Bajaj)",
   },
-
 ];
 
 export function getTemplateById(id: string): ResumeTemplate {
-  // Older saved selections remain readable; these were duplicate theme aliases.
-  const canonicalId = id === "contemporary-compact" ? "modern-ivy" : id === "standard-overleaf" ? "mit-capd" : id;
-  return RESUME_TEMPLATES.find((t) => t.id === canonicalId) || RESUME_TEMPLATES[0];
+  // Backward-compatible canonical alias resolution
+  const resolvedId =
+    id === "contemporary-compact" ? "modern-ivy" :
+    id === "standard-overleaf" ? "mit-capd" :
+    id;
+
+  return RESUME_TEMPLATES.find((t) => t.id === resolvedId) || RESUME_TEMPLATES[0];
 }
 
 export function getThemeForTemplate(id: string): TypstThemeId {

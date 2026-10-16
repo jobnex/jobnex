@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check, Globe } from "lucide-react";
 import { useJobStore } from "@/store/useJobStore";
 import { useQuery } from "@tanstack/react-query";
 import { LocationOption } from "@/types";
+import { getLocations } from "@/app/actions/locations";
+import { useClickOutside } from "@/lib/hooks/useClickOutside";
+import { useEscapeKey } from "@/lib/hooks/useEscapeKey";
 
 export function FlagWorldwide({ className = "w-5 h-3.5" }: { className?: string }) {
-  return <Globe className={`${className} shrink-0 text-text-primary dark:text-[#ACEE5F]`} strokeWidth={2} />;
+  return <Globe className={`${className} shrink-0 text-text-primary dark:text-white`} strokeWidth={2} />;
 }
 
 export function FlagUS({ className = "w-5 h-3.5" }: { className?: string }) {
@@ -72,93 +76,241 @@ export function FlagUS({ className = "w-5 h-3.5" }: { className?: string }) {
   );
 }
 
-export function FlagUK({ className = "w-5 h-3.5" }: { className?: string }) {
-  return (
-    <svg className={`${className} rounded-[2px] shrink-0`} viewBox="0 0 640 480" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fill="#012169" d="M0 0h640v480H0z"/>
-      <path stroke="#FFF" strokeWidth="60" d="m0 0 640 480M640 0 0 480"/>
-      <path stroke="#C8102E" strokeWidth="40" d="m0 0 640 480M640 0 0 480"/>
-      <path stroke="#FFF" strokeWidth="100" d="M320 0v480M0 240h640"/>
-      <path stroke="#C8102E" strokeWidth="60" d="M320 0v480M0 240h640"/>
-    </svg>
-  );
-}
-
-export function FlagIN({ className = "w-5 h-3.5" }: { className?: string }) {
-  return (
-    <svg className={`${className} rounded-[2px] shrink-0`} viewBox="0 0 640 480" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fill="#FF9933" d="M0 0h640v160H0z"/>
-      <path fill="#FFF" d="M0 160h640v160H0z"/>
-      <path fill="#138808" d="M0 320h640v160H0z"/>
-      <circle cx="320" cy="240" r="54" stroke="#000080" strokeWidth="7" fill="none"/>
-      <circle cx="320" cy="240" r="14" fill="#000080"/>
-      <g stroke="#000080" strokeWidth="3.5">
-        <line x1="320" y1="188" x2="320" y2="292"/>
-        <line x1="268" y1="240" x2="372" y2="240"/>
-        <line x1="283" y1="203" x2="357" y2="277"/>
-        <line x1="283" y1="277" x2="357" y2="203"/>
-        <line x1="271" y1="220" x2="369" y2="260"/>
-        <line x1="271" y1="260" x2="369" y2="220"/>
-        <line x1="300" y1="191" x2="340" y2="289"/>
-        <line x1="340" y1="191" x2="300" y2="289"/>
-      </g>
-    </svg>
-  );
-}
-
 const FLAG_REGISTRY: Record<string, React.FC<{ className?: string }>> = {
   US: FlagUS,
-  UK: FlagUK,
-  IN: FlagIN,
 };
-import { getLocations } from "@/app/actions/locations";
 
-export function LocationDropdown() {
-  const { location, setLocation } = useJobStore();
-  const [isOpen, setIsOpen] = useState(false);
+const DEFAULT_FALLBACK_LOCATIONS: LocationOption[] = [
+  { id: "us", country: "United States", code: "US", roleCount: 0 },
+];
+
+function getDisplayCountryCode(countryName: string, optionCode?: string): string {
+  if (optionCode && optionCode.trim().length > 0) {
+    return optionCode.toUpperCase();
+  }
+  const lower = countryName.toLowerCase().trim();
+  if (lower === "united states" || lower === "usa" || lower === "us") return "US";
+  if (countryName.length <= 3) return countryName.toUpperCase();
+  return countryName.slice(0, 2).toUpperCase();
+}
+
+export interface LocationDropdownProps {
+  variant?: "default" | "chip" | "embedded";
+  className?: string;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function LocationDropdown({
+  variant = "default",
+  className = "",
+  isOpen: propIsOpen,
+  onOpenChange,
+}: LocationDropdownProps) {
+  const location = useJobStore((s) => s.location);
+  const setLocation = useJobStore((s) => s.setLocation);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [chipMenuCoords, setChipMenuCoords] = useState<{ top: number; left: number } | null>(null);
 
-  const { data: locations, isLoading } = useQuery<LocationOption[]>({
+  const isControlled = propIsOpen !== undefined;
+  const isOpen = isControlled ? propIsOpen : internalIsOpen;
+
+  const setIsOpen = useCallback(
+    (action: boolean | ((prev: boolean) => boolean)) => {
+      const nextVal = typeof action === "function" ? action(isOpen) : action;
+      if (!isControlled) {
+        setInternalIsOpen(nextVal);
+      }
+      onOpenChange?.(nextVal);
+    },
+    [isControlled, isOpen, onOpenChange]
+  );
+
+  const { data: locationsData, isLoading } = useQuery<LocationOption[]>({
     queryKey: ["locations"],
     queryFn: async () => {
       const res = await getLocations();
-      if (!res.success) throw new Error(res.error || "Failed to fetch locations");
-      return (res.data as LocationOption[]) || [];
+      if (!res.success) throw new Error("Failed to fetch locations");
+      return (res.data as LocationOption[]) || DEFAULT_FALLBACK_LOCATIONS;
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  const currentSelected = locations?.find((opt) => opt.country.toLowerCase() === location.toLowerCase()) || { country: location, code: "WW" } as any;
+  const locations = locationsData && locationsData.length > 0 ? locationsData : DEFAULT_FALLBACK_LOCATIONS;
+
+  const fallbackSelected: LocationOption = {
+    id: "us",
+    country: "United States",
+    code: "US",
+    roleCount: 0,
+  };
+  const currentSelected = locations.find((opt) => opt.country.toLowerCase() === location.toLowerCase()) || fallbackSelected;
+  const displayCode = getDisplayCountryCode(currentSelected?.country || location, currentSelected?.code);
+  const SelectedFlag = currentSelected ? (FLAG_REGISTRY[currentSelected.code] || FlagUS) : FlagUS;
+
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
+  const updateChipMenuCoords = useCallback(() => {
+    const isFixedMenu = variant === "chip" || variant === "embedded";
+    if (dropdownRef.current && isFixedMenu) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const menuWidth = 210;
+      const left =
+        variant === "embedded"
+          ? Math.max(12, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12))
+          : Math.max(12, Math.min(rect.left, window.innerWidth - menuWidth - 12));
+      setChipMenuCoords({
+        top: rect.bottom + 6,
+        left,
+      });
+    }
+  }, [variant]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+    if (isOpen) {
+      updateChipMenuCoords();
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [isOpen, updateChipMenuCoords]);
 
+  const handleToggle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isOpen) {
+      updateChipMenuCoords();
+    }
+    setIsOpen((prev) => !prev);
+  };
+
+  useClickOutside(
+    dropdownRef,
+    (e) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.('[data-location-dropdown-portal="true"]')) {
+        return;
+      }
+      setIsOpen(false);
+    },
+    isOpen
+  );
+
+  useEscapeKey(() => setIsOpen(false), isOpen);
+
+  // Close dropdown immediately on scroll or resize so it goes away when header moves
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setIsOpen(false);
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+    if (!isOpen) return;
+    const handleScrollOrResize = () => {
+      setIsOpen(false);
+    };
+    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    window.addEventListener("resize", handleScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [isOpen, setIsOpen]);
 
-  const handleSelect = (optionCountry: string) => {
+  const handleSelect = (optionCountry: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setLocation(optionCountry);
     setIsOpen(false);
   };
 
-  const SelectedFlag = currentSelected ? (FLAG_REGISTRY[currentSelected.code] || FlagWorldwide) : FlagWorldwide;
+  // Render Compact Shortcut Chip for Mobile or Embedded Inside Search Bar
+  if (variant === "chip" || variant === "embedded") {
+    const isEmbedded = variant === "embedded";
+    return (
+      <div className={`relative shrink-0 select-none flex items-center ${className}`} ref={dropdownRef}>
+        <button
+          type="button"
+          onClick={handleToggle}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-label={`Country filter: ${displayCode}. Click to change country`}
+          className={`inline-flex items-center select-none cursor-pointer whitespace-nowrap shrink-0 transition-all duration-150 ${
+            isEmbedded
+              ? `h-[30px] px-2.5 gap-1.5 rounded-[8px] font-mona text-xs font-bold border-[1.5px] ${
+                  isOpen
+                    ? "bg-[#DFE3E8] text-gray-900 border-gray-300 dark:bg-[#2B3042] dark:text-white dark:border-[#383D52]"
+                    : "bg-black/[0.05] text-gray-800 border-transparent hover:bg-black/[0.09] dark:bg-white/[0.09] dark:text-gray-200 dark:hover:bg-white/[0.14]"
+                }`
+              : `h-[36px] px-3 gap-1.5 rounded-[10px] font-mona text-xs sm:text-sm font-bold border-[1.5px] ${
+                  isOpen
+                    ? "bg-[#DFE3E8] text-gray-900 border-gray-300 dark:bg-[#2B3042] dark:text-white dark:border-[#383D52]"
+                    : "bg-[#EDF0F3] text-gray-800 border-transparent hover:bg-[#E2E6EA] dark:bg-[#202330] dark:text-gray-200 dark:hover:bg-[#2B3042]"
+                }`
+          }`}
+        >
+          <SelectedFlag className={`${isEmbedded ? "w-4 h-3 sm:w-[18px] sm:h-[13px]" : "w-[18px] h-[13px]"} shrink-0`} />
+          <span className="font-bold tracking-tight uppercase">{displayCode}</span>
+          <ChevronDown
+            className={`${isEmbedded ? "w-3 h-3 sm:w-3.5 sm:h-3.5" : "w-3.5 h-3.5"} text-text-muted shrink-0 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isOpen ? "rotate-180 text-inherit" : ""
+            }`}
+            strokeWidth={2.2}
+          />
+        </button>
 
+        {isOpen && locations && locations.length > 0 && mounted && chipMenuCoords && createPortal(
+          <div
+            role="listbox"
+            data-location-dropdown-portal="true"
+            aria-label="Location options"
+            style={{
+              position: "fixed",
+              top: `${chipMenuCoords.top}px`,
+              left: `${chipMenuCoords.left}px`,
+            }}
+            className="w-[210px] max-h-[300px] overflow-y-auto bg-bg-card border-[1.5px] border-border-color rounded-[10px] shadow-[0_8px_24px_rgba(0,0,0,0.15)] p-1.5 z-[9999] animate-in fade-in zoom-in-95 duration-150 dark:border-[#2B3042] dark:bg-[#151720] dark:shadow-[0_8px_28px_rgba(0,0,0,0.6)]"
+          >
+            {locations.map((option) => {
+              const isSelected = option.country.toLowerCase() === currentSelected?.country.toLowerCase();
+              const OptionFlag = FLAG_REGISTRY[option.code] || FlagWorldwide;
+
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={(e) => handleSelect(option.country, e)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-md cursor-pointer text-xs sm:text-sm font-mona transition-colors duration-150 ${
+                    isSelected
+                      ? "bg-[#EDF0F3] hover:bg-[#E2E6EA] text-gray-900 font-bold dark:bg-[#202330] dark:hover:bg-[#2B3042] dark:text-white"
+                      : "text-text-muted hover:bg-bg-tag hover:text-text-primary dark:hover:bg-[#1E212D] dark:hover:text-white font-medium"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <OptionFlag className="w-[18px] h-[13px] shrink-0" />
+                    <span className="truncate">{option.country}</span>
+                  </div>
+
+                  {isSelected && (
+                    <Check
+                      className="w-4 h-4 text-gray-600 dark:text-gray-400 shrink-0"
+                      strokeWidth={2.8}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
+      </div>
+    );
+  }
+
+  // Default Variant for Big Screens
   return (
-    <div className="relative shrink-0 select-none" ref={dropdownRef}>
+    <div className={`relative shrink-0 select-none md:w-[190px] ${className}`} ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -166,7 +318,7 @@ export function LocationDropdown() {
         aria-expanded={isOpen}
         aria-label="Select Job Location"
         disabled={isLoading}
-        className={`h-[48px] px-3.5 min-w-[190px] w-full flex items-center justify-between gap-3 font-body text-[0.95rem] font-semibold text-gray-900 bg-[#EDF0F3] border-[1.5px] border-transparent rounded-[12px] outline-none cursor-pointer transition-all duration-150 focus:border-black dark:bg-[#202330] dark:text-white dark:focus:border-white ${
+        className={`h-[var(--control-h-lg)] px-3.5 w-full flex items-center justify-between gap-2.5 font-mona text-sm sm:text-base font-semibold text-gray-900 bg-[#EDF0F3] border-[1.5px] border-transparent rounded-[var(--border-radius-card)] outline-none cursor-pointer transition-all duration-150 focus:border-black dark:bg-[#202330] dark:text-white dark:focus:border-white ${
           isOpen
             ? "border-black dark:border-white bg-[#E2E6EA] dark:bg-[#1A1C24]"
             : "hover:bg-[#E2E6EA] hover:border-gray-300 dark:hover:border-[#383D52]"
@@ -181,7 +333,7 @@ export function LocationDropdown() {
 
         <ChevronDown
           className={`w-4 h-4 text-text-muted shrink-0 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            isOpen ? "rotate-180 text-text-primary dark:text-[#ACEE5F]" : ""
+            isOpen ? "rotate-180 text-text-primary dark:text-white" : ""
           }`}
           strokeWidth={2.5}
         />
@@ -191,7 +343,7 @@ export function LocationDropdown() {
         <div
           role="listbox"
           aria-label="Location options"
-          className="absolute left-0 top-full mt-1.5 w-full min-w-[210px] bg-bg-card border-[1.5px] border-border-color rounded-lg shadow-[0_6px_20px_rgba(0,0,0,0.12)] p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 dark:border-[#2B3042] dark:bg-[#151720] dark:shadow-[0_6px_24px_rgba(0,0,0,0.6)]"
+          className="absolute left-0 right-0 top-full mt-1.5 w-full max-h-[300px] overflow-y-auto bg-bg-card border-[1.5px] border-border-color rounded-[var(--border-radius-card)] shadow-[0_6px_20px_rgba(0,0,0,0.12)] p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 dark:border-[#2B3042] dark:bg-[#151720] dark:shadow-[0_6px_24px_rgba(0,0,0,0.6)]"
         >
           {locations.map((option) => {
             const isSelected = option.country.toLowerCase() === currentSelected?.country.toLowerCase();
@@ -204,20 +356,20 @@ export function LocationDropdown() {
                 role="option"
                 aria-selected={isSelected}
                 onClick={() => handleSelect(option.country)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md cursor-pointer text-[0.88rem] transition-colors duration-150 ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md cursor-pointer text-xs sm:text-sm font-mona transition-colors duration-150 ${
                   isSelected
-                    ? "bg-brand-lime/25 text-text-primary font-bold dark:bg-[#ACEE5F]/15 dark:text-[#ACEE5F]"
+                    ? "bg-[#EDF0F3] hover:bg-[#E2E6EA] text-gray-900 font-bold dark:bg-[#202330] dark:hover:bg-[#2B3042] dark:text-white"
                     : "text-text-muted hover:bg-bg-tag hover:text-text-primary dark:hover:bg-[#1E212D] dark:hover:text-white font-medium"
                 }`}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <OptionFlag className="w-[18px] h-[13px]" />
-                  <span>{option.country}</span>
+                  <span className="truncate">{option.country}</span>
                 </div>
 
                 {isSelected && (
                   <Check
-                    className="w-4 h-4 text-brand-dark dark:text-[#ACEE5F] shrink-0"
+                    className="w-4 h-4 text-gray-600 dark:text-gray-400 shrink-0"
                     strokeWidth={2.8}
                   />
                 )}

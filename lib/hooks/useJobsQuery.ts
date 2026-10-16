@@ -1,8 +1,10 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { JobsResponse } from "@/types";
+import { DEFAULT_PAGE_SIZE } from "@/lib/job-utils";
 
 export interface UseJobsQueryProps {
   debouncedSearchQuery: string;
+  locationQuery?: string;
   searchBy: string;
   location: string;
   categories: string[];
@@ -18,6 +20,7 @@ export interface UseJobsQueryProps {
 export function useJobsQuery(props: UseJobsQueryProps) {
   const {
     debouncedSearchQuery,
+    locationQuery,
     searchBy,
     location,
     categories,
@@ -35,6 +38,7 @@ export function useJobsQuery(props: UseJobsQueryProps) {
       "jobs",
       debouncedSearchQuery,
       debouncedSearchQuery ? searchBy : 'all',
+      locationQuery || '',
       location,
       categories,
       jobType,
@@ -51,6 +55,7 @@ export function useJobsQuery(props: UseJobsQueryProps) {
         params.append("keyword", debouncedSearchQuery);
         if (searchBy && searchBy !== "all") params.append("searchBy", searchBy);
       }
+      if (locationQuery) params.append("locationQuery", locationQuery);
       if (location) params.append("location", location);
       if (categories && categories.length > 0) params.append("categories", categories.join(","));
       if (jobType && jobType !== "all") params.append("type", jobType);
@@ -60,7 +65,7 @@ export function useJobsQuery(props: UseJobsQueryProps) {
       if (visaSponsorship && visaSponsorship !== "all") params.append("visaSponsorship", visaSponsorship);
       if (workMode && workMode !== "all") params.append("workMode", workMode);
       params.append("page", page.toString());
-      params.append("limit", "24");
+      params.append("limit", DEFAULT_PAGE_SIZE.toString());
 
       const res = await fetch(`/api/jobs?${params.toString()}`);
       if (!res.ok) throw new Error("Network response was not ok");

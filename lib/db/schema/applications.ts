@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, boolean, integer, real, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, boolean, integer, smallint, real, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { jobs } from "./jobs";
 
 export const resumes = pgTable("resumes", {
@@ -11,7 +11,9 @@ export const resumes = pgTable("resumes", {
   fileUrl: text("file_url"), // URL if uploaded to a bucket
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_resumes_user_id").on(table.userId),
+]);
 
 export const userPrefResumes = pgTable("user_pref_resumes", {
   id: uuid("id").defaultRandom().primaryKey().notNull(),
@@ -51,7 +53,12 @@ export const applications = pgTable("applications", {
   matchScore: real("match_score"), // 0 to 100 percentage match
   appliedAt: timestamp("applied_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_applications_user_id").on(table.userId),
+  index("idx_applications_job_id").on(table.jobId),
+  index("idx_applications_user_applied").on(table.userId, table.appliedAt),
+  uniqueIndex("idx_unique_user_job_application").on(table.userId, table.jobId),
+]);
 
 export const matchResults = pgTable("match_results", {
   id: uuid("id").defaultRandom().primaryKey().notNull(),
@@ -64,19 +71,76 @@ export const matchResults = pgTable("match_results", {
   missingSkills: jsonb("missing_skills").default([]).notNull(),
   matchedSkills: jsonb("matched_skills").default([]).notNull(),
   computedAt: timestamp("computed_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_match_results_application_id").on(table.applicationId),
+]);
 
 export const userJobResumes = pgTable("user_job_resumes", {
   id: uuid("id").defaultRandom().primaryKey().notNull(),
   userId: uuid("user_id").notNull(),
   jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }).notNull(),
-  markdown: text("markdown").default("").notNull(),
+  markdown: text("markdown").notNull(),
   r2ObjectKey: text("r2_object_key"),
-  templateId: text("template_id").notNull(),
-  theme: integer("theme").notNull(),
-  status: text("status").default("draft").notNull(),
+  templateId: text("template_id").default("modern-ivy"),
+  theme: integer("theme").default(3),
+  status: text("status").default("ready").notNull(),
   fileSize: integer("file_size"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  exportedAt: timestamp("exported_at", { withTimezone: true }),
-}, table => [uniqueIndex("user_job_resumes_user_id_job_id_key").on(table.userId, table.jobId)]);
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  exportedAt: timestamp("exported_at", { withTimezone: true, mode: "date" }),
+}, (table) => [
+  uniqueIndex("user_job_resumes_user_id_job_id_key").on(table.userId, table.jobId),
+]);
+
+export const resumeGenerationRequests = pgTable(
+  "resume_generation_requests",
+  {
+    id: uuid("id").primaryKey().notNull(),
+    userId: text("user_id").notNull(),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }).notNull(),
+    baseResumeId: uuid("base_resume_id").references(() => userPrefResumes.id, { onDelete: "set null" }),
+    idempotencyKey: uuid("idempotency_key").notNull(),
+    sourceText: text("source_text").notNull(),
+    jobDescription: text("job_description").notNull(),
+    includeSummary: boolean("include_summary"),
+    status: text("status").notNull(), // 'queued' | 'running' | 'completed' | 'needs_review' | 'failed'
+    creditState: text("credit_state").notNull(), // 'held' | 'consumed' | 'released'
+    creditCost: integer("credit_cost").default(1).notNull(),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true, mode: "date" }),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    runningSlot: smallint("running_slot"),
+  },
+  (table) => [
+    index("idx_resume_gen_req_user").on(table.userId),
+    index("idx_resume_gen_req_job").on(table.jobId),
+    index("idx_resume_gen_req_status").on(table.status),
+    index("idx_resume_gen_req_user_created").on(table.userId, table.createdAt),
+  ]
+);
+
+export const resumeGenerations = pgTable(
+  "resume_generations",
+  {
+    id: uuid("id").primaryKey().notNull(), // maps 1:1 to resume_generation_requests.id
+    userId: text("user_id").notNull(),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }).notNull(),
+    baseResumeId: uuid("base_resume_id").references(() => userPrefResumes.id, { onDelete: "set null" }),
+    version: integer("version").default(1).notNull(),
+    status: text("status").notNull(),
+    resumeMarkdown: text("resume_markdown").notNull(),
+    auditJson: jsonb("audit_json").default({}).notNull(),
+    sourceHash: text("source_hash").notNull(),
+    jobHash: text("job_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_resume_gen_user").on(table.userId),
+    index("idx_resume_gen_job").on(table.jobId),
+  ]
+);
+
+export type ResumeGenerationRequest = typeof resumeGenerationRequests.$inferSelect;
+export type ResumeGeneration = typeof resumeGenerations.$inferSelect;

@@ -1,15 +1,19 @@
 import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useJobStore, useAppFilters } from "@/store/useJobStore";
-import { useDebounce } from "./useDebounce";
 
+/**
+ * High-performance bidirectional synchronization between URL search parameters
+ * and Zustand filter state. Supports browser back/forward history navigation seamlessly.
+ */
 export function useSyncUrlFilters(variant: "default" | "saved" = "default") {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  
+
   const {
     searchQuery,
+    locationQuery,
     searchBy,
     categories,
     jobType,
@@ -18,17 +22,22 @@ export function useSyncUrlFilters(variant: "default" | "saved" = "default") {
     postedTime,
     visaSponsorship,
     workMode,
-    page
+    page,
   } = useAppFilters(variant);
 
-  const debouncedSearchQuery = useDebounce(searchQuery, 400);
-  const isInitialized = useRef(false);
+  const lastPushedUrlRef = useRef<string>("");
+  const isSyncingFromUrlRef = useRef<boolean>(false);
 
-  // 1. On Mount: Read from URL and populate Zustand
+  // 1. Sync FROM URL to Zustand (on mount and on browser back/forward navigation)
   useEffect(() => {
-    if (isInitialized.current) return;
-    
+    const currentUrlParams = searchParams.toString();
+    // If this URL change was triggered by our own router.replace, ignore it
+    if (currentUrlParams === lastPushedUrlRef.current) return;
+
+    isSyncingFromUrlRef.current = true;
+
     const query = searchParams.get("keyword") || "";
+    const locQuery = searchParams.get("locationQuery") || "";
     const sBy = searchParams.get("searchBy") || "all";
     const cats = searchParams.get("categories")?.split(",").filter(Boolean) || [];
     const type = searchParams.get("type") || "";
@@ -41,6 +50,7 @@ export function useSyncUrlFilters(variant: "default" | "saved" = "default") {
 
     const updateState = {
       searchQuery: query,
+      locationQuery: locQuery,
       searchBy: sBy,
       categories: cats,
       jobType: type,
@@ -49,12 +59,13 @@ export function useSyncUrlFilters(variant: "default" | "saved" = "default") {
       postedTime: time,
       visaSponsorship: visa,
       workMode: wMode,
-      page: isNaN(p) ? 1 : p
+      page: isNaN(p) ? 1 : p,
     };
 
     if (variant === "saved") {
       useJobStore.setState({
         savedSearchQuery: updateState.searchQuery,
+        savedLocationQuery: updateState.locationQuery,
         savedSearchBy: updateState.searchBy,
         savedCategories: updateState.categories,
         savedJobType: updateState.jobType,
@@ -63,39 +74,59 @@ export function useSyncUrlFilters(variant: "default" | "saved" = "default") {
         savedPostedTime: updateState.postedTime,
         savedVisaSponsorship: updateState.visaSponsorship,
         savedWorkMode: updateState.workMode,
-        savedPage: updateState.page
+        savedPage: updateState.page,
       });
     } else {
       useJobStore.setState(updateState);
     }
 
-    isInitialized.current = true;
+    lastPushedUrlRef.current = currentUrlParams;
+    // Reset sync flag on next tick
+    requestAnimationFrame(() => {
+      isSyncingFromUrlRef.current = false;
+    });
   }, [searchParams, variant]);
 
-  // 2. On Zustand Change: Update URL
+  // 2. Sync FROM Zustand to URL (when store filters change from user interaction)
   useEffect(() => {
-    if (!isInitialized.current) return;
+    if (isSyncingFromUrlRef.current) return;
 
-    const currentParams = new URLSearchParams(searchParams.toString());
     const newParams = new URLSearchParams();
 
-    if (debouncedSearchQuery) newParams.set("keyword", debouncedSearchQuery);
+    if (searchQuery) newParams.set("keyword", searchQuery);
+    if (locationQuery) newParams.set("locationQuery", locationQuery);
     if (searchBy && searchBy !== "all") newParams.set("searchBy", searchBy);
     if (categories.length > 0) newParams.set("categories", categories.join(","));
-    if (jobType) newParams.set("type", jobType);
-    if (seniority) newParams.set("seniority", seniority);
+    if (jobType && jobType !== "all") newParams.set("type", jobType);
+    if (seniority && seniority !== "all") newParams.set("seniority", seniority);
     if (minSalary > 0) newParams.set("minSalary", minSalary.toString());
-    if (postedTime) newParams.set("postedTime", postedTime);
-    if (visaSponsorship) newParams.set("visaSponsorship", visaSponsorship);
-    if (workMode) newParams.set("workMode", workMode);
+    if (postedTime && postedTime !== "all") newParams.set("postedTime", postedTime);
+    if (visaSponsorship && visaSponsorship !== "all") newParams.set("visaSponsorship", visaSponsorship);
+    if (workMode && workMode !== "all") newParams.set("workMode", workMode);
     if (page > 1) newParams.set("page", page.toString());
 
-    if (currentParams.toString() !== newParams.toString()) {
-      router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+    const newQueryString = newParams.toString();
+    const currentQueryString = searchParams.toString();
+
+    if (newQueryString !== currentQueryString && newQueryString !== lastPushedUrlRef.current) {
+      lastPushedUrlRef.current = newQueryString;
+      const targetUrl = newQueryString ? `${pathname}?${newQueryString}` : pathname;
+      router.replace(targetUrl, { scroll: false });
     }
   }, [
-    debouncedSearchQuery, searchBy, categories, jobType, seniority, 
-    minSalary, postedTime, visaSponsorship, workMode, page, 
-    pathname, router, searchParams
+    searchQuery,
+    locationQuery,
+    searchBy,
+    categories,
+    jobType,
+    seniority,
+    minSalary,
+    postedTime,
+    visaSponsorship,
+    workMode,
+    page,
+    pathname,
+    router,
+    searchParams,
   ]);
 }

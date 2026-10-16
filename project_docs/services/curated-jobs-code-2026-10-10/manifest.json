@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-10",
+  "files": [
+    {
+      "source": "resume-quality-review/heading-web-build/app/(main)/job-hunt/page.tsx",
+      "snapshot": "web/app/(main)/job-hunt/page.tsx.txt",
+      "sha256": "1abddd1e84c77d17e4de1ab84be9234031bd9294079a39f77ca9348e31a75a13",
+      "archive": "web/app/(main)/job-hunt/page.tsx"
+    },
+    {
+      "source": "resume-quality-review/heading-web-build/app/api/jobs/curated/route.ts",
+      "snapshot": "web/app/api/jobs/curated/route.ts.txt",
+      "sha256": "cc3483ff1f883c1460ae7d90f7d833638a2e5124709329c42abe83330480cd2b",
+      "archive": "web/app/api/jobs/curated/route.ts"
+    },
+    {
+      "source": "resume-quality-review/heading-web-build/lib/hooks/useMatchedJobsQuery.ts",
+      "snapshot": "web/lib/hooks/useMatchedJobsQuery.ts.txt",
+      "sha256": "70a0c8563ff6e337740e8c9a12761fa608b3cdff5885452ccda5b0d2292af480",
+      "archive": "web/lib/hooks/useMatchedJobsQuery.ts"
+    },
+    {
+      "source": "resume-quality-review/heading-web-build/lib/db/job-matching.ts",
+      "snapshot": "web/lib/db/job-matching.ts.txt",
+      "sha256": "523ba924616dc1f8309722d0a8bf8a7a3f3103f21eccdad275edb495a8184408",
+      "archive": "web/lib/db/job-matching.ts"
+    },
+    {
+      "source": "resume-quality-review/heading-web-build/lib/job-utils.ts",
+      "snapshot": "web/lib/job-utils.ts.txt",
+      "sha256": "8486ef89a5d9e4b894c27fd05afea3e88887fc7d9f582d91411ef17ff354ff31",
+      "archive": "web/lib/job-utils.ts"
+    },
+    {
+      "source": "resume-quality-review/heading-web-build/components/JobGrid.tsx",
+      "snapshot": "web/components/JobGrid.tsx.txt",
+      "sha256": "4a30f7c2ca6ddaf68c6a66a2e6d02a84a2c0a488b2cda11180e974f508ba8182",
+      "archive": "web/components/JobGrid.tsx"
+    },
+    {
+      "source": "archive-review-20261008/app-source/my-app/app/api/jobs/matched/route.ts",
+      "snapshot": "local-reference/app/api/jobs/matched/route.ts.txt",
+      "sha256": "cc3483ff1f883c1460ae7d90f7d833638a2e5124709329c42abe83330480cd2b",
+      "archive": "local-reference/app/api/jobs/matched/route.ts"
+    },
+    {
+      "source": "archive-review-20261008/app-source/my-app/scripts/check-curated-jobs.ts",
+      "snapshot": "local-reference/scripts/check-curated-jobs.ts.txt",
+      "sha256": "da95acebbee53682de8ed8e0f5930a2fcb8686998fb47b4eecb0ea80cc668838",
+      "archive": "local-reference/scripts/check-curated-jobs.ts"
+    },
+    {
+      "source": "archive-review-20261008/app-source/my-app/scripts/check-curated-view.tsx",
+      "snapshot": "local-reference/scripts/check-curated-view.tsx.txt",
+      "sha256": "2506da4517aef8a6a72598f86f376854401d010e23aafd58d32535c6d4817114",
+      "archive": "local-reference/scripts/check-curated-view.tsx"
+    }
+  ]
+}

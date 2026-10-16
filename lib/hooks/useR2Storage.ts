@@ -90,8 +90,8 @@ export function useR2Storage() {
           success: true,
           objectKey,
         };
-      } catch (err: any) {
-        const errorMsg = err?.message || "File upload failed.";
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "File upload failed.";
         setError(errorMsg);
         setIsUploading(false);
         return {

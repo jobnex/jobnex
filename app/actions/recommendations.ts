@@ -7,7 +7,7 @@ import { inArray, notInArray, eq, desc, sql, and, aliasedTable } from "drizzle-o
 export async function getSkillRecommendations(selectedSkillNames: string[]): Promise<string[]> {
   if (!selectedSkillNames || selectedSkillNames.length === 0) {
     return [
-      "React", "TypeScript", "Node.js", "Python", 
+      "React", "TypeScript", "Node.js", "Python",
       "Next.js", "AWS", "Docker", "Tailwind CSS"
     ];
   }
@@ -76,9 +76,9 @@ export async function getDomainRecommendations(selectedDomainNames: string[]): P
 
 export async function getRecommendationGraph() {
   try {
-    const allTags = await db.query.preferenceTags.findMany();
+    const allTags = await db.select().from(preferenceTags);
     const allRels = await db.select().from(preferenceTagRelationships);
-    
+
     return {
       skills: allTags.filter(t => t.type === 'skill'),
       domains: allTags.filter(t => t.type === 'domain'),
@@ -139,4 +139,3 @@ export async function getPreferenceTagOptions(): Promise<{ domains: string[]; sk
     return { domains: [], skills: [] };
   }
 }
-

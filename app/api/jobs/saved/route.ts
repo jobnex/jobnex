@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { jobs, savedJobs, countries } from "@/lib/db/schema";
-import { eq, desc, and, count, inArray } from "drizzle-orm";
-import { buildJobFilterConditions } from "@/lib/db/job-filters";
+import { eq, desc, and, count } from "drizzle-orm";
+import { buildJobFilterConditions, hasCountryJoinRequired } from "@/lib/db/job-filters";
 import { Job, JobsResponse } from "@/types";
-import { formatSalary, mapDBJobTypeToUI, buildRelevanceOrderBy, JobSearchParamsSchema } from "@/lib/job-utils";
+import { buildRelevanceOrderBy, JobSearchParamsSchema, mapDbRowToJob } from "@/lib/job-utils";
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
     const userId = user.id;
     const { searchParams } = new URL(request.url);
-    
+
     // Validate search params with Zod
     const parsedParams = JobSearchParamsSchema.safeParse({
       page: searchParams.get("page") || undefined,
@@ -28,89 +28,90 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Invalid pagination parameters" }, { status: 400 });
     }
 
-    const { page: currentPage, limit, keyword } = parsedParams.data;
-    
+    const { page: requestedPage, limit, keyword } = parsedParams.data;
+
     // Abstract filtering engine
     const conditions = buildJobFilterConditions(searchParams);
     // Add the fundamental saved job criteria
     conditions.push(eq(savedJobs.userId, userId));
 
     const whereClause = and(...conditions);
-    
-    // 1. Get total count
-    const countResult = await db
-      .select({ value: count() })
-      .from(savedJobs)
-      .innerJoin(jobs, eq(savedJobs.jobId, jobs.id))
-      .leftJoin(countries, eq(jobs.countryId, countries.id))
-      .where(whereClause);
-      
-    const total = countResult[0].value;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    const actualPage = total > 0 ? Math.min(currentPage, totalPages) : 1;
-    const offset = (actualPage - 1) * limit;
+    const needsCountryJoin = hasCountryJoinRequired(searchParams);
 
-    // 2. Build dynamic orderBy clauses for relevance scoring
+    const executeCount = () =>
+      needsCountryJoin
+        ? db
+            .select({ value: count() })
+            .from(savedJobs)
+            .innerJoin(jobs, eq(savedJobs.jobId, jobs.id))
+            .leftJoin(countries, eq(jobs.countryId, countries.id))
+            .where(whereClause)
+        : db
+            .select({ value: count() })
+            .from(savedJobs)
+            .innerJoin(jobs, eq(savedJobs.jobId, jobs.id))
+            .where(whereClause);
+
+    // Fast path: if only count is requested, skip row retrieval and relevance sorting
+    if (searchParams.get("countOnly") === "true") {
+      const countResult = await executeCount();
+      const total = countResult[0]?.value ?? 0;
+      return NextResponse.json({ total, jobs: [], totalPages: 0, page: 1, limit: 0 });
+    }
+
+    // Build dynamic orderBy clauses with relevance scoring (highest score first)
     const orderByClauses = [
       ...buildRelevanceOrderBy(jobs.jobRoleTitle, jobs.companyName, keyword),
       desc(savedJobs.createdAt)
     ];
 
-    // 3. Fetch IDs first to avoid Postgres sorting TOAST columns
-    const idRecords = await db
-      .select({ id: jobs.id })
-      .from(savedJobs)
-      .innerJoin(jobs, eq(savedJobs.jobId, jobs.id))
-      .leftJoin(countries, eq(jobs.countryId, countries.id))
-      .where(whereClause)
-      .orderBy(...orderByClauses)
-      .limit(limit)
-      .offset(offset);
-
-    const ids = idRecords.map(r => r.id);
-    let rawJobs: any[] = [];
-
-    if (ids.length > 0) {
-      const unorderedJobs = await db
+    const fetchSavedJobRows = (offset: number) =>
+      db
         .select({
-          job: jobs,
-          countryCode: countries.code,
+          id: jobs.id,
+          jobRoleTitle: jobs.jobRoleTitle,
+          companyName: jobs.companyName,
+          employmentType: jobs.employmentType,
+          location: jobs.location,
+          salaryMin: jobs.salaryMin,
+          salaryMax: jobs.salaryMax,
+          currency: jobs.currency,
+          jobDescription: jobs.jobDescription,
+          createdAt: savedJobs.createdAt,
+          publishedAt: jobs.publishedAt,
+          workModel: jobs.workModel,
+          visaSponsorship: jobs.visaSponsorship,
+          experienceRequired: jobs.experienceRequired,
+          jobSource: jobs.jobSource,
+          externalApplyUrl: jobs.externalApplyUrl,
           countryName: countries.name,
         })
-        .from(jobs)
+        .from(savedJobs)
+        .innerJoin(jobs, eq(savedJobs.jobId, jobs.id))
         .leftJoin(countries, eq(jobs.countryId, countries.id))
-        .where(inArray(jobs.id, ids));
-        
-      const idMap = new Map();
-      unorderedJobs.forEach(j => idMap.set(j.job.id, j));
-      rawJobs = ids.map(id => idMap.get(id)).filter(Boolean);
+        .where(whereClause)
+        .orderBy(...orderByClauses)
+        .limit(limit)
+        .offset(offset);
+
+    const initialOffset = (requestedPage - 1) * limit;
+
+    // Concurrently fetch count and saved job rows in a single database round-trip
+    const [countResult, initialRows] = await Promise.all([
+      executeCount(),
+      fetchSavedJobRows(initialOffset),
+    ]);
+
+    const total = countResult[0]?.value ?? 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const actualPage = total > 0 ? Math.min(requestedPage, totalPages) : 1;
+
+    let rawJobs = initialRows;
+    if (actualPage !== requestedPage && total > 0 && rawJobs.length === 0) {
+      rawJobs = await fetchSavedJobRows((actualPage - 1) * limit);
     }
 
-    // 4. Map to UI
-    const mappedJobs: Job[] = rawJobs.map(({ job, countryName }) => {
-      const displayLocation = countryName 
-        ? `${job.location}, ${countryName}` 
-        : job.location;
-
-      return {
-        id: job.id,
-        jobRoleTitle: job.jobRoleTitle,
-        company: job.companyName || "Unknown Company",
-        type: mapDBJobTypeToUI(job.employmentType),
-        location: displayLocation,
-        salary: formatSalary(job.salaryMin, job.salaryMax, job.currency),
-        jobDescription: job.jobDescription,
-        categories: [],
-        postedAt: job.publishedAt ? job.publishedAt.toISOString() : job.createdAt.toISOString(),
-        isRemote: job.workModel === "remote",
-        isHybrid: job.workModel === "hybrid",
-        workModel: job.workModel ?? undefined,
-        visaSponsorship: job.visaSponsorship ?? undefined,
-        experienceRequired: job.experienceRequired ?? undefined,
-        jobSource: job.jobSource ?? undefined,
-        externalApplyUrl: job.externalApplyUrl ?? undefined,
-      };
-    });
+    const mappedJobs: Job[] = rawJobs.map(mapDbRowToJob);
 
     const response: JobsResponse = {
       jobs: mappedJobs,

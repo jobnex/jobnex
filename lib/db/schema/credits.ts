@@ -5,9 +5,7 @@ export const wallets = pgTable("wallets", {
   userId: text("user_id").notNull().unique(), // Links to neon_auth.users.id
   balance: integer("balance").default(0).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-}, (table) => [
-  index("idx_wallets_user_id").on(table.userId),
-]);
+});
 
 export const creditTransactions = pgTable("credit_transactions", {
   id: uuid("id").defaultRandom().primaryKey().notNull(),
@@ -24,4 +22,5 @@ export const creditTransactions = pgTable("credit_transactions", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   index("idx_credit_tx_user_id").on(table.userId),
+  index("idx_credit_tx_user_created").on(table.userId, table.createdAt),
 ]);

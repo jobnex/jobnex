@@ -6,7 +6,7 @@ export default function JobHuntLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex-1 flex w-full bg-bg-page gap-6 p-6 md:p-8 max-w-[1440px] mx-auto">
+    <div className="flex-1 flex flex-col md:flex-row w-full bg-bg-page gap-[var(--space-m)] py-[var(--space-m)] fluid-container">
       <JobHuntSidebar />
 
       {/* Main Content */}

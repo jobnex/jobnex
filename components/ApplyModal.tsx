@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import { useEffect } from "react";
+import { useEscapeKey } from "@/lib/hooks/useEscapeKey";
+import { lockBodyScroll, unlockBodyScroll } from "@/lib/utils/scrollLock";
 
 const formSchema = z.object({
   name: z.string().min(2, "Name is required"),
@@ -17,7 +19,9 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 export function ApplyModal() {
-  const { isModalOpen, closeModal, selectedJob } = useJobStore();
+  const isModalOpen = useJobStore((s) => s.isModalOpen);
+  const closeModal = useJobStore((s) => s.closeModal);
+  const selectedJob = useJobStore((s) => s.selectedJob);
 
   const {
     register,
@@ -28,6 +32,19 @@ export function ApplyModal() {
     resolver: zodResolver(formSchema),
   });
 
+  // Escape key accessibility
+  useEscapeKey(closeModal, isModalOpen);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isModalOpen) {
+      lockBodyScroll();
+      return () => {
+        unlockBodyScroll();
+      };
+    }
+  }, [isModalOpen]);
+
   // Reset form when modal opens with a new job
   useEffect(() => {
     if (isModalOpen) {
@@ -37,11 +54,10 @@ export function ApplyModal() {
 
   if (!isModalOpen || !selectedJob) return null;
 
-  const onSubmit = async (data: FormData) => {
+  const onSubmit = async () => {
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 800));
-    console.log("Submitted data:", data);
-    
+
     toast.success("Resume request submitted successfully!", {
       style: {
         backgroundColor: "#111827",
@@ -53,14 +69,14 @@ export function ApplyModal() {
         fontSize: "0.92rem",
       },
     });
-    
+
     closeModal();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-[6px] flex items-center justify-center z-[1000] p-[1.5rem]">
-      <div 
-        className="bg-bg-card border-[1.5px] border-border-color rounded-lg w-full max-w-[520px] p-[2.25rem] shadow-bottom-lg relative max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-[6px] flex items-center justify-center z-[1000] p-3 sm:p-6">
+      <div
+        className="bg-bg-card border-[1.5px] border-border-color rounded-lg w-full max-w-[520px] p-5 sm:p-8 shadow-bottom-lg relative max-h-[92dvh] sm:max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
       >

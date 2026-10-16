@@ -6,8 +6,6 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { revalidatePath } from "next/cache";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { pendingPreferences, confirmedPreferences } from "@/lib/preferences-confirmation";
-import { preferenceWrite } from "@/lib/db/preferences-confirmation";
 import { normalizeResume, resumeMarkdown } from "@/lib/resume-content";
 
 const EducationEntrySchema = z.object({
@@ -39,7 +37,7 @@ const PersonalDetailsSchema = z.object({
   email: z.string().optional().nullable(),
   phoneNumber: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
-}).optional().nullable();
+}).catchall(z.union([z.string().max(2000), z.array(z.string().max(2000)).max(50)]).optional().nullable()).optional().nullable();
 
 const cleanStringArray = z.preprocess((val) => {
   if (!Array.isArray(val)) return [];
@@ -76,6 +74,10 @@ const JobPreferencesInputSchema = z.object({
   resumeUploaded: z.preprocess((val) => Boolean(val), z.boolean().default(false)),
   resumeFileName: z.preprocess((val) => (val ? String(val).trim() : null), z.string().nullable().optional()),
   resumeFileKey: z.preprocess((val) => (val ? String(val).trim() : null), z.string().nullable().optional()),
+  isConfirmed: z.preprocess((val) => Boolean(val), z.boolean().default(false)),
+  confirmedAt: z.preprocess((val) => (val ? String(val).trim() : null), z.string().nullable().optional()),
+  lastConfirmedPreferences: z.preprocess((val) => (typeof val === "object" && val !== null ? val : null), z.record(z.string(), z.unknown()).nullable().optional()),
+  manualEdits: z.preprocess((val) => (typeof val === "object" && val !== null ? val : null), z.record(z.string(), z.unknown()).nullable().optional()),
 }).refine(
   (data) => {
     if (data.salaryMin != null && data.salaryMax != null) {
@@ -138,7 +140,7 @@ export async function getUserJobPreferences(): Promise<GetPreferencesResult> {
         record.preferences = {
           ...(record.preferences || {}),
           resumeUploaded: true,
-          resumeFileName: activeResume.fileName || (record.preferences as any)?.resumeFileName || "Uploaded_Resume.pdf",
+          resumeFileName: activeResume.fileName || record.preferences?.resumeFileName || "Uploaded_Resume.pdf",
           resumeFileKey: activeResume.fileKey,
         };
         record.activeResumeId = activeResume.id;
@@ -152,6 +154,20 @@ export async function getUserJobPreferences(): Promise<GetPreferencesResult> {
         };
         record.activeResumeId = null;
       }
+
+      // If there are unconfirmed manual edits recorded from a previous screen session,
+      // hydrate them so the candidate's active screen state is restored seamlessly across devices
+      if (record.preferences?.manualEdits && !record.preferences.isConfirmed) {
+        const edits = record.preferences.manualEdits as Record<string, unknown>;
+        record.preferences = {
+          ...record.preferences,
+          ...edits,
+          isConfirmed: false,
+          confirmedAt: record.preferences.confirmedAt,
+          lastConfirmedPreferences: record.preferences.lastConfirmedPreferences,
+          manualEdits: record.preferences.manualEdits,
+        };
+      }
     }
 
     return {
@@ -159,12 +175,13 @@ export async function getUserJobPreferences(): Promise<GetPreferencesResult> {
       data: record || null,
       isGuest: false,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to load preferences from database";
     console.error("Failed to fetch user job preferences:", error);
     return {
       success: false,
       data: null,
-      error: error?.message || "Failed to load preferences from database",
+      error: message,
     };
   }
 }
@@ -178,14 +195,6 @@ export async function getUserJobPreferences(): Promise<GetPreferencesResult> {
 export async function saveUserJobPreferences(
   input: unknown
 ): Promise<SavePreferencesResult> {
-  return persistPreferences(input, false);
-}
-
-export async function confirmUserJobPreferences(input: unknown): Promise<SavePreferencesResult> {
-  return persistPreferences(input, true);
-}
-
-async function persistPreferences(input: unknown, confirm: boolean): Promise<SavePreferencesResult> {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -205,6 +214,50 @@ async function persistPreferences(input: unknown, confirm: boolean): Promise<Sav
     }
 
     const val = parsed.data;
+    const isConfirm = Boolean(val.isConfirmed);
+    const now = new Date();
+
+    // Fetch existing preferences record to preserve confirmation metadata on auto-save
+    const [existingRecord] = await db
+      .select({ preferences: userJobPreferences.preferences })
+      .from(userJobPreferences)
+      .where(eq(userJobPreferences.userId, user.id))
+      .limit(1);
+
+    const prevPref = (existingRecord?.preferences || {}) as JobPreferencesData;
+
+    let confirmedSnapshot: Record<string, unknown> | null = null;
+    let confirmedAtStr: string | null = null;
+    let isConfirmedVal = false;
+
+    if (isConfirm) {
+      isConfirmedVal = true;
+      confirmedAtStr = val.confirmedAt || now.toISOString();
+      confirmedSnapshot = {
+        country: val.country,
+        cities: val.cities.slice(0, 3),
+        seniority: val.seniority,
+        jobTypes: val.jobTypes.length > 0 ? val.jobTypes : ["Full-time"],
+        experienceYears: val.experienceYears,
+        salaryMin: val.salaryMin ?? null,
+        salaryMax: val.salaryMax ?? null,
+        currency: val.currency,
+        domains: val.domains,
+        skills: val.skills,
+        selectedTemplateId: val.selectedTemplateId,
+        includeSummarySections: val.includeSummarySections,
+        autofillFromResume: val.autofillFromResume,
+        resumeUploaded: Boolean(val.resumeUploaded),
+        resumeFileName: val.resumeFileName ?? null,
+        resumeFileKey: val.resumeFileKey ?? null,
+      };
+    } else {
+      // Auto-save draft: preserve existing confirmation status and snapshot
+      isConfirmedVal = prevPref.isConfirmed ?? false;
+      confirmedAtStr = prevPref.confirmedAt ?? null;
+      confirmedSnapshot = (val.lastConfirmedPreferences ?? prevPref.lastConfirmedPreferences) ?? null;
+    }
+
     const cleanPreferences: JobPreferencesData = {
       country: val.country,
       cities: val.cities.slice(0, 3),
@@ -222,13 +275,30 @@ async function persistPreferences(input: unknown, confirm: boolean): Promise<Sav
       resumeUploaded: Boolean(val.resumeUploaded),
       resumeFileName: val.resumeFileName ?? null,
       resumeFileKey: val.resumeFileKey ?? null,
+      isConfirmed: isConfirmedVal,
+      confirmedAt: confirmedAtStr,
+      lastConfirmedPreferences: confirmedSnapshot,
+      manualEdits: isConfirm
+        ? null
+        : (val.manualEdits ?? {
+            country: val.country,
+            cities: val.cities.slice(0, 3),
+            seniority: val.seniority,
+            jobTypes: val.jobTypes.length > 0 ? val.jobTypes : ["Full-time"],
+            experienceYears: val.experienceYears,
+            salaryMin: val.salaryMin ?? null,
+            salaryMax: val.salaryMax ?? null,
+            currency: val.currency,
+            domains: val.domains,
+            skills: val.skills,
+            selectedTemplateId: val.selectedTemplateId,
+            includeSummarySections: val.includeSummarySections,
+            autofillFromResume: val.autofillFromResume,
+            resumeUploaded: Boolean(val.resumeUploaded),
+            resumeFileName: val.resumeFileName ?? null,
+            resumeFileKey: val.resumeFileKey ?? null,
+          }),
     };
-
-    if (cleanPreferences.resumeFileKey && !cleanPreferences.resumeFileKey.startsWith(`user_pref_resumes/${user.id}/`)) {
-      return { success: false, error: "Invalid resume owner" };
-    }
-
-    const now = new Date();
 
     // 1. Ensure normalized user_pref_resumes table is synchronized if file key is present
     let activeResumeId: string | null = null;
@@ -269,7 +339,7 @@ async function persistPreferences(input: unknown, confirm: boolean): Promise<Sav
       .insert(userJobPreferences)
       .values({
         userId: user.id,
-        preferences: confirm ? confirmedPreferences({}, cleanPreferences as Record<string, unknown>, now.toISOString()) : pendingPreferences({}, cleanPreferences as Record<string, unknown>),
+        preferences: cleanPreferences,
         resumeDetails: {},
         activeResumeId,
         preferencesCreatedAt: now,
@@ -280,9 +350,9 @@ async function persistPreferences(input: unknown, confirm: boolean): Promise<Sav
       .onConflictDoUpdate({
         target: userJobPreferences.userId,
         set: {
-          preferences: preferenceWrite(cleanPreferences as Record<string, unknown>, confirm ? now.toISOString() : undefined),
-          activeResumeId: cleanPreferences.resumeFileKey 
-            ? activeResumeId 
+          preferences: cleanPreferences,
+          activeResumeId: cleanPreferences.resumeFileKey
+            ? activeResumeId
             : (cleanPreferences.resumeUploaded === false ? null : sql`user_job_preferences.active_resume_id`),
           preferencesCreatedAt: sql`COALESCE(${userJobPreferences.preferencesCreatedAt}, ${now})`,
           preferencesUpdatedAt: now,
@@ -291,19 +361,22 @@ async function persistPreferences(input: unknown, confirm: boolean): Promise<Sav
       })
       .returning();
 
-    revalidatePath("/job-hunt/manage");
-    revalidatePath("/job-hunt");
-    revalidatePath("/(main)/job-hunt/manage", "page");
+    if (isConfirm) {
+      revalidatePath("/job-hunt/manage");
+      revalidatePath("/job-hunt");
+      revalidatePath("/(main)/job-hunt/manage", "page");
+    }
 
     return {
       success: true,
       data: saved,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to persist preferences to the database.";
     console.error("Failed to save user job preferences:", error);
     return {
       success: false,
-      error: error?.message || "Failed to persist preferences to the database.",
+      error: message,
     };
   }
 }
@@ -338,12 +411,8 @@ export async function saveResumeDetails(
     const val = parsed.data;
     const cleanResumeDetails: ResumeDetailsData = {
       personalDetails: val.personalDetails
-        ? {
-            fullName: val.personalDetails.fullName?.trim() || undefined,
-            email: val.personalDetails.email?.trim() || undefined,
-            phoneNumber: val.personalDetails.phoneNumber?.trim() || undefined,
-            location: val.personalDetails.location?.trim() || undefined,
-          }
+        ? Object.fromEntries(Object.entries(val.personalDetails).map(([key,value]) => [key,
+            Array.isArray(value) ? value.map(item => item.trim()).filter(Boolean) : typeof value === 'string' ? value.trim() : undefined]))
         : null,
       educationHistory: val.educationHistory || [],
       experienceHistory: val.experienceHistory || [],
@@ -355,7 +424,8 @@ export async function saveResumeDetails(
     const saved = await db.transaction(async (tx) => {
       const [resume] = await tx.select().from(userPrefResumes).where(eq(userPrefResumes.userId, user.id)).for("update");
       const [current] = await tx.select().from(userJobPreferences).where(eq(userJobPreferences.userId, user.id)).for("update");
-      const details = normalizeResume({ ...(current?.resumeDetails || {}), ...cleanResumeDetails }, true);
+      const details = normalizeResume({ ...(current?.resumeDetails || {}), ...cleanResumeDetails,
+        personalDetails: cleanResumeDetails.personalDetails ? { ...(current?.resumeDetails?.personalDetails || {}), ...cleanResumeDetails.personalDetails } : null }, true);
       const [record] = await tx
       .insert(userJobPreferences)
       .values({
@@ -393,11 +463,12 @@ export async function saveResumeDetails(
       success: true,
       data: saved,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to persist resume details to the database.";
     console.error("Failed to save resume details:", error);
     return {
       success: false,
-      error: error?.message || "Failed to persist resume details to the database.",
+      error: message,
     };
   }
 }

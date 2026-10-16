@@ -68,14 +68,21 @@ export async function fetchResumePayloadLocally(): Promise<SavedPayloadRecord | 
  * Converts a base64 string to a browser Blob URL.
  */
 export function base64ToBlobUrl(base64: string, contentType = "application/pdf"): string {
-  const binaryString = window.atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  if (typeof window === "undefined" || !base64) return "";
+  try {
+    const cleanBase64 = base64.replace(/^data:[^;]+;base64,/, "");
+    const binaryString = window.atob(cleanBase64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: contentType });
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.error("Failed to convert base64 to Blob URL:", err);
+    return "";
   }
-  const blob = new Blob([bytes], { type: contentType });
-  return URL.createObjectURL(blob);
 }
 
 /**

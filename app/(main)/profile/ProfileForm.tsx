@@ -5,8 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import { useState, useRef } from "react";
-import { MapPin, Mail, Phone, Edit3, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { MapPin, Mail, Phone, Edit3, X, LogOut } from "lucide-react";
 import { updateProfile } from "@/app/actions/profile";
+import { authClient } from "@/lib/auth/client";
 import { smoothScrollTo } from "@/lib/utils/scroll";
 
 const formSchema = z.object({
@@ -21,7 +23,22 @@ type FormData = z.infer<typeof formSchema>;
 
 const INPUT_BASE_CLASSES = "text-[0.875rem] font-medium text-gray-700 dark:text-gray-300 bg-bg-input border-[1.5px] border-transparent rounded-[10px] focus:outline-none focus:border-black dark:focus:border-white transition-all duration-200 ease-out";
 
-export default function ProfileForm({ initialData, email }: { initialData: any, email: string }) {
+export type ProfileInitialData = {
+  fullName?: string | null;
+  country?: string | null;
+  location?: string | null;
+  countryCode?: string | null;
+  phoneNumber?: string | null;
+};
+
+export default function ProfileForm({
+  initialData,
+  email,
+}: {
+  initialData: ProfileInitialData;
+  email: string;
+}) {
+  const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -62,7 +79,7 @@ export default function ProfileForm({ initialData, email }: { initialData: any, 
       });
       setIsEditing(false);
       smoothScrollTo(0, 500);
-    } catch (error) {
+    } catch {
       toast.error("An error occurred while saving.");
     } finally {
       setIsSaving(false);
@@ -104,11 +121,11 @@ export default function ProfileForm({ initialData, email }: { initialData: any, 
             <path d="M4 20.5C4 16.91 7.13 14 11 14H13C16.87 14 20 16.91 20 20.5C20 21.05 19.55 21.5 19 21.5H5C4.45 21.5 4 21.05 4 20.5Z" />
           </svg>
         </div>
-        
+
         <h2 className="text-2xl sm:text-3xl font-heading font-semibold mb-3 text-text-primary dark:text-white">
           {initialData.fullName || "Update your name"}
         </h2>
-        
+
         <div className="flex items-center gap-1.5 text-text-muted dark:text-[#A1A1AA] mb-3 font-medium">
           <MapPin className="w-4 h-4" />
           <span>
@@ -133,25 +150,39 @@ export default function ProfileForm({ initialData, email }: { initialData: any, 
             </>
           )}
         </div>
-        
+
         {!isEditing && (
-          <button
-            onClick={handleEditClick}
-            className="inline-flex items-center gap-2 py-[0.7rem] px-[1.75rem] text-[0.95rem] font-bold bg-brand-dark text-white border-[1.5px] border-transparent rounded-md shadow-[0_3px_0_0_var(--shadow-color-dark)] cursor-pointer transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-[1.5px] hover:shadow-[0_4px_0_0_var(--shadow-color-dark)] hover:bg-brand-lime hover:text-[#111827] active:translate-y-[2px] active:shadow-[0_1px_0_0_var(--shadow-color-dark)] dark:bg-brand-lime dark:text-[#111827] dark:hover:bg-white"
-            style={{ "--shadow-color-dark": "rgba(0,0,0,0.8)" } as React.CSSProperties}
-          >
-            <Edit3 className="w-4 h-4" strokeWidth={2.5} />
-            Edit Profile
-          </button>
+          <div className="flex items-center gap-3 flex-wrap justify-center">
+            <button
+              onClick={handleEditClick}
+              className="inline-flex items-center gap-2 py-[0.7rem] px-[1.75rem] text-[0.95rem] font-bold bg-brand-dark text-white border-[1.5px] border-transparent rounded-md shadow-[0_3px_0_0_var(--shadow-color-dark)] cursor-pointer transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-[1.5px] hover:shadow-[0_4px_0_0_var(--shadow-color-dark)] hover:bg-brand-lime hover:text-[#111827] active:translate-y-[2px] active:shadow-[0_1px_0_0_var(--shadow-color-dark)] dark:bg-brand-lime dark:text-[#111827] dark:hover:bg-white"
+              style={{ "--shadow-color-dark": "rgba(0,0,0,0.8)" } as React.CSSProperties}
+            >
+              <Edit3 className="w-4 h-4" strokeWidth={2.5} />
+              Edit Profile
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await authClient.signOut();
+                router.push("/");
+                router.refresh();
+              }}
+              className="inline-flex items-center gap-2 py-[0.7rem] px-[1.5rem] text-[0.95rem] font-bold text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/20 rounded-md transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
         )}
       </div>
 
       {/* Edit Form */}
       <div ref={formRef} className="w-full scroll-mt-28">
-        <div 
+        <div
           className={`grid transition-[grid-template-rows,opacity,margin] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            isEditing 
-              ? 'grid-rows-[1fr] opacity-100 mt-4' 
+            isEditing
+              ? 'grid-rows-[1fr] opacity-100 mt-4'
               : 'grid-rows-[0fr] opacity-0 mt-0 pointer-events-none'
           }`}
         >
@@ -159,8 +190,8 @@ export default function ProfileForm({ initialData, email }: { initialData: any, 
             <form onSubmit={handleSubmit(onSubmit)} className="bg-bg-card border-[1.5px] border-border-color rounded-lg p-[1.5rem] sm:p-[2.25rem] shadow-bottom-sm flex flex-col gap-6">
               <div className="flex items-center justify-between border-b border-border-subtle pb-4 mb-2">
               <h3 className="font-heading font-semibold text-lg text-text-primary dark:text-white">Edit Profile Details</h3>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={handleCancel}
                 className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-bg-tag text-text-muted hover:text-text-primary transition-colors"
               >

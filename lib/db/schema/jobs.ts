@@ -35,6 +35,12 @@ export const jobs = pgTable("jobs", {
   index("idx_jobs_company_name").on(table.companyName),
   index("idx_jobs_location").on(table.location),
   index("idx_jobs_country_id").on(table.countryId),
+  index("idx_jobs_status_created_at").on(table.status, table.createdAt),
+  index("idx_jobs_employment_type").on(table.employmentType),
+  index("idx_jobs_work_model").on(table.workModel),
+  index("idx_jobs_salary_min").on(table.salaryMin),
+  index("idx_jobs_visa_sponsorship").on(table.visaSponsorship),
+  index("idx_jobs_experience_required").on(table.experienceRequired),
 ]);
 
 export const skills = pgTable("skills", {
@@ -62,7 +68,10 @@ export const jobSkills = pgTable("job_skills", {
   jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }).notNull(),
   skillId: uuid("skill_id").references(() => skills.id, { onDelete: "cascade" }).notNull(),
   isCoreSkill: boolean("is_core_skill").default(false).notNull(), // To distinguish must-haves from nice-to-haves
-});
+}, (table) => [
+  primaryKey({ columns: [table.jobId, table.skillId] }),
+  index("idx_job_skills_skill_id").on(table.skillId),
+]);
 
 // Saved jobs by users
 export const savedJobs = pgTable("saved_jobs", {
@@ -70,12 +79,11 @@ export const savedJobs = pgTable("saved_jobs", {
   userId: text("user_id").notNull(), // Links to neon_auth.users.id
   jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
-}, (table) => {
-  return [
-    index("idx_saved_jobs_user_id").on(table.userId),
-    uniqueIndex("idx_unique_user_job_save").on(table.userId, table.jobId)
-  ];
-});
+}, (table) => [
+  index("idx_saved_jobs_user_id").on(table.userId),
+  index("idx_saved_jobs_user_created").on(table.userId, table.createdAt),
+  uniqueIndex("idx_unique_user_job_save").on(table.userId, table.jobId),
+]);
 
 export const preferenceTags = pgTable("preference_tags", {
   id: uuid("id").defaultRandom().primaryKey().notNull(),

@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth/server";
 
 export interface GetCreditsResponse {
   balance: number;
+  userId?: string;
   error?: string;
 }
 
@@ -22,7 +23,7 @@ async function fetchWalletWithRetry(userId: string, retries = 2) {
         .where(eq(wallets.userId, userId))
         .limit(1);
       return wallet || null;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (attempt < retries) {
         // Wait 250ms to allow connection pool re-establishment on serverless cold start
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -51,17 +52,18 @@ export async function getCredits(): Promise<GetCreditsResponse> {
           })
           .onConflictDoNothing()
           .returning();
-        return { balance: createdWallet?.balance ?? 0 };
+        return { balance: createdWallet?.balance ?? 0, userId: user.id };
       } catch (insertErr) {
         console.warn("Wallet initialization non-fatal fallback:", insertErr);
-        return { balance: 0 };
+        return { balance: 0, userId: user.id };
       }
     }
 
-    return { balance: wallet.balance };
-  } catch (error: any) {
-    console.error("Error fetching credits:", error?.message || error);
-    return { error: error?.message || "Failed to fetch credits", balance: 0 };
+    return { balance: wallet.balance, userId: user.id };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to fetch credits";
+    console.error("Error fetching credits:", message);
+    return { error: message, balance: 0 };
   }
 }
 
@@ -90,12 +92,13 @@ export async function deductCredit(referenceId?: string) {
         status: "completed",
         referenceId: referenceId || "ui_deduction",
       });
-      
+
       return { success: true, newBalance: updatedWallet.balance };
     });
-    
+
     return result;
-  } catch (error: any) {
-    return { error: error.message, success: false };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to deduct credit";
+    return { error: message, success: false };
   }
 }

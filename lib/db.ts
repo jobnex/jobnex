@@ -4,13 +4,14 @@ import { attachDatabasePool } from "@vercel/functions";
 import * as schema from "./db/schema";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __dbPool: Pool | undefined;
-  // eslint-disable-next-line no-var
   var __dbInstance: NodePgDatabase<typeof schema> | undefined;
 }
 
-const connectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
+const rawConnectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
+const connectionString = rawConnectionString
+  ? rawConnectionString.replace(/[?&]channel_binding=[^&]+/g, "")
+  : undefined;
 
 function createPool(): Pool {
   if (!connectionString) {
@@ -43,4 +44,3 @@ const pool = globalThis.__dbPool ?? (globalThis.__dbPool = createPool());
 
 export { pool };
 export const db = globalThis.__dbInstance ?? (globalThis.__dbInstance = drizzle(pool, { schema }));
-

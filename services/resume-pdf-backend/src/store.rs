@@ -54,21 +54,43 @@ impl Store {
     }
 
     fn access(client: &mut impl GenericClient, user: Uuid, job: Uuid) -> ApiResult<()> {
-        // Both the authenticated identity and its application must exist.
-        let row = client.query_opt("SELECT 1 FROM public.applications a JOIN neon_auth.\"user\" u ON u.id=$1 WHERE a.user_id::text=$2 AND a.job_id=$3 LIMIT 1",
+        // Preserve export-before-application for an owned, publishable draft.
+        let row = client.query_opt("SELECT 1 FROM neon_auth.\"user\" u WHERE u.id=$1 AND (
+            EXISTS (SELECT 1 FROM public.applications a WHERE a.user_id::text=$2 AND a.job_id=$3)
+            OR EXISTS (SELECT 1 FROM public.resume_generations g WHERE g.user_id=$2 AND g.job_id=$3
+                AND public.resume_generation_is_publishable(g.id,g.user_id)))",
             &[&user, &user.to_string(), &job]).map_err(db_error)?;
         if row.is_none() {
-            return Err(ApiError::new(404, "Application not found"));
+            return Err(ApiError::new(404, "Resume access not found"));
         }
         Ok(())
     }
 
     fn read(client: &mut impl GenericClient, user: Uuid, job: Uuid) -> ApiResult<Option<Saved>> {
-        Ok(client.query_opt("SELECT markdown,template_id,theme,status,r2_object_key FROM public.user_job_resumes WHERE user_id=$1 AND job_id=$2",
+        Ok(client.query_opt("SELECT markdown,template_id,theme,status,r2_object_key FROM public.user_job_resumes WHERE user_id=$1 AND job_id=$2 AND public.resume_saved_markdown_is_publishable(user_id::text,job_id,markdown)",
             &[&user,&job]).map_err(db_error)?.map(|row| Saved {
                 markdown: row.get(0), template_id: row.get(1), theme: row.get::<_,i32>(2) as u64,
                 status: row.get(3), r2_object_key: row.get(4),
             }))
+    }
+
+    fn check_markdown(client: &mut impl GenericClient, user: Uuid, job: Uuid, markdown: &str) -> ApiResult<()> {
+        let allowed: bool = client.query_one(
+            "SELECT public.resume_saved_markdown_is_publishable($1,$2,$3)",
+            &[&user.to_string(), &job, &markdown]).map_err(db_error)?.get(0);
+        if !allowed {
+            return Err(ApiError::new(409, "Resume failed source verification; regenerate before export"));
+        }
+        Ok(())
+    }
+
+    pub fn require_publishable(&self, user: Uuid, job: Uuid, markdown: &str) -> ApiResult<()> {
+        let mut client = self.pool.get().map_err(|_| ApiError::unavailable())?;
+        let mut tx = Self::transaction(&mut client)?;
+        Self::access(&mut tx, user, job)?;
+        Self::check_markdown(&mut tx, user, job, markdown)?;
+        tx.commit().map_err(db_error)?;
+        Ok(())
     }
 
     pub fn load(&self, user: Uuid, job: Uuid) -> ApiResult<Option<Saved>> {
@@ -84,7 +106,7 @@ impl Store {
         let mut client = self.pool.get().map_err(|_| ApiError::unavailable())?;
         let mut tx = Self::transaction(&mut client)?;
         Self::access(&mut tx, user, job)?;
-        let result=tx.query_opt("SELECT id,version,resume_markdown FROM public.resume_generations WHERE user_id=$1 AND job_id=$2 AND status IN ('completed','completed_with_estimates','needs_review') ORDER BY version DESC LIMIT 1", &[&user.to_string(),&job]).map_err(db_error)?.map(|row|serde_json::json!({"generation_id":row.get::<_,Uuid>(0),"version":row.get::<_,i32>(1),"markdown":row.get::<_,String>(2)}));
+        let result=tx.query_opt("SELECT id,version,resume_markdown FROM public.resume_generations WHERE user_id=$1 AND job_id=$2 AND public.resume_generation_is_publishable(id,user_id) ORDER BY version DESC LIMIT 1", &[&user.to_string(),&job]).map_err(db_error)?.map(|row|serde_json::json!({"generation_id":row.get::<_,Uuid>(0),"version":row.get::<_,i32>(1),"markdown":row.get::<_,String>(2)}));
         tx.commit().map_err(db_error)?;
         Ok(result)
     }
@@ -111,6 +133,7 @@ impl Store {
             &[&format!("{user}:{job}")],
         )
         .map_err(db_error)?;
+        Self::check_markdown(&mut tx, user, job, &saved.markdown)?;
         let current = Self::read(&mut tx, user, job)?;
         // Retrying an already committed immutable export must not overwrite a newer edit.
         if saved.status == "ready"
@@ -212,14 +235,23 @@ pub mod local {
             if !file.exists() {
                 return Ok(None);
             }
-            Ok(Some(
-                serde_json::from_slice(&fs::read(file).map_err(|_| ApiError::unavailable())?)
-                    .map_err(|_| ApiError::unavailable())?,
-            ))
+            let saved: Saved = serde_json::from_slice(&fs::read(file).map_err(|_| ApiError::unavailable())?)
+                .map_err(|_| ApiError::unavailable())?;
+            if self.require_publishable(user, job, &saved.markdown).is_err() {
+                return Ok(None);
+            }
+            Ok(Some(saved))
         }
         pub fn generated(&self, user: Uuid, job: Uuid) -> ApiResult<Option<serde_json::Value>> {
             self.access(user, job)?;
             Ok(None)
+        }
+        pub fn require_publishable(&self, user: Uuid, job: Uuid, markdown: &str) -> ApiResult<()> {
+            self.access(user, job)?;
+            if self.root.join(format!("blocked-{user}-{job}-{}",crate::hash(markdown.as_bytes()))).exists() {
+                return Err(ApiError::new(409,"Resume failed source verification; regenerate before export"));
+            }
+            Ok(())
         }
         pub fn save(
             &self,
@@ -230,6 +262,7 @@ pub mod local {
             _: Option<i32>,
         ) -> ApiResult<()> {
             self.access(user, job)?;
+            self.require_publishable(user, job, &saved.markdown)?;
             let lock = self.root.join(format!("lock-{user}-{job}"));
             let guard = fs::OpenOptions::new()
                 .write(true)

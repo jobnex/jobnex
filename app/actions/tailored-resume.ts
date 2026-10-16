@@ -96,7 +96,8 @@ export async function getExistingTailoredResume(jobId: string) {
       WHERE g.user_id=$1 AND g.job_id=$2 AND g.job_id=r.job_id AND g.base_resume_id=r.base_resume_id
         AND ((r.status='completed' AND r.credit_state='consumed' AND g.status IN ('completed','completed_with_estimates'))
           OR (r.status='needs_review' AND r.credit_state IN ('consumed','released') AND g.status='needs_review'))
-        AND length(trim(g.resume_markdown))>0 ORDER BY r.created_at DESC LIMIT 1`, [user.id, jobId]);
+        AND length(trim(g.resume_markdown))>0 AND public.resume_generation_is_publishable(g.id,g.user_id)
+        ORDER BY r.created_at DESC LIMIT 1`, [user.id, jobId]);
     if (generated.rows[0]) {
       const draft = generated.rows[0];
       return { exists: true, resume: { id: draft.id, markdown: draft.resume_markdown, status: draft.status,
@@ -109,7 +110,7 @@ export async function getExistingTailoredResume(jobId: string) {
       .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId)))
       .limit(1);
 
-    if (existing && existing.markdown) {
+    if (existing && existing.markdown && (await pool.query('SELECT public.resume_saved_markdown_is_publishable($1,$2,$3) AS allowed', [user.id,jobId,existing.markdown])).rows[0]?.allowed) {
       return {
         exists: true,
         resume: {
@@ -557,7 +558,7 @@ export async function listResumeRequests(): Promise<{ userId: string | null; req
   if (!user) return { userId: null, requests: [] };
   const result = await pool.query(`SELECT r.id,r.job_id,j.job_role_title AS title,j.company_name AS company,
       r.status,r.credit_state,r.error_code,
-      COALESCE(length(trim(g.resume_markdown))>0 AND
+      COALESCE(length(trim(g.resume_markdown))>0 AND public.resume_generation_is_publishable(g.id,g.user_id) AND
         ((r.status='completed' AND r.credit_state='consumed' AND g.status IN ('completed','completed_with_estimates'))
           OR (r.status='needs_review' AND g.status='needs_review' AND r.credit_state IN ('consumed','released'))),false) AS has_draft
     FROM resume_generation_requests r LEFT JOIN jobs j ON j.id=r.job_id
@@ -574,6 +575,9 @@ export async function updateTailoredResumeMarkdown(jobId: string, markdown: stri
   try {
     const user = await getCurrentUser();
     if (!user) return { success: false, error: "Unauthorized" };
+
+    const allowed = await pool.query('SELECT public.resume_saved_markdown_is_publishable($1,$2,$3) AS allowed', [user.id,jobId,markdown]);
+    if (!allowed.rows[0]?.allowed) return { success: false, error: "Resume failed source verification; regenerate before saving." };
 
     await db
       .update(userJobResumes)

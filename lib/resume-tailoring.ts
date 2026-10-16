@@ -17,7 +17,8 @@ export async function loadAvailableGeneration(userId: string, requestId: string)
     WHERE g.id=$1 AND g.user_id=$2 AND g.job_id=r.job_id AND g.base_resume_id=r.base_resume_id
       AND ((r.status='completed' AND r.credit_state='consumed' AND g.status IN ('completed','completed_with_estimates'))
         OR (r.status='needs_review' AND r.credit_state IN ('consumed','released') AND g.status='needs_review'))
-      AND length(trim(g.resume_markdown))>0`, [requestId, userId]);
+      AND length(trim(g.resume_markdown))>0
+      AND public.resume_generation_is_publishable(g.id,g.user_id)`, [requestId, userId]);
   return result.rows[0] as { id: string; job_id: string; resume_markdown: string; version: number; status: string; review_reason: string | null } | undefined;
 }
 

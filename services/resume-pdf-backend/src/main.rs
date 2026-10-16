@@ -176,6 +176,7 @@ fn artifact(app: &App, user: Uuid, job: Uuid, id: Uuid) -> ApiResult<Artifact> {
     {
         return Err(ApiError::new(404, "Preview not found"));
     }
+    app.store.require_publishable(user, job, &record.saved.markdown)?;
     Ok(record)
 }
 fn pdf(app: &App, record: &Artifact) -> ApiResult<Vec<u8>> {
@@ -249,6 +250,7 @@ fn route(request: &mut Request, app: &App) -> ApiResult<(&'static str, Vec<u8>)>
                 }
                 saved
             };
+            app.store.require_publishable(user, job, &saved.markdown)?;
             let _permit = permit(&app.compiling, app.max_compiles)?;
             let (bytes, mut result) = render::compile(&app.root, &saved.markdown, saved.theme)
                 .map_err(|_| {

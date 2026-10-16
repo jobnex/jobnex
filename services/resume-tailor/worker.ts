@@ -29,11 +29,12 @@ function run(command: string, args: string[], cwd: string) {
   });
 }
 
-async function release(request: RequestRow, status: "failed" | "needs_review", errorCode: string) {
+async function release(request: RequestRow, status: "failed" | "needs_review", errorCode: string, expectedStatus = "running") {
   const client = await pool.connect();
   try { await client.query("BEGIN");
     const released = await client.query(`UPDATE resume_generation_requests SET status=$1,running_slot=NULL,credit_state='released',error_code=$2,finished_at=now()
-      WHERE id=$3 AND lease_token=$4 AND status='running' AND credit_state='held' RETURNING id`, [status, errorCode.slice(0, 120), request.id, request.lease_token]);
+      WHERE id=$3 AND lease_token IS NOT DISTINCT FROM $4::uuid AND status=$5 AND credit_state='held' RETURNING id`,
+      [status, errorCode.slice(0, 120), request.id, request.lease_token, expectedStatus]);
     if (!released.rows[0]) { await client.query("COMMIT"); return; }
     await client.query(`UPDATE wallets SET balance=balance+1,updated_at=now() WHERE user_id=$1`, [request.user_id]);
     await client.query(`UPDATE credit_transactions SET status='refunded' WHERE user_id=$1 AND reference_id=$2 AND status='pending'`, [request.user_id, request.id]);
@@ -181,19 +182,26 @@ export async function recover() {
     RETURNING *`);
   for (const request of expired.rows) {
     if (await recoverOutput(request)) continue;
-    const durable = await pool.query(`SELECT 1 FROM resume_model_batches WHERE request_id=$1 LIMIT 1`, [request.id]);
+    // Cached synchronous stages are not pending batches. Replaying a crashed
+    // synchronous pipeline can repeat its next paid call and hold credit forever.
+    const durable = await pool.query(`SELECT 1 FROM resume_model_batches WHERE request_id=$1
+      AND batch_id IS NOT NULL AND submitted=true AND response IS NULL
+      AND created_at>now()-interval '48 hours' LIMIT 1`, [request.id]);
     if (durable.rows[0]) await resumeBatch(request);
     else await release(request, "failed", "interrupted_attempt_no_verified_output");
   }
+  // An outbox that exhausted delivery attempts must settle, not merely log.
+  // The queued-state/lease guard prevents refunding a concurrently claimed run.
+  const exhausted = await pool.query(`SELECT r.* FROM resume_generation_requests r
+    JOIN resume_dispatch_outbox o ON o.request_id=r.id
+    WHERE r.status='queued' AND r.credit_state='held' AND o.attempts>=10`);
+  for (const request of exhausted.rows) await release(request, "failed", "dispatch_exhausted", "queued");
   const due = await pool.query(`SELECT o.request_id FROM resume_dispatch_outbox o
     JOIN resume_generation_requests r ON r.id=o.request_id
     WHERE r.status='queued' AND o.next_attempt_at<=now() AND o.attempts<10
     ORDER BY o.next_attempt_at LIMIT 10`);
   for (const row of due.rows) await dispatchRequest(pool, row.request_id);
-  const exhausted = await pool.query(`SELECT count(*)::int AS count FROM resume_dispatch_outbox o
-    JOIN resume_generation_requests r ON r.id=o.request_id WHERE r.status='queued' AND o.attempts>=10`);
-  if (exhausted.rows[0].count) console.error("resume_dispatch_exhausted", { count: exhausted.rows[0].count });
-  return { recovered: expired.rowCount, checked: due.rowCount, exhausted: exhausted.rows[0].count };
+  return { recovered: expired.rowCount, checked: due.rowCount, exhausted: exhausted.rowCount };
 }
 
 async function main() {

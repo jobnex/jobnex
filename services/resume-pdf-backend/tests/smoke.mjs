@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,mkdirSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,mkdirSync,unlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
@@ -23,6 +23,13 @@ async function call(port,suffix,method='GET',data,identity=user,token=secret){
     const result=r.headers.get('content-type')==='application/pdf'?Buffer.from(await r.arrayBuffer()):await r.json();return {r,result};
 }
 function sha(bytes){return createHash('sha256').update(bytes).digest('hex');}
+function checkWarnings(stderr){
+    const expected=(process.env.EXPECT_FONT_WARNINGS||'').split(',').filter(Boolean);
+    if(!expected.length){assert.equal(stderr.trim(),'');return;}
+    const warnings=stderr.match(/^warning:.*$/gm)||[];
+    assert.equal(/(?:^|\n)error:/.test(stderr),false);
+    assert.ok(warnings.every(line=>expected.some(font=>line===`warning: unknown font family: ${font}`)),stderr);
+}
 try{
     start(first);start(second);await Promise.all([ready(first),ready(second)]);
     assert.equal((await call(first,'resume')).r.status,200);
@@ -43,7 +50,7 @@ try{
         const preview=await call(first,'preview','POST',{markdown:md,template_id:template,theme});assert.equal(preview.r.status,200,JSON.stringify(preview.result));
         const p=preview.result;const expected=Buffer.from(p.pdf_base64,'base64');assert.equal(sha(expected),p.pdf_sha256);hashes.add(p.pdf_sha256);
         assert.equal(p.source_map.length>0,true);assert.equal(p.source_map.every(b=>md.slice(b.start,b.end)===b.raw),true);
-        assert.equal(p.typst_code.includes('FIRSTMARKER'),true);assert.equal(p.stderr.trim(),'');
+        assert.equal(p.typst_code.includes('FIRSTMARKER'),true);checkWarnings(p.stderr);
         const downloaded=await call(second,`pdf/${p.preview_id}`);assert.equal(downloaded.r.status,200);assert.deepEqual(downloaded.result,expected);
         assert.equal((await call(second,`pdf/${p.preview_id}`,'GET',undefined,other)).r.status,404);
         assert.equal((await call(second,'export','POST',{preview_id:p.preview_id,expected_revision:revision},other)).r.status,404);
@@ -63,6 +70,16 @@ try{
     }
     assert.equal(hashes.size,4);
     const saved=await call(first,'resume');
+    const oldId=saved.result.resume.r2_object_key.split('/').pop().replace('.pdf','');
+    const marker=path.join(store,`blocked-${user}-${job}-${sha(Buffer.from(md))}`);
+    writeFileSync(marker,'quarantined');
+    assert.equal((await call(first,'resume')).result.resume,null);
+    assert.equal((await call(first,`pdf/${oldId}`)).r.status,409);
+    assert.equal((await call(first,'export','POST',{preview_id:oldId,expected_revision:saved.result.revision})).r.status,409);
+    assert.equal((await call(first,'preview','POST',{markdown:md})).r.status,409);
+    assert.equal((await call(first,'resume','PUT',{markdown:md,expected_revision:'absent'})).r.status,409);
+    unlinkSync(marker);
+    assert.equal((await call(first,`pdf/${oldId}`)).r.status,200);
     // Source/template change changes revision and cannot silently reuse a stale export.
     const edited=await call(first,'resume','PUT',{markdown:md.replace('FIRSTMARKER','EDITEDMARKER'),template_id:'modern-ivy',expected_revision:saved.result.revision});assert.equal(edited.r.status,200);
     const live=await call(second,'preview','POST',{});assert.equal(live.r.status,200);assert.equal(live.result.typst_code.includes('EDITEDMARKER'),true);
@@ -71,5 +88,5 @@ try{
     assert.equal((await call(third,`pdf/${persistedId}`)).result.equals(Buffer.from(live.result.pdf_base64,'base64')),true);
     assert.equal((await call(third,'generated')).result.generation,null);
     console.log('Artifacts:',root);
-    console.log('BACKEND_API_VERIFIED: four Typst themes, shared storage across instances/restart, auth, ownership, conflict guards, source ranges, direct edits, exact downloads and corruption control');
+    console.log('BACKEND_API_VERIFIED: four Typst themes, shared storage across instances/restart, auth, ownership, conflict guards, source ranges, direct edits, exact downloads, quarantine on saved copies/artifacts/exports and corruption control');
 }finally{for(const p of processes)p.kill();}

@@ -6,32 +6,49 @@ import { writeFile } from "node:fs/promises";
 process.env.DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused";
 
 async function main() {
-  const { pool, processRequest } = await import("../services/resume-tailor/worker");
+  const { pool, processRequest, recover } = await import("../services/resume-tailor/worker");
   const hash = (text: string) => createHash("sha256").update(text).digest("hex");
   const sourceHash = (text: string) => hash(text.replace(/\r\n?/g, "\n"));
   type Generation = { status: string; resume_markdown: string; source_hash: string; job_hash: string; audit_json: Record<string, unknown> };
   let row = fixture(), generation: Generation | null = null;
   let wallet = 2, transaction = "pending", refunds = 0, calls = 0, capacityFull = false;
+  let expired = false, pendingBatch = false, cachedStage = false, attempts = 0;
   const usage = new Set<string>();
   function fixture() {
     return { id: randomUUID(), user_id: "synthetic-user", job_id: randomUUID(), base_resume_id: randomUUID(),
       source_text: "# Synthetic résumé", job_description: "Synthetic  job description", include_summary: true,
       lease_token: "", status: "queued", credit_state: "held" };
   }
-  function reset() { row = fixture(); generation = null; wallet = 2; transaction = "pending"; refunds = 0; calls = 0; usage.clear(); }
+  function reset() { row = fixture(); generation = null; wallet = 2; transaction = "pending"; refunds = 0; calls = 0; usage.clear(); expired = pendingBatch = cachedStage = false; attempts = 0; }
   async function query(sql: string, values: unknown[] = []) {
     const text = sql.replace(/\s+/g, " ");
     const result = (rows: unknown[] = []) => ({ rows, rowCount: rows.length });
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(text)) return result();
     if (text.startsWith("SELECT pg_advisory_xact_lock")) return result();
+    if (text.startsWith("UPDATE resume_generation_requests SET lease_token=gen_random_uuid()")) {
+      if (!expired || row.status !== "running") return result();
+      expired = false; row.lease_token = randomUUID(); return result([{...row}]);
+    }
+    if (text.startsWith("SELECT 1 FROM resume_model_batches")) {
+      return result((text.includes("batch_id IS NOT NULL") ? pendingBatch : pendingBatch || cachedStage) ? [{}] : []);
+    }
+    if (text.startsWith("UPDATE resume_generation_requests SET status='queued'")) {
+      if (row.status !== 'running' || values[1] !== row.lease_token) return result();
+      row.status = 'queued'; return result([{id:row.id}]);
+    }
+    if (text.startsWith("UPDATE resume_dispatch_outbox")) { attempts=0; return result(); }
+    if (text.startsWith("SELECT r.* FROM resume_generation_requests")) return result(row.status==='queued' && attempts>=10 ? [{...row}] : []);
+    if (text.startsWith("SELECT o.request_id")) return result();
+    if (text.startsWith("SELECT count(*)::int AS count")) return result([{count:row.status==='queued' && attempts>=10 ? 1:0}]);
     if (text.startsWith("UPDATE resume_generation_requests SET status='running'")) {
       if (capacityFull || row.status !== "queued" || row.credit_state !== "held" || values[1] !== row.id) return result();
       row.status = "running"; row.lease_token = String(values[0]); return result([{ ...row }]);
     }
     if (text.startsWith("UPDATE resume_generation_requests SET status=$1")) {
       assert.match(text, /running_slot=NULL/);
-      assert.match(text, /lease_token=\$4 AND status='running' AND credit_state='held'/);
-      if (values[2] !== row.id || values[3] !== row.lease_token || row.status !== "running" || row.credit_state !== "held") return result();
+      const releasing = text.includes("credit_state='released'");
+      assert.match(text, releasing ? /lease_token IS NOT DISTINCT FROM \$4::uuid AND status=\$5 AND credit_state='held'/ : /lease_token=\$4 AND status='running' AND credit_state='held'/);
+      if (values[2] !== row.id || values[3] !== row.lease_token || row.status !== (releasing ? values[4] : "running") || row.credit_state !== "held") return result();
       row.status = String(values[0]); row.credit_state = text.includes("credit_state='consumed'") ? "consumed" : "released";
       return result([{ id: row.id }]);
     }
@@ -99,7 +116,18 @@ async function main() {
   capacityFull = false;
   await processRequest(row.id, agent("completed"));
   assert.equal(row.credit_state, "consumed"); assert.equal(calls, 1);
+  reset(); row.status='running'; expired=true; cachedStage=true;
+  await recover();
+  assert.equal(row.status,'failed','A cached synchronous response must not become a pending batch');
+  assert.equal(row.credit_state,'released'); assert.equal(refunds,1); assert.equal(wallet,3); assert.equal(calls,0);
+  await recover(); assert.equal(refunds,1);
+  reset(); row.status='running'; expired=true; pendingBatch=true;
+  await recover(); assert.equal(row.status,'queued'); assert.equal(row.credit_state,'held'); assert.equal(refunds,0); assert.equal(calls,0);
+  reset(); attempts=10;
+  await recover(); assert.equal(row.status,'failed','Exhausted dispatch must not hold credit indefinitely');
+  assert.equal(row.credit_state,'released'); assert.equal(refunds,1); assert.equal(wallet,3);
+  await recover(); assert.equal(refunds,1);
   await pool.end();
-  console.log("PASS: completed/review settlement, duplicate delivery, output refunds, crash recovery, lease fencing, and queued capacity deferral without AI/refund; no DB or AI calls");
+  console.log("PASS: completed/review settlement, duplicate delivery, output refunds, crash recovery, lease fencing, capacity deferral, synchronous-cache recovery and exhausted-dispatch refunds; no DB or AI calls");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

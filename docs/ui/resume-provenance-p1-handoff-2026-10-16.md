@@ -1,5 +1,9 @@
 # Resume provenance P1 repair: UI team handoff
 
+> Latest backend follow-up: three additional dispatch/recovery/publication failure paths were repaired. The worker is now `job-hunt-resume-worker-backend-p1-1016`; the Rust PDF backend is `resume-pdf-backend-backend-p1-1016`, both Ready at 100%. Collect the [server-only publication overlay](releases/resume-backend-20261016/README.md) after the earlier template overlay. This includes authenticated server code hosted with the UI; its production deployment remains with the UI team. No new client component was changed. Revision/source statements below describe the earlier four-fix release unless updated by this note.
+
+Latest backend source: commit [`23ecf3845730e26d767d0041114ec66c773fc0e8`](https://github.com/jobnex/jobnex/commit/23ecf3845730e26d767d0041114ec66c773fc0e8). Read the [backend follow-up report](https://github.com/jobnex/jobnex/blob/23ecf3845730e26d767d0041114ec66c773fc0e8/docs/resume-backend-p1-followup-2026-10-16.md) for reproduction steps, migration, release evidence and limitations. The publication SQL is already installed. Live backend checks passed clean-result access, unsafe-result denial and wrong-owner/token rejection. Localhost opens the clean draft and retains balance 10. No additional credit refund or paid generation was performed.
+
 October 16, 2026. Read this together with [the template/PDF overlay](resume-template-repair-2026-10-16.md) and [the application integration handoff](app-fixes-handoff-2026-10-10.md).
 
 ## What changed

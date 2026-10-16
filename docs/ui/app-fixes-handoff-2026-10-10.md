@@ -3,7 +3,9 @@
 Release work started October 10 and finalized October 11, 2026 (America/New_York). Audience: UI developers and production maintainers.
 This supplements and supersedes the deployment/integration status in the earlier resume UI handoffs. Earlier documents remain historical records.
 
-**October 11 localhost readiness update:** Customer PDF export is currently blocked by an API integration mismatch. Local base/export routes are proxy adapters to the earlier GCP web API; free base creation targets a missing upstream route. See [the detailed localhost review](customer-readiness-local-2026-10-11.md). Use the production-web server implementations and configure the UI team's server runtime, rather than treating the local proxy files as a standalone backend. Backend/compiler test success alone does not clear customer release.
+**October 16 repair update:** Use the [resume template and direct PDF route overlay](resume-template-repair-2026-10-16.md) after this bundle. It fixes malformed entry headings, consecutive heading pagination, education detail serialization, and replaces the incompatible local base/export proxy adapters with direct authenticated compiler routes. Synthetic live compiler/R2 tests pass for all four templates. The UI team must integrate the overlay and private server configuration and verify staging saves before customer release. No GCP frontend was deployed.
+
+**Historical October 11 assessment:** The [localhost review](customer-readiness-local-2026-10-11.md) records the original API integration failure. Its old proxy files are superseded by the October 16 overlay.
 
 ## Deployment ownership and current status
 

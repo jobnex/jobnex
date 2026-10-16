@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-16",
+  "files": [
+    {
+      "path": "lib/resume-parser.ts",
+      "sha256": "732f3260eb9982b9bb548f83354a051abd3b4d9ac5c9d8cecfe848a89b6aa598"
+    },
+    {
+      "path": "components/A4ResumePages.tsx",
+      "sha256": "29c53993e0f0e37726bb0b2b1cba1acacb12db8227e574551000b74889c60616"
+    },
+    {
+      "path": "lib/job-resumes.ts",
+      "sha256": "fbed59f44d8a5a79265fe3a56388186088a79dda1525df27067281f61fc131e6"
+    },
+    {
+      "path": "app/api/resume/export/route.ts",
+      "sha256": "fb8f4f0f9e29493e92a3045e72478cc5cafb631cda8d9f9976c6eaec1bb41e98"
+    },
+    {
+      "path": "app/api/resume/base/route.ts",
+      "sha256": "136c05a98a52f827f8b0bd55659392048b1982fcde3ad2bccfcf478f16c4eca2"
+    },
+    {
+      "path": "scripts/check-resume-release.tsx",
+      "sha256": "b741872602aa073f2bc3c99a6efc628fd9854501152da833949eb37146bfeee8"
+    },
+    {
+      "path": "scripts/check-pdf-routes.mjs",
+      "sha256": "cfc75ce560fdc4abbc0d321fd83e102b0201a242c79dd3aa4305288e257a7a55"
+    }
+  ]
+}

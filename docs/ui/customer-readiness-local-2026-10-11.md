@@ -1,5 +1,7 @@
 # Local customer-readiness review — October 11, 2026
 
+**October 16 update:** This report describes the earlier state. The local proxy adapters have now been replaced with direct authenticated PDF routes, and malformed heading/pagination repairs are applied. See the [current repair handoff and source overlay](resume-template-repair-2026-10-16.md). Synthetic live base/application PDF tests pass for all four templates, including stale-generation rejection. A customer database save, base replacement, new paid generation, and production frontend deployment were not performed; customer release still requires the staging acceptance steps in the new handoff.
+
 Target: http://127.0.0.1:3000. The user explicitly selected localhost. This is a readiness assessment, not a frontend deployment or another paid generation test.
 
 ## Verdict

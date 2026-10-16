@@ -1,4 +1,4 @@
-> Updated release: see [app reliability and production handoff](app-fixes-handoff-2026-10-10.md) for the current code bundle, production status, and integration contracts. This earlier document is historical.
+> Latest: read [the October 16 provenance P1 handoff](resume-provenance-p1-handoff-2026-10-16.md) and [template/PDF overlay](resume-template-repair-2026-10-16.md), after the [app reliability handoff](app-fixes-handoff-2026-10-10.md). This earlier document is historical; frontend deployment remains with the UI team.
 
 # Resume UI handoff — 10 October 2026
 

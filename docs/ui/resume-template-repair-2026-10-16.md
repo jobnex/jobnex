@@ -1,5 +1,7 @@
 # Resume preview and PDF integration fixes — October 16, 2026
 
+> Later backend finding and repair: read [the resume provenance P1 handoff](resume-provenance-p1-handoff-2026-10-16.md). The source resume did contain the second employer. Backend grouping and factual publication defects were repaired after the presentation checks below. This earlier report's no-database-write statement applies only to its template/PDF work; the later explicitly approved quarantine/refund is documented separately.
+
 The reported draft stored a role as `### ### AI Engineer`. The shared parser removed only the first heading marker, leaving `### AI Engineer` visible in every template. This release fixes that parsing defect, section headings stranded at page boundaries, education details relabeled during visual edits, and the incompatible local PDF proxy routes.
 
 These changes are applied to the localhost app. No GCP frontend deployment, GCP permission change, model change, paid generation, customer database write, or active resume replacement was performed. The UI team owns production integration and deployment.

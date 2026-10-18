@@ -39,6 +39,20 @@ def request(*, tenant: str = "tenant-a", estimates: bool = True, jd: str = JD) -
 
 
 class PipelineTests(unittest.TestCase):
+    def test_project_density_is_reviewable_but_factual_failure_is_not(self):
+        captured={}
+        def craft(payload):
+            captured['draft']=ScriptedLLM._draft(payload)
+            return captured['draft']
+        pipeline=ResumeTailoringPipeline(llm=ScriptedLLM({'craft':craft}))
+        self.assertEqual(pipeline.run(request()).status,'completed')
+        for code,expected in [('project.bullet_count','needs_review'),('claim.evidence','failed')]:
+            check=ComplianceCheck(code=code,passed=False,severity='error',field_path='projects.project_1',
+                evidence_ids=[],repair_message='Review this check.',waiver='')
+            result=pipeline.needs_review({'source':extract_source(RESUME),'draft':captured['draft'],'compliance_ledger':[check]})
+            self.assertEqual(result['terminal_status'],expected)
+            self.assertEqual(bool(result['resume_markdown']),expected=='needs_review')
+
     def test_length_fit_model_failure_keeps_prior_draft_for_review(self):
         from low_risk_agent.pipeline import ResumeTailoringPipeline as FullPipeline
         from low_risk_agent.llm import OutputTokenLimitError, StructuredOutputError, ProviderRequestError

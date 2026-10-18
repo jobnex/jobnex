@@ -74,7 +74,7 @@ function usageId(requestId: string, index: number) {
 
 function usableAudit(audit: Record<string, unknown>, status: string) {
   if (!Array.isArray(audit.compliance_ledger) || !audit.compliance_ledger.length) return false;
-  const reviewable = new Set(["length.word_count", "length.fit_unavailable", "experience.bullet_count", "projects.bullet_count",
+  const reviewable = new Set(["length.word_count", "length.fit_unavailable", "experience.bullet_count", "project.bullet_count", "projects.bullet_count",
     "projects.purpose_order", "skills.category_count", "experience.metric_count", "projects.metric_count"]);
   return audit.compliance_ledger.every(check => check && typeof check.code === "string"
     && typeof check.passed === "boolean" && ["error", "warning", "info"].includes(check.severity)

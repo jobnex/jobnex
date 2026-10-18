@@ -770,7 +770,7 @@ class ResumeTailoringPipeline:
         protection = rendered_protection_checks(markdown, state["source"], state["draft"])
         ledger = [*state["compliance_ledger"], *protection]
         # Factual failures must not become exportable, billable review output.
-        reviewable = {"length.word_count", "length.fit_unavailable", "experience.bullet_count", "projects.bullet_count",
+        reviewable = {"length.word_count", "length.fit_unavailable", "experience.bullet_count", "project.bullet_count", "projects.bullet_count",
                       "projects.purpose_order", "skills.category_count", "experience.metric_count",
                       "projects.metric_count"}
         unsafe = any(not item.passed and item.severity == "error" and not item.waiver

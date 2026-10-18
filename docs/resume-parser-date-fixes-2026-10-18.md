@@ -76,6 +76,26 @@ Frontend follow-up recommended: replace misleading “extracting via AI” copy 
 
 The earlier NTT DATA request failed factual checks, including numeric annotations; the already deployed metric-literal repair is documented in `resume-metric-literal-fix-2026-10-18.md`. Its failed credit was released. The subsequent pre-parser-fix request produced a reviewable draft but still had no dates in its source and exceeded the per-role bullet-count target. Historical statuses and factual safeguards remain intact.
 
-Previously saved drafts are not silently rewritten when the base resume is repaired. A new generation must use the corrected source. The final approved live generation result is recorded below after completion.
+Previously saved drafts are not silently rewritten when the base resume is repaired. A new generation must use the corrected source.
+
+### Live generation exposed a project-density status mismatch
+
+The approved post-parser test received the corrected date-bearing input, but failed with `experience.bullet_count` and `project.bullet_count`. Its app credit was released. The policy emits the singular `project.bullet_count`; the terminal pipeline, worker recovery, and shared database publication predicate accepted only the older plural spelling `projects.bullet_count`. That mismatch incorrectly classified a presentation-density check as an unsafe factual failure and suppressed the draft.
+
+The canonical singular code is now accepted in all three layers while retaining the legacy spelling. No factual rule is waived. `claim.evidence`, metric provenance, unknown error codes, malformed checks, ownership/source hashes and publication-state requirements remain enforced. The migration changes only this one code in the existing function; before/after function definitions were compared inside the migration transaction to reject any unrelated predicate change. No historical generation, saved resume, wallet or credit row was changed by the migration.
+
+Collect this additional backend fix from:
+
+- `resume-agent-inspect/src/low_risk_agent/pipeline.py`
+- `resume-agent-inspect/tests/test_pipeline.py`
+- `services/resume-tailor/worker.ts`
+- `services/resume-tailor/migrations/20261018_resume_project_density_review.sql`
+- `scripts/test-resume-reviewable-contract.cjs`
+
+The full agent suite passes **221 tests**. The contract check executes the worker audit predicate and checks that the Python, worker and SQL reviewable-code sets agree. It verifies that presentation checks are reviewable, completed status does not bypass them, and factual/unknown/malformed failures remain blocked.
+
+Worker revision `job-hunt-resume-worker-project-review-1018` serves 100% of traffic. Image digest: `sha256:79c2d7c37598b15945521470cafd894519235dad15a52fad4a74b500eb6d4032`. Cloud Build: `183bba81-2133-403b-a2e4-966036b79d0d`. Worker environment/secret references, command, arguments, resources, service account, concurrency and timeout match the prior revision; this includes unchanged model and LangSmith configuration. The database function migration above is the only additional database definition change.
+
+No frontend code change is required for the classification correction: existing `needs_review` handling should expose the draft and its review warning. The UI team should preserve that behavior when integrating.
 
 This is a verified improvement for the supplied documents, not a guarantee for every possible PDF layout. Image-only PDFs remain unsupported. Unusual columns, missing/ambiguous source facts, dense paragraphs, or semantic fields still require review. This work does not certify the entire app as free of P1 or security issues.

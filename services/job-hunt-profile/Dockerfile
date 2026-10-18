@@ -8,9 +8,11 @@ COPY service/main.py service/main.py
 COPY service/confirmation.py service/confirmation.py
 COPY service/resume_content.py service/resume_content.py
 COPY service/contacts.py service/contacts.py
+COPY service/document_structure.py service/pdf_layout.py service/
 COPY service/test_main.py service/test_main.py
 COPY service/test_resume_content.py service/test_resume_content.py
-RUN JOB_HUNT_SERVICE_SECRET=container-test-only python -m unittest service.test_main service.test_resume_content
+COPY service/test_document_structure.py service/test_document_structure.py
+RUN JOB_HUNT_SERVICE_SECRET=container-test-only python -m unittest service.test_main service.test_resume_content service.test_document_structure
 RUN useradd --create-home appuser
 USER appuser
 CMD ["sh", "-c", "exec uvicorn service.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

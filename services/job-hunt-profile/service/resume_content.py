@@ -31,7 +31,11 @@ def markdown_from(details, edited=False):
     if education:
         lines.extend(["", "## Education"])
         for entry in education:
-            lines.extend([" | ".join(filter(None, [text(entry.get(key)) for key in ("college", "degree", "field")])), " – ".join(filter(None, [text(entry.get(key)) for key in ("startDate", "endDate")]))])
+            qualification=' '.join(filter(None,[text(entry.get('degree')),text(entry.get('field'))]))
+            dates=' – '.join(filter(None,[text(entry.get('startDate')),text(entry.get('endDate'))])) or text(entry.get('dates'))
+            lines.extend(['**'+text(entry.get('college'))+'** —',
+                          ' | '.join(filter(None,['*'+qualification+'*' if qualification else '',dates]))])
+            if text(entry.get('details')):lines.append(text(entry['details']))
     elif "educationHistory" not in details and text(details.get("education")):
         lines.extend(["", "## Education", text(details["education"])])
     experience = details.get("experienceHistory", details.get("experience", [])) or []
@@ -42,8 +46,9 @@ def markdown_from(details, edited=False):
         for entry in experience:
             role = text(entry.get("role") or entry.get("title"))
             if role: lines.append("### " + role)
-            dates = text(entry.get("dates")) or " – ".join(filter(None, [text(entry.get(key)) for key in ("startDate", "endDate")]))
-            lines.append(" | ".join(filter(None, [text(entry.get("company")), dates])))
+            dates = " – ".join(filter(None, [text(entry.get(key)) for key in ("startDate", "endDate")])) or text(entry.get("dates"))
+            company=text(entry.get('company'))
+            lines.append(" | ".join(filter(None, ['**'+company+'**' if company else '', dates])))
             if text(entry.get("jobDescription")): lines.append(text(entry["jobDescription"]))
             else: lines.extend("- " + text(bullet) for bullet in entry.get("bullets", []) if text(bullet))
             if text(entry.get("responsibilities")): lines.append(text(entry["responsibilities"]))

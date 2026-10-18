@@ -16,6 +16,7 @@ from docx.table import Table
 from pypdf import PdfReader
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from service.contacts import extract_contacts
+from service.document_structure import experience_entries as structured_experience, education_entries, INSTITUTION, DEGREE
 
 
 HEADINGS = {
@@ -36,6 +37,8 @@ HEADINGS = {
     "ACHIEVEMENTS": "achievements", "HONORS": "awards",
     "TRAINING": "training", "RESEARCH": "research",
     "LEADERSHIP": "leadership", "ADDITIONAL INFORMATION": "additional_information",
+    "SKILLS & TOOLS": "skills", "MENTORING": "mentoring",
+    "WORK EXPERIENCE (CONTINUED)": "experience",
 }
 EMAIL = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 PHONE = re.compile(r"(?im)^\s*(?:phone|mobile|tel(?:ephone)?)\s*:\s*([^\n]+)")
@@ -50,6 +53,9 @@ DATE = re.compile(
 
 def experience_entries(raw: str) -> list[dict]:
     """Split employer/date rows into jobs while retaining full section text."""
+    parsed = structured_experience(raw)
+    if parsed:
+        return parsed
     entries = []
     current = None
     for line in raw.splitlines():
@@ -108,6 +114,20 @@ def resume_details(text: str, targets=()) -> dict:
             header_lines.append(line)
     save_section()
 
+    # Some resumes present education cards before the first labelled section.
+    school_row=next((i for i,line in enumerate(header_lines) if INSTITUTION.search(line)
+                     and not DEGREE.search(line) and not EMAIL.search(line)),None)
+    if school_row is not None:
+        schools=[s.strip() for s in re.split(r'\s{2,}',header_lines[school_row].strip()) if s.strip()]
+        tail=[s.strip() for s in header_lines[school_row+1:] if s.strip()]
+        degrees=[s.strip() for s in re.split(r'\s{2,}','  '.join(tail)) if s.strip()]
+        if len(schools)==len(degrees) and all(DEGREE.search(d) for d in degrees):
+            sections['education']='\n'.join(value for pair in zip(schools,degrees) for value in pair)
+            header_lines=header_lines[:school_row]
+    contact_row=next((i for i,line in enumerate(header_lines) if EMAIL.search(line)),None)
+    if contact_row is not None and contact_row>2:
+        sections.setdefault('summary','\n'.join(header_lines[2:contact_row]).strip())
+        header_lines=[*header_lines[:2],*header_lines[contact_row:]]
     header_text = "\n".join(header_lines).strip()
     header = {}
     candidates = [line.strip() for line in header_lines if line.strip()]
@@ -129,7 +149,7 @@ def resume_details(text: str, targets=()) -> dict:
         header['phones'] = contacts['phones']
     if contacts['links']:
         header['links'] = contacts['links']
-    for line in candidates[1:]:
+    for line in [part.strip() for candidate in candidates[1:] for part in re.split(r'\s{2,}',candidate)]:
         if re.search(r"\b(?:engineer|scientist|developer|architect|analyst|designer|manager|consultant)\b", line, re.I) and len(line) <= 80:
             header["title"] = line.strip("*_ ")
             break
@@ -152,6 +172,8 @@ def resume_details(text: str, targets=()) -> dict:
             result["experience"] = entries
     if other:
         result["other_sections"] = other
+    if isinstance(result.get('education'),str):
+        result['educationHistory']=education_entries(result['education'])
     return result
 
 
@@ -185,8 +207,11 @@ def recover_pdf_spacing(layout: str, plain: str) -> str:
 def extract_pdf_page(page) -> str:
     if "/Contents" not in page:
         return ""
-    layout = page.extract_text(extraction_mode="layout") or ""
     plain = page.extract_text() or ""
+    try:
+        layout = page.extract_text(extraction_mode="layout") or ""
+    except (ZeroDivisionError, ValueError):
+        return plain.strip()
     # Soft hyphens are formatting hints, not part of a word.
     return recover_pdf_spacing(layout, plain).replace("\u00ad", "").replace("\uf0b7", "•").strip()
 
@@ -200,10 +225,10 @@ def convert(input_path: Path, output_dir: Path) -> Path:
         reader = PdfReader(input_path)
         if reader.is_encrypted:
             raise ValueError(f"Encrypted PDF: {input_path}")
-        pages = [
-            extract_pdf_page(page)
-            for page in reader.pages
-        ]
+        import pdfplumber
+        from service.pdf_layout import page_text
+        with pdfplumber.open(input_path) as document:
+            pages = [page_text(page, HEADINGS) for page in document.pages]
         text = "\n\n".join(page for page in pages if page)
         if not text:
             raise ValueError(f"No extractable text in {input_path}; scanned PDFs need OCR")

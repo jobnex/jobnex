@@ -8,6 +8,8 @@ URL = re.compile(r"(?:https?://|www\.)[^\s<>|]+|(?:[\w-]+\.)+[A-Za-z]{2,}(?:/[^\
 
 def contact_key(value):
     value = value.strip()
+    if re.fullmatch(r'\+?[\d\s().-]+',value) and 7<=len(re.sub(r'\D','',value))<=15:
+        return 'phone:'+re.sub(r'\D','',value)
     if re.match(r'^(?:https?://|www\.)|^[\w-]+\.[A-Za-z]{2,}(?:/|$)', value, re.I) and '@' not in value:
         return re.sub(r'^(?:https?://)?(?:www\.)?', '', value, flags=re.I).rstrip('/').lower()
     return re.sub(r'\s+', ' ', value.lower())
@@ -51,6 +53,8 @@ def extract_contacts(text, targets=()):
             if not re.match(r'^https?://', value, re.I) and re.search(r'\.(?:js|ts|py|jsx|tsx|sql|pdf|docx?)$', value, re.I):
                 continue
             if value.lower() == 'asp.net': continue
+            if re.fullmatch(r'(?:[BM]\.(?:Des|Arch|Tech|Sc|A|S)|Ph\.D)',value,re.I):continue
+            if not re.match(r'^(?:https?://|www\.)',value,re.I) and re.search(r'\.[A-Z][a-z]+$',value):continue
             links.append(value)
     for target in targets:
         if not isinstance(target, str): continue

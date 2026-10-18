@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from service.confirmation import pending_preferences, PENDING_UPDATE
 from service.resume_content import normalize, markdown_from
 from service.contacts import contact_values
+from service.document_structure import form_details
 
 sys.path.insert(0, os.environ.get("RESUME_SCRIPTS_DIR") or str(Path(__file__).resolve().parents[1]))
 from scripts.resume_json_to_preferences import apply_overrides, build_preferences
@@ -164,6 +165,8 @@ def upload_resume(
         except Exception as error:
             raise HTTPException(400, f"Could not read resume: {error}") from error
     details["source_file"] = Path(file.filename or "resume").name
+    details = form_details(details)
+    details['compiler_payload']={'markdown':markdown_from(details,edited=True)}
     details = normalize(details)
     current = read_profile(user_id)
     inferred["resumeFileName"] = details["source_file"]
@@ -248,12 +251,8 @@ def import_r2_resume(user: str, data: dict):
     details["personalDetails"] = {"fullName": header.get("name", ""), "email": header.get("email", ""),
         "phoneNumber": header.get("phone", ""), "location": header.get('location',''),
         "links": header.get('links', []), 'emails': header.get('emails', []), 'phones': header.get('phones', [])}
-    details["educationHistory"] = [{"id": "1", "college": details["education"], "degree": "", "field": "",
-        "startDate": "", "endDate": "", "grade": "", "maxGrade": "", "gradeType": "CGPA"}] if details.get("education") else []
+    details = form_details(details)
     entries = details.get("experience", [])
-    details["experienceHistory"] = [{"id": str(index + 1), "company": entry.get("company", ""), "role": entry.get("title", ""),
-        "startDate": "", "endDate": "", "jobDescription": "\n".join(entry.get("bullets", [])), "skills": [], "domains": [], "responsibilities": ""}
-        for index, entry in enumerate(entries if isinstance(entries, list) else [])]
     preferences["resumeFileKey"] = data["objectKey"]
     lines = ["# " + header.get("name", ""), *(['**'+header['title']+'**'] if header.get('title') else []), " | ".join(contact_values(details['personalDetails'], header)), ""]
     for title, field in [("Professional Summary", "summary"), ("Education", "education"), ("Skills & Technologies", "skills")]:
@@ -268,6 +267,7 @@ def import_r2_resume(user: str, data: dict):
         value = details.get(field)
         if isinstance(value, str) and value.strip(): lines.extend(["", "## " + field.replace("_", " ").title(), value])
     details["compiler_payload"] = {"markdown": "\n".join(lines), "templateId": preferences.get("selectedTemplateId", "mit-capd")}
+    details['compiler_payload']['markdown']=markdown_from(details,edited=True)
     details = normalize(details)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (user,))

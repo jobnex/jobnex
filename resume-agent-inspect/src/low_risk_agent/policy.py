@@ -90,8 +90,13 @@ def attach_metric_fact_ids(draft: ResumeDraft, source: ResumeSource) -> ResumeDr
                                  for body in bodies)), None)
 
         metrics = []
+        literals = {match.group() for match in METRIC.finditer(bullet.text)}
         for metric in bullet.metrics:
             cited = facts.get(metric.fact_id)
+            if (metric.origin == "source" and cited and cited.kind == "metric"
+                    and metric.literal not in literals and cited.source_span in literals
+                    and cited_metric(cited.source_span) == cited):
+                metric = metric.model_copy(update={"literal": cited.source_span})
             if metric.origin == "source" and cited and cited.kind in {
                 "responsibility", "project_detail", "other"
             }:

@@ -9,3 +9,7 @@ The failed NTT DATA request reached the model and repair stages, but length fitt
 The backend-only deployment is `job-hunt-resume-worker-metric-literal-1018`, serving 100% of worker traffic. Its image digest is `sha256:641ee86df9c902183fb1cdef22a1741aa0ee903139e6560224ce44ba7e318c91`. Environment and secret bindings, command/arguments, service account, resources, concurrency and timeout match the prior revision. No frontend deployment, endpoint, credential, schema or permission change is required. LangSmith tracing configuration is preserved.
 
 Length remains a separate quality check. A factually safe draft that misses its word target can require review; this change does not waive factual checks or guarantee every model output will pass.
+
+## Approved live verification
+
+One user-approved NTT DATA generation ran after deployment. Request `bff9d845-f329-492e-95cd-02b90ff57224` saved an 872-word draft (7,643 Markdown characters). The publication predicate returned true. Its only remaining failed checks are experience bullet count: both roles have eight bullets against the 1–6 target. It therefore finishes as `needs_review`, with one credit consumed, rather than a failed or missing draft. All metric provenance/annotation and word-count checks pass. The localhost Applications page shows Review Draft, and opening it displays both A4 pages with contact details, both company names, technical skills and projects. No second paid test was run.

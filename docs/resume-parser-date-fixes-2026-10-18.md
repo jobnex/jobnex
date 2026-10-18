@@ -98,4 +98,16 @@ Worker revision `job-hunt-resume-worker-project-review-1018` serves 100% of traf
 
 No frontend code change is required for the classification correction: existing `needs_review` handling should expose the draft and its review warning. The UI team should preserve that behavior when integrating.
 
+### Approved post-fix live test — passed
+
+On 18 October, the user approved one additional generation using the restored original resume and the same NTT DATA job. Request `55b5414f-93ca-45f3-9d7e-a6a96c9bcac1` finished **completed**, with **858 words**, a **960-word source**, and **396 passing audit checks**. Exactly one app credit was consumed for this successful test. The earlier failed test remains failed with its credit released.
+
+The test used the existing `enqueueTailoring` admission helper, including ownership, current-base checks, credit hold, idempotency and dispatch outbox. A request-scoped Cloud Task targeted only this approved request using the existing queue and invoker. A proposed shared recovery-scheduler trigger was rejected by automatic approval review because it could also dispatch unrelated requests; that shared trigger did not run.
+
+The current frontend Markdown parser verified both employers, each employment date range, graduation date separate from the institution, contact fields, technical skills and projects in the actual new output. The normal guarded `exportJobResume` helper produced a **94,117-byte, two-page A4 PDF**. Its saved working copy has status **ready**, matches the new generated Markdown, has a stored PDF object, and passes both generation and saved-Markdown publication predicates. The original base resume remains active.
+
+Both PDF pages were rendered and visually inspected. Text extraction independently confirmed both employers and all expected employment/graduation dates; no literal heading markup was found. Page dimensions are 595.28 × 841.89 points. Text remains inside page bounds, including the continuation-page top margin. No clipping or overlapping date/company fields was observed in this tested Modern Ivy export.
+
+The local app was restarted successfully. A fresh click-through of the browser preview was **not** completed: browser URL policy rejected access to the current browser error page. The test therefore establishes production generation, saved-draft availability, the current preview-parser contract, guarded export/storage/download, and PDF layout; it does not claim a new manual browser-preview pass or an audit of all templates. No credentials, endpoint changes, frontend deployment or further production code change was needed for this retest. Private resume files and detailed snapshots remain outside GitHub.
+
 This is a verified improvement for the supplied documents, not a guarantee for every possible PDF layout. Image-only PDFs remain unsupported. Unusual columns, missing/ambiguous source facts, dense paragraphs, or semantic fields still require review. This work does not certify the entire app as free of P1 or security issues.

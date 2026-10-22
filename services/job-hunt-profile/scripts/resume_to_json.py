@@ -228,7 +228,7 @@ def convert(input_path: Path, output_dir: Path) -> Path:
         import pdfplumber
         from service.pdf_layout import page_text
         with pdfplumber.open(input_path) as document:
-            pages = [page_text(page, HEADINGS) for page in document.pages]
+            pages = [page_text(page, HEADINGS).replace("\uf0b7", "•") for page in document.pages]
         text = "\n\n".join(page for page in pages if page)
         if not text:
             raise ValueError(f"No extractable text in {input_path}; scanned PDFs need OCR")

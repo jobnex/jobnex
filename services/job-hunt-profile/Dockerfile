@@ -8,7 +8,7 @@ COPY service/main.py service/main.py
 COPY service/confirmation.py service/confirmation.py
 COPY service/resume_content.py service/resume_content.py
 COPY service/contacts.py service/contacts.py
-COPY service/document_structure.py service/pdf_layout.py service/
+COPY service/document_structure.py service/pdf_layout.py service/layout_policy.py service/
 COPY service/test_main.py service/test_main.py
 COPY service/test_resume_content.py service/test_resume_content.py
 COPY service/test_document_structure.py service/test_document_structure.py

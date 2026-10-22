@@ -2,7 +2,7 @@
 import re
 
 MONTH = r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?'
-DATE_VALUE = rf'(?:{MONTH}\s+(?:19|20)\d{{2}}|(?:19|20)\d{{2}}|Present|Current|Now|Incoming\s+(?:Summer|Spring|Fall|Winter)\s+20\d{{2}})'
+DATE_VALUE = rf'(?:{MONTH}\s+(?:19|20)(?:\d{{2}}|XX)|(?:19|20)(?:\d{{2}}|XX)|Present|Current|Now|Incoming\s+(?:Summer|Spring|Fall|Winter)\s+20\d{{2}})'
 DATE_RANGE = re.compile(rf'(?<!\w){DATE_VALUE}(?:\s*[-–—]\s*{DATE_VALUE})?', re.I)
 INSTITUTION = re.compile(r'\b(?:universit\w*|college|school|institute|academy|IIT|NIT|IGNOU)\b',re.I)
 DEGREE = re.compile(r'\b(?:Bachelor|Master|Doctor|Honours|Associate|B\.?\s*(?:S|A|Tech|Des|Arch)|M\.?\s*(?:S|A|Tech|Des)|Ph\.?D|MBA)\b',re.I)
@@ -26,9 +26,16 @@ def experience_entries(raw):
         # A date-only metadata row or a header/date row, not a prose year mention.
         if before and not re.search(r'\s{2,}|\s[|/@]\s',s):continue
         if after and not (s[match.end():].lstrip().startswith('|') or re.search(r'\s{2,}',s[match.end():])):continue
-        previous=[j for j in range(i) if lines[j].strip()]
+        previous=[j for j in range(i) if lines[j].strip() and not re.fullmatch(r'[•●◦*\-]+',lines[j].strip())]
         start=i
         header=before
+        if before and len(before)<90 and re.search(r'\b(?:designer|engineer|intern|manager|analyst|developer|architect|lead|consultant|researcher|caller|instructor)\b',before,re.I) and previous:
+            prior=lines[previous[-1]].strip()
+            cells=re.split(r'\s{2,}',prior)
+            if len(cells)>1 and len(cells[0])<100:
+                header=cells[0].lstrip('•●◦* -')+' | '+before
+                start=previous[-1]
+                if not after:after=' | '.join(cells[1:])
         if not header and previous:
             start=previous[-1];header=lines[start].strip()
             # Stacked employer, title, date.
@@ -58,9 +65,9 @@ def experience_entries(raw):
             if not value:
                 if paragraph:bullets.append(paragraph);paragraph=''
                 continue
-            marked=bool(re.match(r'^[•●\uf0b7*\-]\s*',value))
+            marked=bool(re.match(r'^[•●◦\uf0b7*\-]\s*',value))
             if marked and paragraph:bullets.append(paragraph);paragraph=''
-            value=re.sub(r'^[•●\uf0b7*\-]\s*','',value)
+            value=re.sub(r'^[•●◦\uf0b7*\-]\s*','',value)
             paragraph=(paragraph+' '+value).strip()
         if paragraph:bullets.append(paragraph)
         entries.append({'company':company,'title':title,**dates(raw_date),'location':location,'bullets':bullets})
@@ -69,8 +76,17 @@ def experience_entries(raw):
 def education_entries(raw):
     entries=[];current=None
     for original in (raw or '').splitlines():
-        line=original.strip()
+        line=re.sub(r'^[•●\uf0b7*\-]\s*','',original.strip())
         if not line:continue
+        inline=re.split(r'\s+[–—-]\s+',line,maxsplit=1)
+        degree_first=len(inline)==2 and DEGREE.search(inline[0]) and INSTITUTION.search(inline[1])
+        school_first=len(inline)==2 and INSTITUTION.search(inline[0]) and DEGREE.search(inline[1])
+        if degree_first or school_first:
+            if current:entries.append(current);current=None
+            school,degree=(inline[1],inline[0]) if degree_first else (inline[0],inline[1])
+            entries.append({'id':str(len(entries)+1),'college':school.strip(),'degree':degree.strip(),
+                'field':'','startDate':'','endDate':'','grade':'','maxGrade':'','gradeType':'CGPA'})
+            continue
         cells=re.split(r'\s{2,}',line)
         notes=''
         if len(cells)>1 and INSTITUTION.search(cells[0]):line=cells[0];notes=' '.join(cells[1:])
@@ -80,6 +96,11 @@ def education_entries(raw):
         if institution and current and current['college'].rstrip().endswith(','):
             current['college']+=' '+clean
             if notes:current['details']=(current.get('details','')+' '+notes).strip()
+            continue
+        if institution and current and not current['college'] and current['degree']:
+            current['college']=clean
+            if notes:current['details']=(current.get('details','')+' '+notes).strip()
+            if match:current.update(dates(match.group()))
             continue
         if institution or current is None:
             if current:entries.append(current)

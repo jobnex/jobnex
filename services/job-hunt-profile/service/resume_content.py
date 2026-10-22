@@ -53,6 +53,8 @@ def markdown_from(details, edited=False):
             else: lines.extend("- " + text(bullet) for bullet in entry.get("bullets", []) if text(bullet))
             if text(entry.get("responsibilities")): lines.append(text(entry["responsibilities"]))
     lines.extend("\n## " + part.strip() for part in extra)
+    if not original:
+        lines.extend("\n## " + str(title) + "\n" + str(body) for title,body in details.get('other_sections',{}).items())
     rendered = "\n".join(lines).strip()
     return rendered or ("# Resume\n\n" + text(details.get("text")) if text(details.get("text")) else "")
 

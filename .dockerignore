@@ -6,6 +6,8 @@ node_modules
 coverage
 *.pem
 scratch
+ui-handoff
+.unlazy
 gcp-resume/build-context
 gcp-resume/*.json
 **/__pycache__

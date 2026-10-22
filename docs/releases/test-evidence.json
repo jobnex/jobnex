@@ -1,0 +1,17 @@
+{
+  "release": "resume-layout-20261021",
+  "source": "ui-handoff/my-app plus root backend overlay",
+  "checks": {
+    "layout policy and named fixtures": "passed",
+    "staged import ownership/hash/revision and transaction tests": "passed",
+    "strict enqueue/worker proof snapshots": "passed",
+    "compact browser upload flow": "passed",
+    "safe deletion without and with import schema": "passed",
+    "saved draft resume resurrection regression": "passed",
+    "generator/editor/PDF regressions": "passed",
+    "TypeScript": "passed",
+    "ESLint": "passed",
+    "Next production build": "passed"
+  },
+  "model_credits_spent": 0
+}

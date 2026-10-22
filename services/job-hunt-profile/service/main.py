@@ -34,7 +34,7 @@ MAX_RESUME_BYTES = 10 * 1024 * 1024
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "resumeLayoutContractVersion": 1}
 
 
 class ProfileUpdate(BaseModel):
@@ -149,46 +149,10 @@ def upload_resume(
     file: UploadFile = File(...),
     x_user_id: str = Header(default=""), x_timestamp: str = Header(default=""), x_signature: str = Header(default=""),
 ):
-    user_id = authenticated_user(x_user_id, x_timestamp, x_signature)
-    suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".pdf", ".docx"}:
-        raise HTTPException(400, "Upload a PDF or DOCX resume")
-    contents = file.file.read(MAX_RESUME_BYTES + 1)
-    if len(contents) > MAX_RESUME_BYTES:
-        raise HTTPException(413, "Resume exceeds 10 MB")
-    with tempfile.TemporaryDirectory() as directory:
-        source = Path(directory) / f"resume{suffix}"
-        source.write_bytes(contents)
-        try:
-            details = json.loads(convert(source, Path(directory)).read_text(encoding="utf-8"))
-            inferred = build_preferences(details["text"])
-        except Exception as error:
-            raise HTTPException(400, f"Could not read resume: {error}") from error
-    details["source_file"] = Path(file.filename or "resume").name
-    details = form_details(details)
-    details['compiler_payload']={'markdown':markdown_from(details,edited=True)}
-    details = normalize(details)
-    current = read_profile(user_id)
-    inferred["resumeFileName"] = details["source_file"]
-    inferred["resumeUploaded"] = True
-    preferences = inferred | {key: current["preferences"][key] for key in
-                              ("jobTypes", "salaryMin", "salaryMax", "selectedTemplateId", "includeSummarySections", "autofillFromResume")
-                              if key in current["preferences"]}
-    preferences["resumeFileName"] = details["source_file"]
-    preferences["resumeUploaded"] = True
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
-        conn.execute(
-            f"""INSERT INTO user_job_preferences
-               (user_id, preferences, resume_details, preferences_created_at, preferences_updated_at,
-                resume_details_created_at, resume_details_updated_at)
-               VALUES (%s, %s, %s, now(), now(), now(), now())
-               ON CONFLICT (user_id) DO UPDATE SET preferences = {PENDING_UPDATE},
-                 resume_details = EXCLUDED.resume_details, preferences_updated_at = now(),
-                 resume_details_updated_at = now(), updated_at = now()""",
-            (user_id, Jsonb(pending_preferences({}, preferences)), Jsonb(details)),
-        )
-        save_resume_content(conn, user_id, details)
-    return read_profile(user_id)
+    authenticated_user(x_user_id, x_timestamp, x_signature)
+    from service.layout_policy import validate_pdf
+    # Preview only. Activation is owned by the application's confirmed-import transaction.
+    return validate_pdf(file.file.read(MAX_RESUME_BYTES + 1), file.filename or "")
 
 
 @app.post("/profile/resume-from-r2")
@@ -211,7 +175,7 @@ async def resume_from_r2(request: Request):
     data = json.loads(body)
     key = data.get("objectKey", "")
     url = urllib.parse.urlparse(data.get("downloadUrl", ""))
-    if not key.startswith(f"user_pref_resumes/{user}/") or url.scheme != "https" or not (url.hostname or "").endswith(".r2.cloudflarestorage.com"):
+    if not (key.startswith(f"resume_imports/{user}/") or key.startswith(f"user_pref_resumes/{user}/")) or url.scheme != "https" or not (url.hostname or "").endswith(".r2.cloudflarestorage.com"):
         raise HTTPException(400, "Invalid source")
     # Run blocking parser and DB work outside the async event loop.
     from starlette.concurrency import run_in_threadpool
@@ -224,67 +188,7 @@ def import_r2_resume(user: str, data: dict):
     with urllib.request.build_opener(NoRedirect).open(data["downloadUrl"], timeout=20) as response:
         contents = response.read(MAX_RESUME_BYTES + 1)
     if len(contents) > MAX_RESUME_BYTES:
-        raise HTTPException(413, "Resume exceeds 10 MB")
-    suffix = Path(data["fileName"]).suffix.lower()
-    if suffix not in {".pdf", ".docx"}: raise HTTPException(400, "Upload a PDF or DOCX")
-    with tempfile.TemporaryDirectory() as folder:
-        source = Path(folder) / ("resume" + suffix)
-        source.write_bytes(contents)
-        try:
-            details = json.loads(convert(source, Path(folder)).read_text(encoding="utf-8"))
-            inferred = build_preferences(details["text"])
-        except Exception:
-            raise HTTPException(400, "Could not extract text from resume") from None
-    if not str(details.get("text", "")).strip():
-        raise HTTPException(400, "Resume has no extractable text. Upload a text-based PDF or DOCX.")
-    if data.get("validateOnly") is True:
-        return {"valid": True}
-    current = read_profile(user)
-    preferences = current["preferences"] | inferred
-    for key in ("jobTypes", "salaryMin", "salaryMax", "selectedTemplateId", "includeSummarySections", "autofillFromResume"):
-        if key in current["preferences"]: preferences[key] = current["preferences"][key]
-    preferences["resumeFileName"] = Path(data["fileName"]).name
-    preferences["resumeUploaded"] = True
-    details["source_file"] = preferences["resumeFileName"]
-    result = {"preferences": preferences, "resume_details": details}
-    header = details.get("header", {})
-    details["personalDetails"] = {"fullName": header.get("name", ""), "email": header.get("email", ""),
-        "phoneNumber": header.get("phone", ""), "location": header.get('location',''),
-        "links": header.get('links', []), 'emails': header.get('emails', []), 'phones': header.get('phones', [])}
-    details = form_details(details)
-    entries = details.get("experience", [])
-    preferences["resumeFileKey"] = data["objectKey"]
-    lines = ["# " + header.get("name", ""), *(['**'+header['title']+'**'] if header.get('title') else []), " | ".join(contact_values(details['personalDetails'], header)), ""]
-    for title, field in [("Professional Summary", "summary"), ("Education", "education"), ("Skills & Technologies", "skills")]:
-        value = details.get(field)
-        if isinstance(value, str) and value.strip(): lines.extend(["## " + title, value, ""])
-    if isinstance(entries, list) and entries:
-        lines.append("## Experience")
-        for entry in entries:
-            lines.extend(["### " + entry.get("title", ""), "**" + entry.get("company", "") + "** | " + entry.get("dates", "")])
-            lines.extend("- " + item for item in entry.get("bullets", []))
-    for field in ("projects", "certifications", "awards", "publications", "volunteering", "languages", "training", "research", "leadership", "achievements", "additional_information"):
-        value = details.get(field)
-        if isinstance(value, str) and value.strip(): lines.extend(["", "## " + field.replace("_", " ").title(), value])
-    details["compiler_payload"] = {"markdown": "\n".join(lines), "templateId": preferences.get("selectedTemplateId", "mit-capd")}
-    details['compiler_payload']['markdown']=markdown_from(details,edited=True)
-    details = normalize(details)
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
-        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (user,))
-        # Ignore a stale extraction if the user already uploaded a newer resume.
-        active = conn.execute("SELECT file_key FROM user_pref_resumes WHERE user_id=%s FOR UPDATE", (user,)).fetchone()
-        if not active or active[0] != data["objectKey"]:
-            raise HTTPException(409, "Resume replaced during extraction; retry latest upload")
-        pending = conn.execute(
-            "SELECT id FROM resume_generation_requests WHERE user_id=%s AND status IN ('queued','running') LIMIT 1",
-            (user,),
-        ).fetchone()
-        if pending:
-            raise HTTPException(409, "Wait for resume generation to finish before changing the base resume")
-        conn.execute(f"""INSERT INTO user_job_preferences(user_id,preferences,resume_details,active_resume_id,resume_details_created_at,resume_details_updated_at)
-            VALUES(%s,%s,%s,(SELECT id FROM user_pref_resumes WHERE user_id=%s),now(),now())
-            ON CONFLICT(user_id) DO UPDATE SET preferences={PENDING_UPDATE},resume_details=EXCLUDED.resume_details,
-            active_resume_id=EXCLUDED.active_resume_id,resume_details_created_at=COALESCE(user_job_preferences.resume_details_created_at,now()),resume_details_updated_at=now(),updated_at=now()""",
-            (user, Jsonb(pending_preferences({}, preferences)), Jsonb(details), user))
-        save_resume_content(conn, user, details)
-    return read_profile(user)
+        from service.layout_policy import rejected
+        return rejected("FILE_TOO_LARGE", "PDFs must be 10 MB or smaller.")
+    from service.layout_policy import validate_pdf
+    return validate_pdf(contents, data.get("fileName", ""))

@@ -1,0 +1,32 @@
+{
+  "baseline": "my-app(4).7z",
+  "files": [
+    "lib/resume-parser.ts",
+    "components/ResumeSheet.tsx",
+    "components/ResumeModal.tsx",
+    "app/actions/resume.ts",
+    "app/actions/tailored-resume.ts",
+    "app/actions/resume-applications.ts",
+    "app/api/resume/export/route.ts",
+    "app/(main)/job-hunt/manage/page.tsx",
+    "app/(main)/job-hunt/applications/page.tsx",
+    "store/useResumeStore.ts",
+    "next.config.ts",
+    "eslint.config.mjs",
+    "tsconfig.json",
+    ".gitignore",
+    "app/actions/storage.ts",
+    "app/actions/preferences.ts",
+    "app/api/job-hunt/profile/route.ts",
+    "lib/profile-service.ts",
+    "lib/hooks/useR2Storage.ts",
+    "lib/resume-review.ts",
+    "lib/resume-validation.ts",
+    "lib/resume-admission.ts",
+    "lib/resume-imports.ts",
+    "lib/resume-upload-policy.ts",
+    "components/ResumeImportPanel.tsx",
+    "drizzle/strict-resume-imports.sql",
+    ".env.example"
+  ]
+}

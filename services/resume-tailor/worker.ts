@@ -130,6 +130,12 @@ export async function processRequest(requestId: string, agent = run) {
     if (!result.rows[0]) throw new Error("request_missing");
     return false;
   }
+  const admitted = await pool.query(`SELECT public.resume_source_is_admitted(user_id::text,source_text,source_import_id) AS allowed
+    FROM resume_generation_requests WHERE id=$1 AND user_id=$2`,[request.id,request.user_id]);
+  if (admitted.rows[0]?.allowed !== true) {
+    await release(request,"failed","unsupported_resume_source");
+    return true;
+  }
   const folder = await mkdtemp(join(tmpdir(), "resume-tailor-"));
   try {
     const resume = join(folder, "resume.md"), jd = join(folder, "job.txt"), output = join(folder, "tailored.md");

@@ -1,0 +1,6200 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "prevId": "",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.job_ingest_runs": {
+      "name": "job_ingest_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parameters": {
+          "name": "parameters",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "jobs_seen": {
+          "name": "jobs_seen",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "jobs_new": {
+          "name": "jobs_new",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "jobs_updated": {
+          "name": "jobs_updated",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "jobs_failed": {
+          "name": "jobs_failed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_job_ingest_runs_failures": {
+          "name": "idx_job_ingest_runs_failures",
+          "columns": [
+            {
+              "expression": "started_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['failed'::text, 'partial'::text]))",
+          "with": {}
+        },
+        "idx_job_ingest_runs_one_active_per_source": {
+          "name": "idx_job_ingest_runs_one_active_per_source",
+          "columns": [
+            {
+              "expression": "source",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'running'::text)",
+          "with": {}
+        },
+        "idx_job_ingest_runs_source_time": {
+          "name": "idx_job_ingest_runs_source_time",
+          "columns": [
+            {
+              "expression": "source",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "started_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "job_ingest_runs_finished_when_terminal": {
+          "name": "job_ingest_runs_finished_when_terminal",
+          "value": "(status = 'running'::text) OR (finished_at IS NOT NULL)"
+        },
+        "job_ingest_runs_jobs_failed_check": {
+          "name": "job_ingest_runs_jobs_failed_check",
+          "value": "jobs_failed >= 0"
+        },
+        "job_ingest_runs_jobs_new_check": {
+          "name": "job_ingest_runs_jobs_new_check",
+          "value": "jobs_new >= 0"
+        },
+        "job_ingest_runs_jobs_seen_check": {
+          "name": "job_ingest_runs_jobs_seen_check",
+          "value": "jobs_seen >= 0"
+        },
+        "job_ingest_runs_jobs_updated_check": {
+          "name": "job_ingest_runs_jobs_updated_check",
+          "value": "jobs_updated >= 0"
+        },
+        "job_ingest_runs_source_check": {
+          "name": "job_ingest_runs_source_check",
+          "value": "source = ANY (ARRAY['linkedin'::text, 'naukri'::text, 'indeed'::text, 'glassdoor'::text, 'monster'::text, 'greenhouse'::text, 'lever'::text, 'ashby'::text, 'workday'::text, 'smartrecruiters'::text, 'company_site'::text, 'referral'::text, 'manual'::text])"
+        },
+        "job_ingest_runs_status_check": {
+          "name": "job_ingest_runs_status_check",
+          "value": "status = ANY (ARRAY['running'::text, 'succeeded'::text, 'failed'::text, 'partial'::text, 'cancelled'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public._sqlx_migrations": {
+      "name": "_sqlx_migrations",
+      "schema": "",
+      "columns": {
+        "version": {
+          "name": "version",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "installed_on": {
+          "name": "installed_on",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "success": {
+          "name": "success",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_time": {
+          "name": "execution_time",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.user_credentials": {
+      "name": "user_credentials",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_changed_at": {
+          "name": "password_changed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "failed_login_attempts": {
+          "name": "failed_login_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "locked_until": {
+          "name": "locked_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_credentials_user_id_fkey": {
+          "name": "user_credentials_user_id_fkey",
+          "tableFrom": "user_credentials",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "user_credentials_failed_login_attempts_check": {
+          "name": "user_credentials_failed_login_attempts_check",
+          "value": "failed_login_attempts >= 0"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'candidate'"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending_verification'"
+        },
+        "email_verified_at": {
+          "name": "email_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_login_at": {
+          "name": "last_login_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_users_role": {
+          "name": "idx_users_role",
+          "columns": [
+            {
+              "expression": "role",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_users_status": {
+          "name": "idx_users_status",
+          "columns": [
+            {
+              "expression": "status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_email_key": {
+          "columns": [
+            "email"
+          ],
+          "nullsNotDistinct": false,
+          "name": "users_email_key"
+        }
+      },
+      "checkConstraints": {
+        "users_role_check": {
+          "name": "users_role_check",
+          "value": "role = ANY (ARRAY['candidate'::text, 'recruiter'::text, 'admin'::text])"
+        },
+        "users_status_check": {
+          "name": "users_status_check",
+          "value": "status = ANY (ARRAY['pending_verification'::text, 'active'::text, 'suspended'::text, 'deactivated'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.audit_logs": {
+      "name": "audit_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_role": {
+          "name": "actor_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_type": {
+          "name": "resource_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "inet",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_audit_logs_action_time": {
+          "name": "idx_audit_logs_action_time",
+          "columns": [
+            {
+              "expression": "action",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "occurred_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_audit_logs_actor_time": {
+          "name": "idx_audit_logs_actor_time",
+          "columns": [
+            {
+              "expression": "actor_user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "occurred_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_audit_logs_denied": {
+          "name": "idx_audit_logs_denied",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(outcome = 'denied'::text)",
+          "with": {}
+        },
+        "idx_audit_logs_resource": {
+          "name": "idx_audit_logs_resource",
+          "columns": [
+            {
+              "expression": "resource_type",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "resource_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "occurred_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(resource_id IS NOT NULL)",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "audit_logs_actor_user_id_fkey": {
+          "name": "audit_logs_actor_user_id_fkey",
+          "tableFrom": "audit_logs",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audit_logs_outcome_check": {
+          "name": "audit_logs_outcome_check",
+          "value": "outcome = ANY (ARRAY['success'::text, 'failure'::text, 'denied'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.password_reset_tokens": {
+      "name": "password_reset_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_ip": {
+          "name": "requested_ip",
+          "type": "inet",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_user_agent": {
+          "name": "requested_user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_password_reset_tokens_active": {
+          "name": "idx_password_reset_tokens_active",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(consumed_at IS NULL)",
+          "with": {}
+        },
+        "idx_password_reset_tokens_expires_at": {
+          "name": "idx_password_reset_tokens_expires_at",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_password_reset_tokens_user_id": {
+          "name": "idx_password_reset_tokens_user_id",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "password_reset_tokens_user_id_fkey": {
+          "name": "password_reset_tokens_user_id_fkey",
+          "tableFrom": "password_reset_tokens",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "password_reset_tokens_token_hash_key": {
+          "columns": [
+            "token_hash"
+          ],
+          "nullsNotDistinct": false,
+          "name": "password_reset_tokens_token_hash_key"
+        }
+      },
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.resumes": {
+      "name": "resumes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'uploaded'"
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_primary": {
+          "name": "is_primary",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "current_version": {
+          "name": "current_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending_parse'"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_resumes_one_primary_per_user": {
+          "name": "idx_resumes_one_primary_per_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(is_primary AND (deleted_at IS NULL))",
+          "with": {}
+        },
+        "idx_resumes_pending_parse": {
+          "name": "idx_resumes_pending_parse",
+          "columns": [
+            {
+              "expression": "created_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['pending_parse'::text, 'parsing'::text]))",
+          "with": {}
+        },
+        "idx_resumes_user_created": {
+          "name": "idx_resumes_user_created",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(deleted_at IS NULL)",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "resumes_user_id_fkey": {
+          "name": "resumes_user_id_fkey",
+          "tableFrom": "resumes",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "resumes_id_user_unique": {
+          "columns": [
+            "id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "resumes_id_user_unique"
+        }
+      },
+      "checkConstraints": {
+        "resumes_current_version_check": {
+          "name": "resumes_current_version_check",
+          "value": "current_version >= 1"
+        },
+        "resumes_kind_check": {
+          "name": "resumes_kind_check",
+          "value": "kind = ANY (ARRAY['uploaded'::text, 'generated'::text])"
+        },
+        "resumes_status_check": {
+          "name": "resumes_status_check",
+          "value": "status = ANY (ARRAY['pending_parse'::text, 'parsing'::text, 'ready'::text, 'parse_failed'::text, 'quarantined'::text])"
+        }
+      },
+      "policies": {
+        "resumes_owner": {
+          "name": "resumes_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.plans": {
+      "name": "plans",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_cents": {
+          "name": "price_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'USD'"
+        },
+        "billing_period": {
+          "name": "billing_period",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "features": {
+          "name": "features",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "plans_billing_period_check": {
+          "name": "plans_billing_period_check",
+          "value": "billing_period = ANY (ARRAY['free'::text, 'monthly'::text, 'yearly'::text, 'lifetime'::text])"
+        },
+        "plans_code_check": {
+          "name": "plans_code_check",
+          "value": "code ~ '^[a-z][a-z0-9_]{1,30}$'::text"
+        },
+        "plans_currency_check": {
+          "name": "plans_currency_check",
+          "value": "currency ~ '^[A-Z]{3}$'::text"
+        },
+        "plans_features_check": {
+          "name": "plans_features_check",
+          "value": "jsonb_typeof(features) = 'object'::text"
+        },
+        "plans_free_is_free": {
+          "name": "plans_free_is_free",
+          "value": "((billing_period = 'free'::text) AND (price_cents = 0)) OR ((billing_period <> 'free'::text) AND (price_cents > 0))"
+        },
+        "plans_price_cents_check": {
+          "name": "plans_price_cents_check",
+          "value": "price_cents >= 0"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.resume_profiles": {
+      "name": "resume_profiles",
+      "schema": "",
+      "columns": {
+        "resume_version_id": {
+          "name": "resume_version_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "full_name": {
+          "name": "full_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_country": {
+          "name": "location_country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_city": {
+          "name": "location_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_experience_months": {
+          "name": "total_experience_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "highest_education_level": {
+          "name": "highest_education_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "education": {
+          "name": "education",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "experience": {
+          "name": "experience",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "projects": {
+          "name": "projects",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "certifications": {
+          "name": "certifications",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "languages": {
+          "name": "languages",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "achievements": {
+          "name": "achievements",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "social_links": {
+          "name": "social_links",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "raw_text": {
+          "name": "raw_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parser_version": {
+          "name": "parser_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parsed_at": {
+          "name": "parsed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_resume_profiles_certifications": {
+          "name": "idx_resume_profiles_certifications",
+          "columns": [
+            {
+              "expression": "certifications",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "jsonb_path_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "idx_resume_profiles_experience": {
+          "name": "idx_resume_profiles_experience",
+          "columns": [
+            {
+              "expression": "experience",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "jsonb_path_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "idx_resume_profiles_parser_version": {
+          "name": "idx_resume_profiles_parser_version",
+          "columns": [
+            {
+              "expression": "parser_version",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_resume_profiles_user": {
+          "name": "idx_resume_profiles_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "resume_profiles_version_fk": {
+          "name": "resume_profiles_version_fk",
+          "tableFrom": "resume_profiles",
+          "tableTo": "resume_versions",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "resume_version_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "resume_profiles_highest_education_level_check": {
+          "name": "resume_profiles_highest_education_level_check",
+          "value": "highest_education_level = ANY (ARRAY['high_school'::text, 'diploma'::text, 'associate'::text, 'bachelor'::text, 'master'::text, 'doctorate'::text, 'other'::text])"
+        },
+        "resume_profiles_sections_are_arrays": {
+          "name": "resume_profiles_sections_are_arrays",
+          "value": "(jsonb_typeof(education) = 'array'::text) AND (jsonb_typeof(experience) = 'array'::text) AND (jsonb_typeof(projects) = 'array'::text) AND (jsonb_typeof(certifications) = 'array'::text) AND (jsonb_typeof(languages) = 'array'::text) AND (jsonb_typeof(achievements) = 'array'::text) AND (jsonb_typeof(social_links) = 'object'::text)"
+        },
+        "resume_profiles_total_experience_months_check": {
+          "name": "resume_profiles_total_experience_months_check",
+          "value": "(total_experience_months >= 0) AND (total_experience_months <= 720)"
+        }
+      },
+      "policies": {
+        "resume_profiles_owner": {
+          "name": "resume_profiles_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.generated_resumes": {
+      "name": "generated_resumes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_resume_id": {
+          "name": "base_resume_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resume_id": {
+          "name": "resume_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "model_version": {
+          "name": "model_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tailoring_summary": {
+          "name": "tailoring_summary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "match_score_at_generation": {
+          "name": "match_score_at_generation",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_generated_resumes_model": {
+          "name": "idx_generated_resumes_model",
+          "columns": [
+            {
+              "expression": "model_version",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_generated_resumes_request": {
+          "name": "idx_generated_resumes_request",
+          "columns": [
+            {
+              "expression": "request_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_generated_resumes_user_job": {
+          "name": "idx_generated_resumes_user_job",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int4_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int4_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "version",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_generated_resumes_user_recent": {
+          "name": "idx_generated_resumes_user_recent",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "generated_resumes_base_resume_fk": {
+          "name": "generated_resumes_base_resume_fk",
+          "tableFrom": "generated_resumes",
+          "tableTo": "resumes",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id",
+            "base_resume_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "generated_resumes_job_id_fkey": {
+          "name": "generated_resumes_job_id_fkey",
+          "tableFrom": "generated_resumes",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "generated_resumes_output_resume_fk": {
+          "name": "generated_resumes_output_resume_fk",
+          "tableFrom": "generated_resumes",
+          "tableTo": "resumes",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id",
+            "resume_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "generated_resumes_request_fk": {
+          "name": "generated_resumes_request_fk",
+          "tableFrom": "generated_resumes",
+          "tableTo": "resume_requests",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "generated_resumes_mapping_unique": {
+          "columns": [
+            "base_resume_id",
+            "job_id",
+            "user_id",
+            "version"
+          ],
+          "nullsNotDistinct": false,
+          "name": "generated_resumes_mapping_unique"
+        }
+      },
+      "checkConstraints": {
+        "generated_resumes_match_score_at_generation_check": {
+          "name": "generated_resumes_match_score_at_generation_check",
+          "value": "(match_score_at_generation >= (0)::double precision) AND (match_score_at_generation <= (100)::double precision)"
+        },
+        "generated_resumes_output_differs_from_base": {
+          "name": "generated_resumes_output_differs_from_base",
+          "value": "resume_id <> base_resume_id"
+        },
+        "generated_resumes_tailoring_summary_check": {
+          "name": "generated_resumes_tailoring_summary_check",
+          "value": "jsonb_typeof(tailoring_summary) = 'object'::text"
+        },
+        "generated_resumes_version_check": {
+          "name": "generated_resumes_version_check",
+          "value": "version >= 1"
+        }
+      },
+      "policies": {
+        "generated_resumes_owner": {
+          "name": "generated_resumes_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.skills": {
+      "name": "skills",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_skills_category": {
+          "name": "idx_skills_category",
+          "columns": [
+            {
+              "expression": "category",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "is_active",
+          "with": {}
+        },
+        "idx_skills_name_trgm": {
+          "name": "idx_skills_name_trgm",
+          "columns": [
+            {
+              "expression": "name",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "skills_slug_key": {
+          "columns": [
+            "slug"
+          ],
+          "nullsNotDistinct": false,
+          "name": "skills_slug_key"
+        }
+      },
+      "checkConstraints": {
+        "skills_category_check": {
+          "name": "skills_category_check",
+          "value": "category = ANY (ARRAY['programming_language'::text, 'framework'::text, 'library'::text, 'database'::text, 'cloud'::text, 'devops'::text, 'tool'::text, 'soft_skill'::text, 'domain'::text, 'certification'::text, 'language'::text, 'other'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.applications": {
+      "name": "applications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_source_id": {
+          "name": "job_source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resume_id": {
+          "name": "resume_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resume_version": {
+          "name": "resume_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "generated_resume_id": {
+          "name": "generated_resume_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'applied'"
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_status_at": {
+          "name": "last_status_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "next_action_at": {
+          "name": "next_action_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_of_truth": {
+          "name": "source_of_truth",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'self_reported'"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_applications_followup": {
+          "name": "idx_applications_followup",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "next_action_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((next_action_at IS NOT NULL) AND (status <> ALL (ARRAY['rejected'::text, 'withdrawn'::text, 'hired'::text, 'ghosted'::text])))",
+          "with": {}
+        },
+        "idx_applications_job": {
+          "name": "idx_applications_job",
+          "columns": [
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_applications_stale": {
+          "name": "idx_applications_stale",
+          "columns": [
+            {
+              "expression": "last_status_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['applied'::text, 'screening'::text]))",
+          "with": {}
+        },
+        "idx_applications_user_recent": {
+          "name": "idx_applications_user_recent",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "last_status_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_applications_user_status": {
+          "name": "idx_applications_user_status",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "last_status_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "applications_generated_resume_id_fkey": {
+          "name": "applications_generated_resume_id_fkey",
+          "tableFrom": "applications",
+          "tableTo": "generated_resumes",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "generated_resume_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "applications_job_id_fkey": {
+          "name": "applications_job_id_fkey",
+          "tableFrom": "applications",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "applications_job_source_id_fkey": {
+          "name": "applications_job_source_id_fkey",
+          "tableFrom": "applications",
+          "tableTo": "job_sources",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "applications_resume_fk": {
+          "name": "applications_resume_fk",
+          "tableFrom": "applications",
+          "tableTo": "resumes",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id",
+            "resume_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "applications_user_id_fkey": {
+          "name": "applications_user_id_fkey",
+          "tableFrom": "applications",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "applications_id_user_unique": {
+          "columns": [
+            "id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "applications_id_user_unique"
+        },
+        "applications_user_job_unique": {
+          "columns": [
+            "job_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "applications_user_job_unique"
+        }
+      },
+      "checkConstraints": {
+        "applications_applied_at_present": {
+          "name": "applications_applied_at_present",
+          "value": "(status = 'interested'::text) OR (applied_at IS NOT NULL)"
+        },
+        "applications_resume_version_check": {
+          "name": "applications_resume_version_check",
+          "value": "resume_version >= 1"
+        },
+        "applications_resume_version_paired": {
+          "name": "applications_resume_version_paired",
+          "value": "((resume_id IS NULL) AND (resume_version IS NULL)) OR ((resume_id IS NOT NULL) AND (resume_version IS NOT NULL))"
+        },
+        "applications_source_of_truth_check": {
+          "name": "applications_source_of_truth_check",
+          "value": "source_of_truth = ANY (ARRAY['self_reported'::text, 'email_parsed'::text, 'ats_webhook'::text, 'system'::text])"
+        },
+        "applications_status_check": {
+          "name": "applications_status_check",
+          "value": "status = ANY (ARRAY['interested'::text, 'applied'::text, 'screening'::text, 'assessment'::text, 'interview'::text, 'offer'::text, 'hired'::text, 'rejected'::text, 'withdrawn'::text, 'ghosted'::text])"
+        }
+      },
+      "policies": {
+        "applications_owner": {
+          "name": "applications_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.match_results": {
+      "name": "match_results",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resume_version_id": {
+          "name": "resume_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "overall_score": {
+          "name": "overall_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skill_score": {
+          "name": "skill_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "experience_score": {
+          "name": "experience_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "education_score": {
+          "name": "education_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "semantic_score": {
+          "name": "semantic_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "certification_score": {
+          "name": "certification_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "keyword_score": {
+          "name": "keyword_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "location_score": {
+          "name": "location_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role_score": {
+          "name": "role_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cosine_similarity": {
+          "name": "cosine_similarity",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "explanation": {
+          "name": "explanation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "missing_skills": {
+          "name": "missing_skills",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "matched_skills": {
+          "name": "matched_skills",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "recommendations": {
+          "name": "recommendations",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "scorer_version": {
+          "name": "scorer_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_model": {
+          "name": "embedding_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'all-MiniLM-L6-v2'"
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_match_results_job_score": {
+          "name": "idx_match_results_job_score",
+          "columns": [
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "float4_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "overall_score",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_match_results_missing_skills": {
+          "name": "idx_match_results_missing_skills",
+          "columns": [
+            {
+              "expression": "missing_skills",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "jsonb_path_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "idx_match_results_resume": {
+          "name": "idx_match_results_resume",
+          "columns": [
+            {
+              "expression": "resume_version_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "float4_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "overall_score",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_match_results_scorer_version": {
+          "name": "idx_match_results_scorer_version",
+          "columns": [
+            {
+              "expression": "scorer_version",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_match_results_strong": {
+          "name": "idx_match_results_strong",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "computed_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(overall_score >= (70)::double precision)",
+          "with": {}
+        },
+        "idx_match_results_user_score": {
+          "name": "idx_match_results_user_score",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "overall_score",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "match_results_job_id_fkey": {
+          "name": "match_results_job_id_fkey",
+          "tableFrom": "match_results",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_results_resume_version_id_fkey": {
+          "name": "match_results_resume_version_id_fkey",
+          "tableFrom": "match_results",
+          "tableTo": "resume_versions",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "resume_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_results_user_id_fkey": {
+          "name": "match_results_user_id_fkey",
+          "tableFrom": "match_results",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "match_results_unique": {
+          "columns": [
+            "job_id",
+            "resume_version_id",
+            "scorer_version"
+          ],
+          "nullsNotDistinct": false,
+          "name": "match_results_unique"
+        }
+      },
+      "checkConstraints": {
+        "match_results_certification_score_check": {
+          "name": "match_results_certification_score_check",
+          "value": "(certification_score >= (0)::double precision) AND (certification_score <= (100)::double precision)"
+        },
+        "match_results_cosine_similarity_check": {
+          "name": "match_results_cosine_similarity_check",
+          "value": "(cosine_similarity >= ('-1'::integer)::double precision) AND (cosine_similarity <= (1)::double precision)"
+        },
+        "match_results_education_score_check": {
+          "name": "match_results_education_score_check",
+          "value": "(education_score >= (0)::double precision) AND (education_score <= (100)::double precision)"
+        },
+        "match_results_experience_score_check": {
+          "name": "match_results_experience_score_check",
+          "value": "(experience_score >= (0)::double precision) AND (experience_score <= (100)::double precision)"
+        },
+        "match_results_explanation_check": {
+          "name": "match_results_explanation_check",
+          "value": "jsonb_typeof(explanation) = 'object'::text"
+        },
+        "match_results_keyword_score_check": {
+          "name": "match_results_keyword_score_check",
+          "value": "(keyword_score >= (0)::double precision) AND (keyword_score <= (100)::double precision)"
+        },
+        "match_results_location_score_check": {
+          "name": "match_results_location_score_check",
+          "value": "(location_score >= (0)::double precision) AND (location_score <= (100)::double precision)"
+        },
+        "match_results_matched_skills_check": {
+          "name": "match_results_matched_skills_check",
+          "value": "jsonb_typeof(matched_skills) = 'array'::text"
+        },
+        "match_results_missing_skills_check": {
+          "name": "match_results_missing_skills_check",
+          "value": "jsonb_typeof(missing_skills) = 'array'::text"
+        },
+        "match_results_overall_score_check": {
+          "name": "match_results_overall_score_check",
+          "value": "(overall_score >= (0)::double precision) AND (overall_score <= (100)::double precision)"
+        },
+        "match_results_recommendations_check": {
+          "name": "match_results_recommendations_check",
+          "value": "jsonb_typeof(recommendations) = 'array'::text"
+        },
+        "match_results_role_score_check": {
+          "name": "match_results_role_score_check",
+          "value": "(role_score >= (0)::double precision) AND (role_score <= (100)::double precision)"
+        },
+        "match_results_semantic_score_check": {
+          "name": "match_results_semantic_score_check",
+          "value": "(semantic_score >= (0)::double precision) AND (semantic_score <= (100)::double precision)"
+        },
+        "match_results_skill_score_check": {
+          "name": "match_results_skill_score_check",
+          "value": "(skill_score >= (0)::double precision) AND (skill_score <= (100)::double precision)"
+        }
+      },
+      "policies": {
+        "match_results_owner": {
+          "name": "match_results_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.skill_aliases": {
+      "name": "skill_aliases",
+      "schema": "",
+      "columns": {
+        "alias": {
+          "name": "alias",
+          "type": "citext",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "skill_id": {
+          "name": "skill_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'curated'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_skill_aliases_skill": {
+          "name": "idx_skill_aliases_skill",
+          "columns": [
+            {
+              "expression": "skill_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "skill_aliases_skill_id_fkey": {
+          "name": "skill_aliases_skill_id_fkey",
+          "tableFrom": "skill_aliases",
+          "tableTo": "skills",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "skill_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "skill_aliases_source_check": {
+          "name": "skill_aliases_source_check",
+          "value": "source = ANY (ARRAY['curated'::text, 'imported'::text, 'learned'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.email_verification_tokens": {
+      "name": "email_verification_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_email_verification_tokens_expires_at": {
+          "name": "idx_email_verification_tokens_expires_at",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_email_verification_tokens_user_id": {
+          "name": "idx_email_verification_tokens_user_id",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "email_verification_tokens_user_id_fkey": {
+          "name": "email_verification_tokens_user_id_fkey",
+          "tableFrom": "email_verification_tokens",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "email_verification_tokens_token_hash_key": {
+          "columns": [
+            "token_hash"
+          ],
+          "nullsNotDistinct": false,
+          "name": "email_verification_tokens_token_hash_key"
+        }
+      },
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.user_sessions": {
+      "name": "user_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_hash": {
+          "name": "refresh_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "inet",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_user_sessions_active": {
+          "name": "idx_user_sessions_active",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "expires_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(revoked_at IS NULL)",
+          "with": {}
+        },
+        "idx_user_sessions_expires_at": {
+          "name": "idx_user_sessions_expires_at",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_user_sessions_user_id": {
+          "name": "idx_user_sessions_user_id",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_sessions_user_id_fkey": {
+          "name": "user_sessions_user_id_fkey",
+          "tableFrom": "user_sessions",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "user_sessions_refresh_token_hash_key": {
+          "columns": [
+            "refresh_token_hash"
+          ],
+          "nullsNotDistinct": false,
+          "name": "user_sessions_refresh_token_hash_key"
+        }
+      },
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.user_profiles": {
+      "name": "user_profiles",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "full_name": {
+          "name": "full_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "headline": {
+          "name": "headline",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_country": {
+          "name": "location_country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_city": {
+          "name": "location_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "work_auth_status": {
+          "name": "work_auth_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'not_specified'"
+        },
+        "needs_sponsorship": {
+          "name": "needs_sponsorship",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_experience_months": {
+          "name": "total_experience_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "social_links": {
+          "name": "social_links",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "avatar_storage_key": {
+          "name": "avatar_storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_user_profiles_location": {
+          "name": "idx_user_profiles_location",
+          "columns": [
+            {
+              "expression": "location_country",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "location_city",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(location_country IS NOT NULL)",
+          "with": {}
+        },
+        "idx_user_profiles_work_auth": {
+          "name": "idx_user_profiles_work_auth",
+          "columns": [
+            {
+              "expression": "work_auth_status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(work_auth_status <> 'not_specified'::text)",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_profiles_user_id_fkey": {
+          "name": "user_profiles_user_id_fkey",
+          "tableFrom": "user_profiles",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "user_profiles_total_experience_months_check": {
+          "name": "user_profiles_total_experience_months_check",
+          "value": "total_experience_months >= 0"
+        },
+        "user_profiles_work_auth_status_check": {
+          "name": "user_profiles_work_auth_status_check",
+          "value": "work_auth_status = ANY (ARRAY['not_specified'::text, 'citizen'::text, 'permanent_resident'::text, 'green_card'::text, 'h1b'::text, 'f1_opt'::text, 'f1_stem_opt'::text, 'work_permit'::text, 'requires_sponsorship'::text, 'other'::text])"
+        }
+      },
+      "policies": {
+        "user_profiles_owner": {
+          "name": "user_profiles_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.job_sources": {
+      "name": "job_sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_job_id": {
+          "name": "source_job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "apply_url": {
+          "name": "apply_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "apply_type": {
+          "name": "apply_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applicants_count": {
+          "name": "applicants_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "posted_at": {
+          "name": "posted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "raw_payload": {
+          "name": "raw_payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_job_sources_applicants": {
+          "name": "idx_job_sources_applicants",
+          "columns": [
+            {
+              "expression": "applicants_count",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int4_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(is_active AND (applicants_count IS NOT NULL))",
+          "with": {}
+        },
+        "idx_job_sources_job": {
+          "name": "idx_job_sources_job",
+          "columns": [
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "is_active",
+          "with": {}
+        },
+        "idx_job_sources_last_seen": {
+          "name": "idx_job_sources_last_seen",
+          "columns": [
+            {
+              "expression": "last_seen_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "is_active",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "job_sources_job_id_fkey": {
+          "name": "job_sources_job_id_fkey",
+          "tableFrom": "job_sources",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "job_sources_job_board_unique": {
+          "columns": [
+            "job_id",
+            "source"
+          ],
+          "nullsNotDistinct": false,
+          "name": "job_sources_job_board_unique"
+        },
+        "job_sources_source_identity_unique": {
+          "columns": [
+            "source",
+            "source_job_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "job_sources_source_identity_unique"
+        }
+      },
+      "checkConstraints": {
+        "job_sources_applicants_count_check": {
+          "name": "job_sources_applicants_count_check",
+          "value": "applicants_count >= 0"
+        },
+        "job_sources_apply_type_check": {
+          "name": "job_sources_apply_type_check",
+          "value": "apply_type = ANY (ARRAY['external'::text, 'easy_apply'::text, 'email'::text, 'ats_direct'::text])"
+        },
+        "job_sources_apply_url_check": {
+          "name": "job_sources_apply_url_check",
+          "value": "(apply_url IS NULL) OR (apply_url ~ '^https://'::text)"
+        },
+        "job_sources_source_check": {
+          "name": "job_sources_source_check",
+          "value": "source = ANY (ARRAY['linkedin'::text, 'naukri'::text, 'indeed'::text, 'glassdoor'::text, 'monster'::text, 'greenhouse'::text, 'lever'::text, 'ashby'::text, 'workday'::text, 'smartrecruiters'::text, 'company_site'::text, 'referral'::text, 'manual'::text])"
+        },
+        "job_sources_source_url_check": {
+          "name": "job_sources_source_url_check",
+          "value": "source_url ~ '^https://'::text"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.companies": {
+      "name": "companies",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "website": {
+          "name": "website",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "logo_url": {
+          "name": "logo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "industry": {
+          "name": "industry",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "size_bucket": {
+          "name": "size_bucket",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "headquarters_country": {
+          "name": "headquarters_country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "headquarters_city": {
+          "name": "headquarters_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "merged_into_company_id": {
+          "name": "merged_into_company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_companies_name": {
+          "name": "idx_companies_name",
+          "columns": [
+            {
+              "expression": "name",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(merged_into_company_id IS NULL)",
+          "with": {}
+        },
+        "idx_companies_name_trgm": {
+          "name": "idx_companies_name_trgm",
+          "columns": [
+            {
+              "expression": "name",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "companies_merged_into_company_id_fkey": {
+          "name": "companies_merged_into_company_id_fkey",
+          "tableFrom": "companies",
+          "tableTo": "companies",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "merged_into_company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "companies_slug_key": {
+          "columns": [
+            "slug"
+          ],
+          "nullsNotDistinct": false,
+          "name": "companies_slug_key"
+        }
+      },
+      "checkConstraints": {
+        "companies_logo_url_check": {
+          "name": "companies_logo_url_check",
+          "value": "(logo_url IS NULL) OR (logo_url ~ '^https://'::text)"
+        },
+        "companies_size_bucket_check": {
+          "name": "companies_size_bucket_check",
+          "value": "size_bucket = ANY (ARRAY['1-10'::text, '11-50'::text, '51-200'::text, '201-1000'::text, '1001-5000'::text, '5000+'::text])"
+        },
+        "companies_website_check": {
+          "name": "companies_website_check",
+          "value": "(website IS NULL) OR (website ~ '^https://'::text)"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.jobs": {
+      "name": "jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_fingerprint": {
+          "name": "content_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title_normalized": {
+          "name": "title_normalized",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description_raw": {
+          "name": "description_raw",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description_plain": {
+          "name": "description_plain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description_blocks": {
+          "name": "description_blocks",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "snippet": {
+          "name": "snippet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "search_tsv": {
+          "name": "search_tsv",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "(setweight(to_tsvector('english'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, COALESCE(description_plain, ''::text)), 'B'::\"char\"))",
+            "type": "stored"
+          }
+        },
+        "location_country": {
+          "name": "location_country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_city": {
+          "name": "location_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_region": {
+          "name": "location_region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_remote": {
+          "name": "is_remote",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_hybrid": {
+          "name": "is_hybrid",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "experience_min_years": {
+          "name": "experience_min_years",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "experience_max_years": {
+          "name": "experience_max_years",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "experience_level": {
+          "name": "experience_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "job_type": {
+          "name": "job_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_domain": {
+          "name": "job_domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_min": {
+          "name": "salary_min",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_max": {
+          "name": "salary_max",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_currency": {
+          "name": "salary_currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_period": {
+          "name": "salary_period",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_is_estimated": {
+          "name": "salary_is_estimated",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "visa_sponsorship": {
+          "name": "visa_sponsorship",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "security_clearance_required": {
+          "name": "security_clearance_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepts_f1_opt": {
+          "name": "accepts_f1_opt",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepts_stem_opt": {
+          "name": "accepts_stem_opt",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepts_green_card": {
+          "name": "accepts_green_card",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "posted_at": {
+          "name": "posted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "legacy_job_id": {
+          "name": "legacy_job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_jobs_active_posted": {
+          "name": "idx_jobs_active_posted",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "id",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'active'::text)",
+          "with": {}
+        },
+        "idx_jobs_city_posted": {
+          "name": "idx_jobs_city_posted",
+          "columns": [
+            {
+              "expression": "location_city",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'active'::text)",
+          "with": {}
+        },
+        "idx_jobs_company_posted": {
+          "name": "idx_jobs_company_posted",
+          "columns": [
+            {
+              "expression": "company_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'active'::text)",
+          "with": {}
+        },
+        "idx_jobs_country_type_posted": {
+          "name": "idx_jobs_country_type_posted",
+          "columns": [
+            {
+              "expression": "location_country",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "job_type",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'active'::text)",
+          "with": {}
+        },
+        "idx_jobs_domain_posted": {
+          "name": "idx_jobs_domain_posted",
+          "columns": [
+            {
+              "expression": "job_domain",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'active'::text)",
+          "with": {}
+        },
+        "idx_jobs_experience_range": {
+          "name": "idx_jobs_experience_range",
+          "columns": [
+            {
+              "expression": "experience_min_years",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int2_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "experience_max_years",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int2_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND (experience_min_years IS NOT NULL))",
+          "with": {}
+        },
+        "idx_jobs_expiring": {
+          "name": "idx_jobs_expiring",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND (expires_at IS NOT NULL))",
+          "with": {}
+        },
+        "idx_jobs_f1_opt": {
+          "name": "idx_jobs_f1_opt",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND accepts_f1_opt)",
+          "with": {}
+        },
+        "idx_jobs_green_card": {
+          "name": "idx_jobs_green_card",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND accepts_green_card)",
+          "with": {}
+        },
+        "idx_jobs_hybrid_posted": {
+          "name": "idx_jobs_hybrid_posted",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND is_hybrid)",
+          "with": {}
+        },
+        "idx_jobs_legacy_job_id": {
+          "name": "idx_jobs_legacy_job_id",
+          "columns": [
+            {
+              "expression": "legacy_job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int4_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(legacy_job_id IS NOT NULL)",
+          "with": {}
+        },
+        "idx_jobs_level_posted": {
+          "name": "idx_jobs_level_posted",
+          "columns": [
+            {
+              "expression": "experience_level",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'active'::text)",
+          "with": {}
+        },
+        "idx_jobs_no_clearance": {
+          "name": "idx_jobs_no_clearance",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND (security_clearance_required IS NOT TRUE))",
+          "with": {}
+        },
+        "idx_jobs_remote_posted": {
+          "name": "idx_jobs_remote_posted",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND is_remote)",
+          "with": {}
+        },
+        "idx_jobs_salary": {
+          "name": "idx_jobs_salary",
+          "columns": [
+            {
+              "expression": "salary_currency",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "numeric_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "salary_min",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "numeric_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "salary_max",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "numeric_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND (salary_min IS NOT NULL))",
+          "with": {}
+        },
+        "idx_jobs_search_tsv": {
+          "name": "idx_jobs_search_tsv",
+          "columns": [
+            {
+              "expression": "search_tsv",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "tsvector_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "idx_jobs_stem_opt": {
+          "name": "idx_jobs_stem_opt",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND accepts_stem_opt)",
+          "with": {}
+        },
+        "idx_jobs_title_trgm": {
+          "name": "idx_jobs_title_trgm",
+          "columns": [
+            {
+              "expression": "title_normalized",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "idx_jobs_visa_sponsorship": {
+          "name": "idx_jobs_visa_sponsorship",
+          "columns": [
+            {
+              "expression": "posted_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((status = 'active'::text) AND visa_sponsorship)",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "jobs_company_id_fkey": {
+          "name": "jobs_company_id_fkey",
+          "tableFrom": "jobs",
+          "tableTo": "companies",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "jobs_content_fingerprint_key": {
+          "columns": [
+            "content_fingerprint"
+          ],
+          "nullsNotDistinct": false,
+          "name": "jobs_content_fingerprint_key"
+        }
+      },
+      "checkConstraints": {
+        "jobs_experience_level_check": {
+          "name": "jobs_experience_level_check",
+          "value": "experience_level = ANY (ARRAY['fresher'::text, 'junior'::text, 'mid'::text, 'senior'::text, 'lead'::text, 'principal'::text, 'executive'::text])"
+        },
+        "jobs_experience_max_years_check": {
+          "name": "jobs_experience_max_years_check",
+          "value": "(experience_max_years >= 0) AND (experience_max_years <= 60)"
+        },
+        "jobs_experience_min_years_check": {
+          "name": "jobs_experience_min_years_check",
+          "value": "(experience_min_years >= 0) AND (experience_min_years <= 60)"
+        },
+        "jobs_experience_range_valid": {
+          "name": "jobs_experience_range_valid",
+          "value": "experience_max_years >= experience_min_years"
+        },
+        "jobs_job_type_check": {
+          "name": "jobs_job_type_check",
+          "value": "job_type = ANY (ARRAY['full_time'::text, 'part_time'::text, 'contract'::text, 'internship'::text, 'temporary'::text, 'freelance'::text])"
+        },
+        "jobs_salary_currency_check": {
+          "name": "jobs_salary_currency_check",
+          "value": "salary_currency ~ '^[A-Z]{3}$'::text"
+        },
+        "jobs_salary_currency_present": {
+          "name": "jobs_salary_currency_present",
+          "value": "((salary_min IS NULL) AND (salary_max IS NULL)) OR (salary_currency IS NOT NULL)"
+        },
+        "jobs_salary_max_check": {
+          "name": "jobs_salary_max_check",
+          "value": "salary_max >= (0)::numeric"
+        },
+        "jobs_salary_min_check": {
+          "name": "jobs_salary_min_check",
+          "value": "salary_min >= (0)::numeric"
+        },
+        "jobs_salary_period_check": {
+          "name": "jobs_salary_period_check",
+          "value": "salary_period = ANY (ARRAY['hourly'::text, 'daily'::text, 'weekly'::text, 'monthly'::text, 'yearly'::text])"
+        },
+        "jobs_salary_range_valid": {
+          "name": "jobs_salary_range_valid",
+          "value": "salary_max >= salary_min"
+        },
+        "jobs_status_check": {
+          "name": "jobs_status_check",
+          "value": "status = ANY (ARRAY['active'::text, 'expired'::text, 'filled'::text, 'removed'::text, 'flagged'::text, 'draft'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.job_raw_payloads": {
+      "name": "job_raw_payloads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "ingest_run_id": {
+          "name": "ingest_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_job_id": {
+          "name": "source_job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "normalized_at": {
+          "name": "normalized_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "normalize_error": {
+          "name": "normalize_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "normalize_attempts": {
+          "name": "normalize_attempts",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_job_raw_payloads_fetched_at": {
+          "name": "idx_job_raw_payloads_fetched_at",
+          "columns": [
+            {
+              "expression": "fetched_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_job_raw_payloads_pending": {
+          "name": "idx_job_raw_payloads_pending",
+          "columns": [
+            {
+              "expression": "fetched_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(normalized_at IS NULL)",
+          "with": {}
+        },
+        "idx_job_raw_payloads_retry": {
+          "name": "idx_job_raw_payloads_retry",
+          "columns": [
+            {
+              "expression": "fetched_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((normalized_at IS NULL) AND (normalize_error IS NOT NULL))",
+          "with": {}
+        },
+        "idx_job_raw_payloads_run": {
+          "name": "idx_job_raw_payloads_run",
+          "columns": [
+            {
+              "expression": "ingest_run_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(ingest_run_id IS NOT NULL)",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "job_raw_payloads_ingest_run_id_fkey": {
+          "name": "job_raw_payloads_ingest_run_id_fkey",
+          "tableFrom": "job_raw_payloads",
+          "tableTo": "job_ingest_runs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "ingest_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "job_raw_payloads_job_id_fkey": {
+          "name": "job_raw_payloads_job_id_fkey",
+          "tableFrom": "job_raw_payloads",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "job_raw_payloads_hash_unique": {
+          "columns": [
+            "payload_hash",
+            "source"
+          ],
+          "nullsNotDistinct": false,
+          "name": "job_raw_payloads_hash_unique"
+        }
+      },
+      "checkConstraints": {
+        "job_raw_payloads_normalize_attempts_check": {
+          "name": "job_raw_payloads_normalize_attempts_check",
+          "value": "normalize_attempts >= 0"
+        },
+        "job_raw_payloads_source_check": {
+          "name": "job_raw_payloads_source_check",
+          "value": "source = ANY (ARRAY['linkedin'::text, 'naukri'::text, 'indeed'::text, 'glassdoor'::text, 'monster'::text, 'greenhouse'::text, 'lever'::text, 'ashby'::text, 'workday'::text, 'smartrecruiters'::text, 'company_site'::text, 'referral'::text, 'manual'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.resume_versions": {
+      "name": "resume_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "resume_id": {
+          "name": "resume_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "original_filename": {
+          "name": "original_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "virus_scan_status": {
+          "name": "virus_scan_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "virus_scan_at": {
+          "name": "virus_scan_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parsed_at": {
+          "name": "parsed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uploaded_at": {
+          "name": "uploaded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_resume_versions_parse_pending": {
+          "name": "idx_resume_versions_parse_pending",
+          "columns": [
+            {
+              "expression": "uploaded_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "((parsed_at IS NULL) AND (virus_scan_status = 'clean'::text))",
+          "with": {}
+        },
+        "idx_resume_versions_resume": {
+          "name": "idx_resume_versions_resume",
+          "columns": [
+            {
+              "expression": "resume_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int4_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "version",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_resume_versions_scan_pending": {
+          "name": "idx_resume_versions_scan_pending",
+          "columns": [
+            {
+              "expression": "uploaded_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(virus_scan_status = 'pending'::text)",
+          "with": {}
+        },
+        "idx_resume_versions_user": {
+          "name": "idx_resume_versions_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "uploaded_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_resume_versions_user_sha": {
+          "name": "idx_resume_versions_user_sha",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "sha256",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "resume_versions_resume_fk": {
+          "name": "resume_versions_resume_fk",
+          "tableFrom": "resume_versions",
+          "tableTo": "resumes",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "resume_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "resume_versions_id_user_unique": {
+          "columns": [
+            "id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "resume_versions_id_user_unique"
+        },
+        "resume_versions_resume_version_unique": {
+          "columns": [
+            "resume_id",
+            "version"
+          ],
+          "nullsNotDistinct": false,
+          "name": "resume_versions_resume_version_unique"
+        },
+        "resume_versions_storage_key_key": {
+          "columns": [
+            "storage_key"
+          ],
+          "nullsNotDistinct": false,
+          "name": "resume_versions_storage_key_key"
+        }
+      },
+      "checkConstraints": {
+        "resume_versions_check": {
+          "name": "resume_versions_check",
+          "value": "(storage_key ~~ (('resumes/'::text || (user_id)::text) || '/%'::text)) OR (storage_key ~~ (('generated/'::text || (user_id)::text) || '/%'::text))"
+        },
+        "resume_versions_mime_type_check": {
+          "name": "resume_versions_mime_type_check",
+          "value": "mime_type = ANY (ARRAY['application/pdf'::text, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'::text])"
+        },
+        "resume_versions_sha256_check": {
+          "name": "resume_versions_sha256_check",
+          "value": "sha256 ~ '^[a-f0-9]{64}$'::text"
+        },
+        "resume_versions_size_bytes_check": {
+          "name": "resume_versions_size_bytes_check",
+          "value": "(size_bytes > 0) AND (size_bytes <= 10485760)"
+        },
+        "resume_versions_version_check": {
+          "name": "resume_versions_version_check",
+          "value": "version >= 1"
+        },
+        "resume_versions_virus_scan_status_check": {
+          "name": "resume_versions_virus_scan_status_check",
+          "value": "virus_scan_status = ANY (ARRAY['pending'::text, 'clean'::text, 'infected'::text, 'skipped'::text, 'error'::text])"
+        }
+      },
+      "policies": {
+        "resume_versions_owner": {
+          "name": "resume_versions_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.resume_requests": {
+      "name": "resume_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_resume_id": {
+          "name": "base_resume_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "quota_consumed": {
+          "name": "quota_consumed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "requested_ip": {
+          "name": "requested_ip",
+          "type": "inet",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_user_agent": {
+          "name": "requested_user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_resume_requests_inflight": {
+          "name": "idx_resume_requests_inflight",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['queued'::text, 'running'::text]))",
+          "with": {}
+        },
+        "idx_resume_requests_queue": {
+          "name": "idx_resume_requests_queue",
+          "columns": [
+            {
+              "expression": "requested_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'queued'::text)",
+          "with": {}
+        },
+        "idx_resume_requests_running": {
+          "name": "idx_resume_requests_running",
+          "columns": [
+            {
+              "expression": "started_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'running'::text)",
+          "with": {}
+        },
+        "idx_resume_requests_user_recent": {
+          "name": "idx_resume_requests_user_recent",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "requested_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "resume_requests_base_resume_fk": {
+          "name": "resume_requests_base_resume_fk",
+          "tableFrom": "resume_requests",
+          "tableTo": "resumes",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id",
+            "base_resume_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "resume_requests_job_id_fkey": {
+          "name": "resume_requests_job_id_fkey",
+          "tableFrom": "resume_requests",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "resume_requests_id_user_unique": {
+          "columns": [
+            "id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "resume_requests_id_user_unique"
+        },
+        "resume_requests_idempotency_unique": {
+          "columns": [
+            "idempotency_key",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "resume_requests_idempotency_unique"
+        }
+      },
+      "checkConstraints": {
+        "resume_requests_attempt_count_check": {
+          "name": "resume_requests_attempt_count_check",
+          "value": "(attempt_count >= 0) AND (attempt_count <= 10)"
+        },
+        "resume_requests_failure_has_code": {
+          "name": "resume_requests_failure_has_code",
+          "value": "(status <> 'failed'::text) OR (error_code IS NOT NULL)"
+        },
+        "resume_requests_finished_when_terminal": {
+          "name": "resume_requests_finished_when_terminal",
+          "value": "(status = ANY (ARRAY['queued'::text, 'running'::text])) OR (finished_at IS NOT NULL)"
+        },
+        "resume_requests_idempotency_key_check": {
+          "name": "resume_requests_idempotency_key_check",
+          "value": "(length(idempotency_key) >= 8) AND (length(idempotency_key) <= 128)"
+        },
+        "resume_requests_status_check": {
+          "name": "resume_requests_status_check",
+          "value": "status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])"
+        }
+      },
+      "policies": {
+        "resume_requests_owner": {
+          "name": "resume_requests_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.application_events": {
+      "name": "application_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "application_id": {
+          "name": "application_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_status": {
+          "name": "from_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_status": {
+          "name": "to_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'system'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_application_events_app": {
+          "name": "idx_application_events_app",
+          "columns": [
+            {
+              "expression": "application_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "occurred_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_application_events_to_status": {
+          "name": "idx_application_events_to_status",
+          "columns": [
+            {
+              "expression": "to_status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "occurred_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_application_events_user_time": {
+          "name": "idx_application_events_user_time",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "occurred_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "application_events_application_id_fkey": {
+          "name": "application_events_application_id_fkey",
+          "tableFrom": "application_events",
+          "tableTo": "applications",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "application_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "application_events_user_id_fkey": {
+          "name": "application_events_user_id_fkey",
+          "tableFrom": "application_events",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "application_events_actual_transition": {
+          "name": "application_events_actual_transition",
+          "value": "(from_status IS NULL) OR (from_status <> to_status)"
+        },
+        "application_events_created_by_check": {
+          "name": "application_events_created_by_check",
+          "value": "created_by = ANY (ARRAY['user'::text, 'system'::text, 'email_parser'::text, 'ats'::text, 'sweeper'::text])"
+        },
+        "application_events_metadata_check": {
+          "name": "application_events_metadata_check",
+          "value": "jsonb_typeof(metadata) = 'object'::text"
+        }
+      },
+      "policies": {
+        "application_events_owner": {
+          "name": "application_events_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.subscriptions": {
+      "name": "subscriptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_code": {
+          "name": "plan_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "current_period_start": {
+          "name": "current_period_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "current_period_end": {
+          "name": "current_period_end",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cancel_at_period_end": {
+          "name": "cancel_at_period_end",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trial_end": {
+          "name": "trial_end",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_subscription_id": {
+          "name": "provider_subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_customer_id": {
+          "name": "provider_customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_subscriptions_one_active_per_user": {
+          "name": "idx_subscriptions_one_active_per_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['trialing'::text, 'active'::text, 'past_due'::text]))",
+          "with": {}
+        },
+        "idx_subscriptions_period_end": {
+          "name": "idx_subscriptions_period_end",
+          "columns": [
+            {
+              "expression": "current_period_end",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['trialing'::text, 'active'::text, 'past_due'::text]))",
+          "with": {}
+        },
+        "idx_subscriptions_user_active": {
+          "name": "idx_subscriptions_user_active",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "plan_code",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['trialing'::text, 'active'::text, 'past_due'::text]))",
+          "with": {}
+        },
+        "idx_subscriptions_user_history": {
+          "name": "idx_subscriptions_user_history",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "subscriptions_plan_code_fkey": {
+          "name": "subscriptions_plan_code_fkey",
+          "tableFrom": "subscriptions",
+          "tableTo": "plans",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "plan_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "subscriptions_user_id_fkey": {
+          "name": "subscriptions_user_id_fkey",
+          "tableFrom": "subscriptions",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "subscriptions_provider_id_unique": {
+          "columns": [
+            "provider",
+            "provider_subscription_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "subscriptions_provider_id_unique"
+        }
+      },
+      "checkConstraints": {
+        "subscriptions_period_valid": {
+          "name": "subscriptions_period_valid",
+          "value": "current_period_end > current_period_start"
+        },
+        "subscriptions_provider_check": {
+          "name": "subscriptions_provider_check",
+          "value": "provider = ANY (ARRAY['stripe'::text, 'razorpay'::text, 'paddle'::text, 'manual'::text])"
+        },
+        "subscriptions_status_check": {
+          "name": "subscriptions_status_check",
+          "value": "status = ANY (ARRAY['trialing'::text, 'active'::text, 'past_due'::text, 'cancelled'::text, 'expired'::text, 'paused'::text])"
+        }
+      },
+      "policies": {
+        "subscriptions_owner": {
+          "name": "subscriptions_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.saved_jobs": {
+      "name": "saved_jobs",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saved_at": {
+          "name": "saved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_saved_jobs_job": {
+          "name": "idx_saved_jobs_job",
+          "columns": [
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_saved_jobs_user_recent": {
+          "name": "idx_saved_jobs_user_recent",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "saved_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "saved_jobs_job_id_fkey": {
+          "name": "saved_jobs_job_id_fkey",
+          "tableFrom": "saved_jobs",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "saved_jobs_user_id_fkey": {
+          "name": "saved_jobs_user_id_fkey",
+          "tableFrom": "saved_jobs",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "saved_jobs_pkey": {
+          "name": "saved_jobs_pkey",
+          "columns": [
+            "job_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {
+        "saved_jobs_owner": {
+          "name": "saved_jobs_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.job_embeddings": {
+      "name": "job_embeddings",
+      "schema": "",
+      "columns": {
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'all-MiniLM-L6-v2'"
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(384)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_job_embeddings_hnsw": {
+          "name": "idx_job_embeddings_hnsw",
+          "columns": [
+            {
+              "expression": "embedding",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {
+            "m": "16",
+            "ef_construction": "64"
+          }
+        }
+      },
+      "foreignKeys": {
+        "job_embeddings_job_id_fkey": {
+          "name": "job_embeddings_job_id_fkey",
+          "tableFrom": "job_embeddings",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "job_embeddings_pkey": {
+          "name": "job_embeddings_pkey",
+          "columns": [
+            "job_id",
+            "model"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.resume_embeddings": {
+      "name": "resume_embeddings",
+      "schema": "",
+      "columns": {
+        "resume_version_id": {
+          "name": "resume_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'all-MiniLM-L6-v2'"
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(384)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_resume_embeddings_hnsw": {
+          "name": "idx_resume_embeddings_hnsw",
+          "columns": [
+            {
+              "expression": "embedding",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {
+            "m": "16",
+            "ef_construction": "64"
+          }
+        },
+        "idx_resume_embeddings_user": {
+          "name": "idx_resume_embeddings_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "resume_embeddings_resume_version_id_fkey": {
+          "name": "resume_embeddings_resume_version_id_fkey",
+          "tableFrom": "resume_embeddings",
+          "tableTo": "resume_versions",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "resume_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "resume_embeddings_user_id_fkey": {
+          "name": "resume_embeddings_user_id_fkey",
+          "tableFrom": "resume_embeddings",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "resume_embeddings_pkey": {
+          "name": "resume_embeddings_pkey",
+          "columns": [
+            "model",
+            "resume_version_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {
+        "resume_embeddings_owner": {
+          "name": "resume_embeddings_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.usage_counters": {
+      "name": "usage_counters",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feature": {
+          "name": "feature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period_start": {
+          "name": "period_start",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used": {
+          "name": "used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_usage_counters_period": {
+          "name": "idx_usage_counters_period",
+          "columns": [
+            {
+              "expression": "period_start",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "date_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "usage_counters_user_id_fkey": {
+          "name": "usage_counters_user_id_fkey",
+          "tableFrom": "usage_counters",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "usage_counters_pkey": {
+          "name": "usage_counters_pkey",
+          "columns": [
+            "feature",
+            "period_start",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "usage_counters_feature_check": {
+          "name": "usage_counters_feature_check",
+          "value": "feature = ANY (ARRAY['resume_generation'::text, 'resume_upload'::text, 'job_match'::text, 'cover_letter'::text, 'ats_report'::text, 'job_alert'::text])"
+        },
+        "usage_counters_used_check": {
+          "name": "usage_counters_used_check",
+          "value": "used >= 0"
+        }
+      },
+      "policies": {
+        "usage_counters_owner": {
+          "name": "usage_counters_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.application_status_transitions": {
+      "name": "application_status_transitions",
+      "schema": "",
+      "columns": {
+        "from_status": {
+          "name": "from_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_status": {
+          "name": "to_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_initiable": {
+          "name": "user_initiable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "application_status_transitions_pkey": {
+          "name": "application_status_transitions_pkey",
+          "columns": [
+            "from_status",
+            "to_status"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "application_status_transitions_not_self": {
+          "name": "application_status_transitions_not_self",
+          "value": "from_status <> to_status"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.plan_quotas": {
+      "name": "plan_quotas",
+      "schema": "",
+      "columns": {
+        "plan_code": {
+          "name": "plan_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feature": {
+          "name": "feature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "limit_value": {
+          "name": "limit_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period": {
+          "name": "period",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "plan_quotas_plan_code_fkey": {
+          "name": "plan_quotas_plan_code_fkey",
+          "tableFrom": "plan_quotas",
+          "tableTo": "plans",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "plan_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "plan_quotas_pkey": {
+          "name": "plan_quotas_pkey",
+          "columns": [
+            "feature",
+            "plan_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "plan_quotas_feature_check": {
+          "name": "plan_quotas_feature_check",
+          "value": "feature = ANY (ARRAY['resume_generation'::text, 'resume_upload'::text, 'job_match'::text, 'cover_letter'::text, 'ats_report'::text, 'job_alert'::text])"
+        },
+        "plan_quotas_limit_value_check": {
+          "name": "plan_quotas_limit_value_check",
+          "value": "limit_value >= '-1'::integer"
+        },
+        "plan_quotas_period_check": {
+          "name": "plan_quotas_period_check",
+          "value": "period = ANY (ARRAY['day'::text, 'month'::text, 'lifetime'::text])"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    },
+    "public.resume_skills": {
+      "name": "resume_skills",
+      "schema": "",
+      "columns": {
+        "resume_version_id": {
+          "name": "resume_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skill_id": {
+          "name": "skill_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "evidence": {
+          "name": "evidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "experience_months": {
+          "name": "experience_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_resume_skills_skill": {
+          "name": "idx_resume_skills_skill",
+          "columns": [
+            {
+              "expression": "skill_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_resume_skills_user": {
+          "name": "idx_resume_skills_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "resume_skills_resume_version_id_fkey": {
+          "name": "resume_skills_resume_version_id_fkey",
+          "tableFrom": "resume_skills",
+          "tableTo": "resume_versions",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "resume_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "resume_skills_skill_id_fkey": {
+          "name": "resume_skills_skill_id_fkey",
+          "tableFrom": "resume_skills",
+          "tableTo": "skills",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "skill_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "resume_skills_user_id_fkey": {
+          "name": "resume_skills_user_id_fkey",
+          "tableFrom": "resume_skills",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "resume_skills_pkey": {
+          "name": "resume_skills_pkey",
+          "columns": [
+            "resume_version_id",
+            "skill_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "resume_skills_confidence_check": {
+          "name": "resume_skills_confidence_check",
+          "value": "(confidence > (0)::double precision) AND (confidence <= (1)::double precision)"
+        },
+        "resume_skills_experience_months_check": {
+          "name": "resume_skills_experience_months_check",
+          "value": "experience_months >= 0"
+        },
+        "resume_skills_source_check": {
+          "name": "resume_skills_source_check",
+          "value": "source = ANY (ARRAY['ner'::text, 'dictionary'::text, 'regex'::text, 'section_header'::text, 'user_declared'::text])"
+        }
+      },
+      "policies": {
+        "resume_skills_owner": {
+          "name": "resume_skills_owner",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "withCheck": "(user_id = current_app_user())",
+          "using": "(user_id = current_app_user())"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.job_skills": {
+      "name": "job_skills",
+      "schema": "",
+      "columns": {
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skill_id": {
+          "name": "skill_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requirement": {
+          "name": "requirement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'required'"
+        },
+        "weight": {
+          "name": "weight",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "min_experience_months": {
+          "name": "min_experience_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evidence": {
+          "name": "evidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "requirement_rank": {
+          "name": "requirement_rank",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "\nCASE requirement\n    WHEN 'required'::text THEN 1\n    WHEN 'preferred'::text THEN 2\n    WHEN 'nice_to_have'::text THEN 3\n    ELSE NULL::integer\nEND",
+            "type": "stored"
+          }
+        }
+      },
+      "indexes": {
+        "idx_job_skills_job_priority": {
+          "name": "idx_job_skills_job_priority",
+          "columns": [
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "float4_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "requirement_rank",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "weight",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_job_skills_required_skill": {
+          "name": "idx_job_skills_required_skill",
+          "columns": [
+            {
+              "expression": "skill_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "job_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(requirement = 'required'::text)",
+          "with": {}
+        },
+        "idx_job_skills_skill": {
+          "name": "idx_job_skills_skill",
+          "columns": [
+            {
+              "expression": "skill_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "job_skills_job_id_fkey": {
+          "name": "job_skills_job_id_fkey",
+          "tableFrom": "job_skills",
+          "tableTo": "jobs",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "job_skills_skill_id_fkey": {
+          "name": "job_skills_skill_id_fkey",
+          "tableFrom": "job_skills",
+          "tableTo": "skills",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "skill_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "job_skills_pkey": {
+          "name": "job_skills_pkey",
+          "columns": [
+            "job_id",
+            "skill_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "job_skills_min_experience_months_check": {
+          "name": "job_skills_min_experience_months_check",
+          "value": "min_experience_months >= 0"
+        },
+        "job_skills_requirement_check": {
+          "name": "job_skills_requirement_check",
+          "value": "requirement = ANY (ARRAY['required'::text, 'preferred'::text, 'nice_to_have'::text])"
+        },
+        "job_skills_source_check": {
+          "name": "job_skills_source_check",
+          "value": "source = ANY (ARRAY['ner'::text, 'dictionary'::text, 'regex'::text, 'section_header'::text, 'recruiter_declared'::text])"
+        },
+        "job_skills_weight_check": {
+          "name": "job_skills_weight_check",
+          "value": "(weight > (0)::double precision) AND (weight <= (10)::double precision)"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "tables": {}
+  }
+}

@@ -1,0 +1,2829 @@
+--- a/lib/resume-parser.ts
++++ b/lib/resume-parser.ts
+@@ -6,6 +6,7 @@
+   linkedin: string;
+   github: string;
+   location: string;
++  extraContacts?: string[];
+ }
+ 
+ export interface SkillCategory {
+@@ -45,6 +46,7 @@
+   education: EducationItem[];
+   sectionOrder: string[];
+   rawMarkdown: string;
++  additionalSections?: Record<string, { title: string; lines: string[] }>;
+ }
+ 
+ /**
+@@ -52,12 +54,15 @@
+  */
+ function cleanHeadingText(text: string): string {
+   return text
+-    .replace(/^#{1,6}\s+/, "")
+-    .replace(/^\*\*|\*\*$/g, "")
+-    .replace(/^\*|\*$/g, "")
++    .replace(/^(?:#{1,6}\s+)+/, "")
+     .replace(/\*\*(.*?)\*\*/g, "$1")
+     .replace(/\*(.*?)\*/g, "$1")
++    .replace(/^\*+|\*+$/g, "")
+     .trim();
++}
++
++export function resumePlainText(text: string): string {
++  return cleanHeadingText(text).replace(/^[-*•]\s+/, "• ");
+ }
+ 
+ /**
+@@ -84,7 +89,7 @@
+ function hasContactTokens(line: string): boolean {
+   const emailRegex = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+   const phoneRegex = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+-  const urlRegex = /(?:linkedin\.com|github\.com|https?:\/\/|www\.)/i;
++  const urlRegex = /(?:https?:\/\/|www\.|\b[\w-]+\.[a-z]{2,}(?:\/|\b))/i;
+   return emailRegex.test(line) || phoneRegex.test(line) || urlRegex.test(line);
+ }
+ 
+@@ -110,6 +115,10 @@
+   const projects: ProjectItem[] = [];
+   const education: EducationItem[] = [];
+   const sectionOrder: string[] = [];
++  const additionalSections: Record<string, { title: string; lines: string[] }> = {};
++  const extraContacts: string[] = [];
++  const projectSourceLines: string[] = [];
++  let unstructuredProjects = false;
+ 
+   let currentSection = "header";
+   let currentExpItem: ExperienceItem | null = null;
+@@ -119,6 +128,7 @@
+   for (let i = 0; i < lines.length; i++) {
+     const rawLine = lines[i];
+     const line = rawLine.trim();
++    if (/^(?:[-*_]\s*){3,}$/.test(line)) continue;
+     if (!line && currentSection === "header") continue;
+ 
+     // Check for Section Headers: ## ...
+@@ -148,6 +158,7 @@
+       } else {
+         currentSection = title;
+         if (!sectionOrder.includes(title)) sectionOrder.push(title);
++        additionalSections[title] ??= { title: headerMatch[1].trim(), lines: [] };
+       }
+       continue;
+     }
+@@ -191,6 +202,12 @@
+               personalInfo.location = cleanLoc;
+             }
+           }
++        }
++        for (const part of parts) {
++          const value = cleanHeadingText(part);
++          const known = [personalInfo.phone, personalInfo.email, personalInfo.linkedin, personalInfo.github, personalInfo.location];
++          const key = (s: string) => s.replace(/^https?:\/\/(?:www\.)?/, "").replace(/\/$/, "");
++          if (value && !known.some(item => item && key(item) === key(value))) extraContacts.push(value);
+         }
+       }
+     } else if (currentSection === "summary") {
+@@ -230,7 +247,7 @@
+         }
+       }
+     } else if (currentSection === "experience") {
+-      const isHeaderOrMeta = line.startsWith("### ") || (line.startsWith("**") && line.includes("|"));
++      const isHeaderOrMeta = /^#{3,6}\s+/.test(line) || (line.startsWith("**") && line.includes("|"));
+       if (isHeaderOrMeta) {
+         const entryText = cleanHeadingText(line);
+         const parts = entryText.split("|").map((p) => cleanHeadingText(p));
+@@ -283,7 +300,9 @@
+         }
+       }
+     } else if (currentSection === "projects") {
+-      const isHeaderOrMeta = line.startsWith("### ") || (line.startsWith("**") && line.includes("|"));
++      if (line) projectSourceLines.push(rawLine);
++      const isHeaderOrMeta = /^#{3,6}\s+/.test(line) || (line.startsWith("**") && line.includes("|"));
++      if (line && !isHeaderOrMeta && !currentProjectItem) unstructuredProjects = true;
+       if (isHeaderOrMeta) {
+         if (currentProjectItem) projects.push(currentProjectItem);
+         const entryText = cleanHeadingText(line);
+@@ -310,43 +329,39 @@
+         }
+       }
+     } else if (currentSection === "education") {
+-      // Lines: **School** — Location OR School | Location
+-      if (line.includes("—") || line.includes("|") || (line.startsWith("**") && line.includes("-"))) {
+-        const cleaned = cleanHeadingText(line);
+-        const parts = cleaned.split(/—|\|/).map((p) => cleanHeadingText(p));
+-        
+-        // If line contains degree indicators or dates, attach to existing edu item
+-        const hasDate = /\d{4}|Present/i.test(line);
+-        const hasDegreeKeywords = /Bachelor|Master|B\.?S\.?|B\.?A\.?|M\.?S\.?|Ph\.?D|Associate|Degree/i.test(line);
+-
+-        if (currentEduItem && (hasDegreeKeywords || (hasDate && !currentEduItem.duration))) {
+-          if (hasDegreeKeywords && !currentEduItem.degree) {
+-            currentEduItem.degree = parts[0] || "";
+-            if (parts[1]) currentEduItem.duration = parts[1];
+-          } else if (hasDate && !currentEduItem.duration) {
+-            currentEduItem.duration = parts[parts.length - 1] || "";
+-          }
++      const plain = cleanHeadingText(line);
++      const columns = plain.split(/\s{2,}/);
++      const date = /(?:19|20)\d{2}|Present/i;
++      const degreeLine = /^\*(?!\*)/.test(line) && line.includes("|");
++      const schoolLine = /^#{3,6}\s+/.test(line) ||
++        (line.startsWith("**") && !/coursework|gpa/i.test(plain) && !date.test(plain)) ||
++        (!currentEduItem && !!line) ||
++        (columns.length > 1 && date.test(columns[columns.length - 1]) && !!currentEduItem?.degree && !degreeLine) ||
++        (/\b(university|college|institute)\b/i.test(plain) && !date.test(plain) && !degreeLine);
++      if (!line) continue;
++      if (schoolLine) {
++        if (currentEduItem) education.push(currentEduItem);
++        const parts = plain.split(/\s+—\s*|\s+\|\s+|\s{2,}/);
++        currentEduItem = { institution: parts[0] || "", location: "", degree: "", duration: "" };
++        for (const part of parts.slice(1)) {
++          if (date.test(part)) currentEduItem.duration = part;
++          else currentEduItem.location = [currentEduItem.location, part].filter(Boolean).join(" | ");
++        }
++      } else if (currentEduItem) {
++        const parts = plain.split(/\s*\|\s*|\s{2,}/);
++        if (/coursework|gpa/i.test(plain) || (currentEduItem.degree && !degreeLine)) {
++          currentEduItem.details = [currentEduItem.details, plain].filter(Boolean).join(" ");
+         } else {
+-          if (currentEduItem) education.push(currentEduItem);
+-          currentEduItem = {
+-            institution: parts[0] || "",
+-            location: parts[1] || "",
+-            degree: "",
+-            duration: "",
+-          };
+-        }
+-      } else if (line.toLowerCase().includes("coursework") || line.toLowerCase().includes("gpa")) {
+-        if (currentEduItem) {
+-          currentEduItem.details = cleanHeadingText(line);
+-        }
+-      } else if (line && !currentEduItem) {
+-        currentEduItem = {
+-          institution: cleanHeadingText(line),
+-          location: "",
+-          degree: "",
+-          duration: "",
+-        };
+-      }
++          const firstIsDate = date.test(parts[0]) && !/[A-Za-z]\./.test(parts[0]);
++          if (degreeLine || !firstIsDate) currentEduItem.degree = parts[0] || "";
++          for (const part of parts.slice(degreeLine || !firstIsDate ? 1 : 0)) {
++            if (date.test(part)) currentEduItem.duration = part;
++            else currentEduItem.location = part;
++          }
++        }
++      }
++    } else if (additionalSections[currentSection] && line) {
++      additionalSections[currentSection].lines.push(rawLine);
+     }
+   }
+ 
+@@ -354,7 +369,14 @@
+   if (currentExpItem) experience.push(currentExpItem);
+   if (currentProjectItem) projects.push(currentProjectItem);
+   if (currentEduItem) education.push(currentEduItem);
+-
++  if (unstructuredProjects) {
++    // PDF project descriptions may have no Markdown subheadings. Preserve them
++    // verbatim through preview/edit/export rather than dropping unparsed text.
++    projects.splice(0);
++    additionalSections.projects = {title:"Projects",lines:projectSourceLines};
++  }
++
++  personalInfo.extraContacts = [...new Set(extraContacts)];
+   return {
+     personalInfo,
+     summary,
+@@ -364,6 +386,7 @@
+     education,
+     sectionOrder: sectionOrder.length > 0 ? sectionOrder : ["summary", "skills", "experience", "projects", "education"],
+     rawMarkdown: markdown,
++    additionalSections,
+   };
+ }
+ 
+@@ -388,6 +411,7 @@
+   if (data.personalInfo.github) contacts.push(data.personalInfo.github);
+   if (data.personalInfo.location) contacts.push(data.personalInfo.location);
+ 
++  contacts.push(...(data.personalInfo.extraContacts || []));
+   if (contacts.length > 0) {
+     parts.push(contacts.join(" | "));
+   }
+@@ -441,10 +465,13 @@
+           parts.push(`*${edu.degree}* | ${edu.duration}`);
+         }
+         if (edu.details) {
+-          parts.push(`**${edu.details.startsWith("**") ? edu.details : `Relevant Coursework: ${edu.details}`}**`);
++          parts.push(edu.details);
+         }
+         parts.push("");
+       }
++    } else if (data.additionalSections?.[section]) {
++      const extra = data.additionalSections[section];
++      parts.push(`## ${extra.title}`, ...extra.lines, "");
+     }
+   }
+ 
+--- a/components/ResumeSheet.tsx
++++ b/components/ResumeSheet.tsx
+@@ -2,7 +2,7 @@
+ 
+ import React, { useRef, useEffect, useState, useMemo, useCallback } from "react";
+ import { TypstThemeId } from "@/data/resume-templates";
+-import { parseResumeMarkdown, ParsedResume, serializeResumeToMarkdown } from "@/lib/resume-parser";
++import { parseResumeMarkdown, ParsedResume, serializeResumeToMarkdown, resumePlainText } from "@/lib/resume-parser";
+ 
+ interface ResumeSheetProps {
+   markdown: string;
+@@ -172,6 +172,7 @@
+       info.linkedin,
+       info.github,
+       info.location,
++      ...(info.extraContacts || []),
+     ].filter(Boolean);
+ 
+     // Theme 5: Classic Executive — Two-Column Split Grid
+@@ -207,6 +208,7 @@
+                   )}
+                 </span>
+               )}
++              {(info.extraContacts || []).map((contact, index) => <span key={index} className="break-all">{contact}</span>)}
+             </div>
+           </div>
+ 
+@@ -591,6 +593,17 @@
+               );
+             }
+ 
++            const extra = parsedData.additionalSections?.[secKey];
++            if (extra) {
++              return <div key={secKey} className="mb-[0.3em]">
++                {renderSectionHeader(extra.title)}
++                {extra.lines.map((line, index) => <div key={index} className="break-words whitespace-pre-wrap">
++                  {renderEditable(resumePlainText(line), value => handleFieldChange(data => {
++                    data.additionalSections![secKey].lines[index] = value;
++                  }))}
++                </div>)}
++              </div>;
++            }
+             return null;
+           })}
+           </div>
+--- a/components/ResumeModal.tsx
++++ b/components/ResumeModal.tsx
+@@ -13,6 +13,7 @@
+ } from "@/data/resume-templates";
+ import { markTailoredResumeReady } from "@/app/actions/tailored-resume";
+ import { toast } from "sonner";
++import { resumeContentError } from "@/lib/resume-validation";
+ import { lockBodyScroll, unlockBodyScroll } from "@/lib/utils/scrollLock";
+ 
+ interface ResumeModalProps {
+@@ -76,15 +77,9 @@
+   const [isApprovingDraft, setIsApprovingDraft] = useState(false);
+   const [isReadyMarked, setIsReadyMarked] = useState(false);
+   const [isNoticeDialogOpen, setIsNoticeDialogOpen] = useState(false);
+-  const [exportedPayload, setExportedPayload] = useState<{ url: string; markdown: string; templateId: string } | null>(null);
+ 
+   // Active template derived from modal's working templateId
+   const activeTemplate: ResumeTemplate = getTemplateById(currentTemplateId);
+-
+-  // Active compiled PDF URL is only valid if working markdown and template match what was compiled
+-  const exportedDownloadUrl = (exportedPayload && exportedPayload.markdown === currentMarkdown && exportedPayload.templateId === currentTemplateId)
+-    ? exportedPayload.url
+-    : null;
+ 
+   // Dynamic Auto-fit Zoom calculation for crisp mobile view without horizontal overflow
+   useEffect(() => {
+@@ -184,27 +179,12 @@
+     setCurrentMarkdown(initialMd);
+     setSavedBaselineMarkdown(initialMd);
+     setMode(readOnly ? "view" : initialMode === "edit" ? "visual-edit" : "view");
+-    setExportedPayload(null);
+     setIsReadyMarked(false);
+     setIsNoticeDialogOpen(false);
+ 
+   } else if (prevIsOpen && !isOpen) {
+     setPrevIsOpen(false);
+   }
+-
+-  // Check if active job already has an exported PDF on Cloudflare R2
+-  useEffect(() => {
+-    if (isOpen && jobId) {
+-      fetch(`/api/resume/export?jobId=${jobId}`)
+-        .then((r) => r.json())
+-        .then((data) => {
+-          if (data.hasExportedPdf && data.downloadUrl) {
+-            setExportedPayload({ url: data.downloadUrl, markdown: currentMarkdown, templateId: currentTemplateId });
+-          }
+-        })
+-        .catch(() => {});
+-    }
+-  }, [isOpen, jobId, currentMarkdown, currentTemplateId]);
+ 
+   // Manage body scroll locking
+   useEffect(() => {
+@@ -247,6 +227,8 @@
+   if (!isOpen) return null;
+ 
+   const handleSave = async () => {
++    const error = resumeContentError(currentMarkdown);
++    if (error) { toast.error(error); return; }
+     if (readOnly) {
+       toast.error("This is a historical draft and cannot be edited.");
+       return;
+@@ -254,16 +236,17 @@
+     try {
+       if (onSave) {
+         const result = await onSave(currentMarkdown, currentTemplateId, expectedGenerationId);
+-        if (result && typeof result === "object" && !result.success) {
+-          if (result.code === "STALE_GENERATION") {
++        if (result === false || (result && typeof result === "object" && !result.success)) {
++          if (typeof result === "object" && result.code === "STALE_GENERATION") {
+             toast.error(
+               result.error || "A newer draft was generated in the background. Please refresh to load the latest version."
+             );
+             return;
+           }
+-          toast.error(result.error || "Failed to save tailored resume.");
++          toast.error((typeof result === "object" && result.error) || "Failed to save tailored resume.");
+           return;
+         }
++        setIsReadyMarked(false);
+         setSavedBaselineMarkdown(currentMarkdown);
+         setMode("view");
+         toast.success("Tailored resume saved successfully!");
+@@ -292,6 +275,7 @@
+ 
+   const handleApproveDraft = async () => {
+     if (!jobId) return;
++    if (currentMarkdown !== savedBaselineMarkdown) { toast.error("Save your corrections before approving this version."); return; }
+     try {
+       setIsApprovingDraft(true);
+       if (onMarkReady) {
+@@ -313,20 +297,10 @@
+   };
+ 
+   const handleDownloadPdf = async () => {
+-    // If we already have the presigned download URL for current markdown & template, trigger download directly
+-    if (exportedDownloadUrl) {
+-      const a = document.createElement("a");
+-      a.href = exportedDownloadUrl;
+-      a.download = `${(activeTemplate.name || "Resume").replace(/\s+/g, "_")}.pdf`;
+-      a.target = "_blank";
+-      a.rel = "noopener noreferrer";
+-      document.body.appendChild(a);
+-      a.click();
+-      document.body.removeChild(a);
+-      toast.success("Download started!");
+-      return;
+-    }
+-
++    const contentError = resumeContentError(currentMarkdown);
++    if (contentError) { toast.error(contentError); return; }
++    if ((status === "needs_review" || reviewReason) && !isReadyMarked) { toast.error("Review and approve this saved draft before exporting."); return; }
++    // Every download goes through current generation and content validation.
+     if (!jobId) {
+       // Fallback for previews without an active jobId (e.g. Manage Job Hunt preview)
+       window.print();
+@@ -359,7 +333,6 @@
+       }
+ 
+       if (data.downloadUrl) {
+-        setExportedPayload({ url: data.downloadUrl, markdown: currentMarkdown, templateId: currentTemplateId });
+         toast.success("Download started!");
+ 
+         const a = document.createElement("a");
+--- a/app/actions/resume.ts
++++ b/app/actions/resume.ts
+@@ -1,8 +1,9 @@
+ "use server";
+ 
+-import fs from "fs/promises";
+-import path from "path";
+-import { TypstThemeId } from "@/data/resume-templates";
++import { getCurrentUser } from "@/lib/auth/server";
++import { pool } from "@/lib/db";
++import { getTemplateById, RESUME_TEMPLATES, TypstThemeId } from "@/data/resume-templates";
++import { resumeContentError } from "@/lib/resume-validation";
+ 
+ export interface CompileRequest {
+   markdown: string;
+@@ -12,7 +13,6 @@
+   templateId?: string;
+   templateName?: string;
+ }
+-
+ export interface SavedPayloadRecord {
+   theme: TypstThemeId;
+   templateId: string;
+@@ -23,60 +23,38 @@
+   markdown: string;
+ }
+ 
+-declare global {
+-  var __resumePayloadCache: SavedPayloadRecord | undefined;
+-}
+-
+-const PAYLOAD_FILE_PATH = path.join(process.cwd(), "data", "resume-compile-payload.json");
+-
+ export async function fetchResumePayloadLocallyServer(): Promise<{ success: boolean; data?: SavedPayloadRecord; error?: string }> {
++  const user = await getCurrentUser();
++  if (!user?.id) return { success: false, error: "Sign in to view your resume." };
+   try {
+-    const data = await fs.readFile(PAYLOAD_FILE_PATH, "utf-8");
+-    const parsed = JSON.parse(data) as SavedPayloadRecord;
+-    if (globalThis.__resumePayloadCache && new Date(globalThis.__resumePayloadCache.updatedAt) > new Date(parsed.updatedAt)) {
+-      return { success: true, data: globalThis.__resumePayloadCache };
+-    }
+-    return { success: true, data: parsed };
++    const result = await pool.query("SELECT resume_details->'compiler_payload' AS payload FROM public.user_job_preferences WHERE user_id=$1", [user.id]);
++    const payload = result.rows[0]?.payload;
++    return payload ? { success: true, data: payload } : { success: false, error: "No saved resume draft." };
+   } catch {
+-    if (globalThis.__resumePayloadCache) {
+-      return { success: true, data: globalThis.__resumePayloadCache };
+-    }
+-    return { success: false, error: "Payload file not found or unreadable" };
++    return { success: false, error: "Resume storage is unavailable." };
+   }
+ }
+ 
+-export async function saveResumePayloadLocallyServer(req: CompileRequest): Promise<{ success: boolean; payload?: SavedPayloadRecord; error?: string }> {
+-  const { markdown, theme, templateId, templateName, destination_endpoint } = req;
+-
++export async function saveResumePayloadLocallyServer(request: CompileRequest): Promise<{ success: boolean; payload?: SavedPayloadRecord; error?: string }> {
++  const user = await getCurrentUser();
++  if (!user?.id) return { success: false, error: "Sign in to save your resume." };
++  const contentError = resumeContentError(request?.markdown);
++  if (contentError) return { success: false, error: contentError };
++  const template = getTemplateById(request.templateId || "mit-capd");
++  if (request.templateId && !RESUME_TEMPLATES.some(item => item.id === request.templateId)) return { success: false, error: "Unsupported template." };
+   const payload: SavedPayloadRecord = {
+-    theme: theme ?? 2,
+-    templateId: templateId ?? "mit-capd",
+-    templateName: templateName ?? "MIT CAPD Classical",
+-    include_base64: true,
+-    destination_endpoint: destination_endpoint ?? "",
+-    updatedAt: new Date().toISOString(),
+-    markdown: markdown ?? "",
++    markdown: request.markdown, templateId: template.id, templateName: template.name, theme: template.themeId,
++    include_base64: true, destination_endpoint: "", updatedAt: new Date().toISOString(),
+   };
+-
+-  // Always keep in-memory cache synchronized
+-  globalThis.__resumePayloadCache = payload;
+-
+   try {
+-    await fs.writeFile(PAYLOAD_FILE_PATH, JSON.stringify(payload, null, 2), "utf-8");
+-    return {
+-      success: true,
+-      payload,
+-    };
+-  } catch (error: unknown) {
+-    const err = error as NodeJS.ErrnoException;
+-    // In read-only serverless environments (e.g. Vercel Lambda / EROFS), do not fail the request
+-    if (err && (err.code === "EROFS" || err.code === "EACCES")) {
+-      console.warn("Serverless environment is read-only; payload persisted in-memory only.");
+-      return {
+-        success: true,
+-        payload,
+-      };
+-    }
+-    return { success: false, error: err?.message || "Failed to update payload" };
++    // The immutable upload remains intact. Editable drafts are scoped to the signed-in user.
++    await pool.query(`INSERT INTO public.user_job_preferences(user_id,preferences,resume_details)
++      VALUES($1,'{}',jsonb_build_object('compiler_payload',$2::jsonb))
++      ON CONFLICT(user_id) DO UPDATE SET
++      resume_details=jsonb_set(COALESCE(user_job_preferences.resume_details,'{}'::jsonb),'{compiler_payload}',$2::jsonb),updated_at=now()`,
++    [user.id, JSON.stringify(payload)]);
++    return { success: true, payload };
++  } catch {
++    return { success: false, error: "Resume storage is unavailable." };
+   }
+ }
+--- a/app/actions/tailored-resume.ts
++++ b/app/actions/tailored-resume.ts
+@@ -7,9 +7,13 @@
+ import { and, eq, sql } from "drizzle-orm";
+ import { revalidatePath } from "next/cache";
+ import { cookies } from "next/headers";
++import { getActiveBaseResume } from "@/lib/active-resume";
++import { admissionError } from "@/lib/resume-admission";
+ import { activeResumeId } from "@/lib/active-resume";
+ import { getTemplateById } from "@/data/resume-templates";
+ import crypto from "crypto";
++import { resumeContentError } from "@/lib/resume-validation";
++import { resumeDigest, resumeReviewError } from "@/lib/resume-review";
+ 
+ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ 
+@@ -83,7 +87,7 @@
+  * Defaults to the live Cloud Run deployment origin per project_docs/new_endpoints.md.
+  */
+ function getJobHuntWebUrl(): string {
+-  return process.env.JOB_HUNT_WEB_URL || "https://job-hunt-web-znsph25yja-ue.a.run.app";
++  return process.env.JOB_HUNT_WEB_URL || "https://layout-v1---job-hunt-web-znsph25yja-ue.a.run.app";
+ }
+ 
+ /**
+@@ -356,6 +360,10 @@
+     if (!effectiveResumeId) {
+       return { success: false, error: "Active base resume not found. Please upload or activate a resume first in Manage Job Hunt." };
+     }
++
++    const activeBase = await getActiveBaseResume(user.id);
++    const blocked = activeBase ? admissionError(activeBase.content || "", (activeBase.parsedData || {}) as Record<string,unknown>) : "Upload a supported resume first.";
++    if (blocked) return {success:false,error:blocked};
+ 
+     // 3. Resolve the confirmed template to lock for this specific job application
+     const [prefRow] = await db
+@@ -573,46 +581,7 @@
+       }
+ 
+       if (markdown) {
+-        // Sync generated markdown to local userJobResumes in neondb for instant persistence
+-        const targetJobId = request.job_id || request.jobId;
+-        if (targetJobId) {
+-          try {
+-            const [existing] = await db
+-              .select({ id: userJobResumes.id })
+-              .from(userJobResumes)
+-              .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, targetJobId)))
+-              .limit(1);
+-
+-            const mirrorStatus = rawStatus === "needs_review" ? "draft" : "ready";
+-            if (existing) {
+-              await db
+-                .update(userJobResumes)
+-                .set({ markdown, status: mirrorStatus, updatedAt: new Date() })
+-                .where(eq(userJobResumes.id, existing.id));
+-            } else {
+-              const [prefRow] = await db
+-                .select({ preferences: userJobPreferences.preferences })
+-                .from(userJobPreferences)
+-                .where(eq(userJobPreferences.userId, user.id))
+-                .limit(1);
+-              const fallbackTmpl = getTemplateById(
+-                ((prefRow?.preferences as Record<string, unknown>)?.selectedTemplateId as string) || "mit-capd"
+-              );
+-
+-              await db.insert(userJobResumes).values({
+-                userId: user.id,
+-                jobId: targetJobId,
+-                markdown,
+-                templateId: fallbackTmpl.id,
+-                theme: fallbackTmpl.themeId,
+-                status: mirrorStatus,
+-              });
+-            }
+-          } catch (syncErr) {
+-            console.warn("Local sync of userJobResumes skipped or failed:", syncErr);
+-          }
+-        }
+-
++        // Polling a completed request must not overwrite subsequent manual edits.
+         const isReview = rawStatus === "needs_review";
+         return {
+           success: true,
+@@ -697,6 +666,7 @@
+     const requests: ResumeRequestItem[] = rows.map((r) => {
+       const audit = (r.genAudit as Record<string, unknown>) || {};
+       let reviewReason =
++        (audit.error as string) ||
+         (audit.review_reason as string) ||
+         (audit.reason as string) ||
+         (audit.summary as string) ||
+@@ -762,95 +732,35 @@
+   expectedGenerationId?: string | null
+ ): Promise<{ success: boolean; error?: string; code?: string }> {
+   try {
+-    if (!jobId || !UUID_REGEX.test(jobId)) return { success: false, error: "Invalid job identifier." };
++    if (!UUID_REGEX.test(jobId)) return { success: false, error: "Invalid job identifier." };
++    const contentError = resumeContentError(markdown);
++    if (contentError) return { success: false, error: contentError, code: "INVALID_RESUME" };
+     const user = await getCurrentUser();
+-    if (!user || !user.id || !UUID_REGEX.test(user.id)) return { success: false, error: "Unauthorized" };
+-
+-    // 1. Concurrency Check: If expectedGenerationId is provided, verify it is still the latest generation
+-    const [latestGen] = await db
+-      .select({ id: resumeGenerations.id, auditJson: resumeGenerations.auditJson })
+-      .from(resumeGenerations)
+-      .where(and(eq(resumeGenerations.userId, user.id), eq(resumeGenerations.jobId, jobId)))
+-      .orderBy(sql`${resumeGenerations.createdAt} DESC`)
+-      .limit(1);
+-
+-    if (expectedGenerationId && UUID_REGEX.test(expectedGenerationId) && latestGen) {
+-      if (latestGen.id !== expectedGenerationId) {
+-        return {
+-          success: false,
+-          code: "STALE_GENERATION",
+-          error: "A newer draft was generated in the background. Please reload to inspect the newest version.",
+-        };
+-      }
+-    }
+-
+-    const [existing] = await db
+-      .select({ id: userJobResumes.id, templateId: userJobResumes.templateId, theme: userJobResumes.theme })
+-      .from(userJobResumes)
+-      .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId)))
+-      .limit(1);
+-
+-    const tmplObj = templateId ? getTemplateById(templateId) : null;
+-    const resolvedTemplateId = tmplObj ? tmplObj.id : (existing?.templateId || "mit-capd");
+-    const resolvedTheme = tmplObj ? tmplObj.themeId : (existing?.theme ?? 2);
+-
+-    if (existing) {
+-      await db
+-        .update(userJobResumes)
+-        .set({
+-          markdown,
+-          templateId: resolvedTemplateId,
+-          theme: resolvedTheme,
+-          status: "ready",
+-          updatedAt: new Date(),
+-        })
+-        .where(eq(userJobResumes.id, existing.id));
+-    } else {
+-      await db.insert(userJobResumes).values({
+-        userId: user.id,
+-        jobId,
+-        markdown,
+-        templateId: resolvedTemplateId,
+-        theme: resolvedTheme,
+-        status: "ready",
+-      });
+-    }
+-
+-    // Record manual edit metadata in resumeGenerations.auditJson without destroying original model output
+-    if (latestGen) {
+-      const currentAudit = (latestGen.auditJson as Record<string, unknown>) || {};
+-      const updatedAudit = {
+-        ...currentAudit,
+-        manual_edit: {
+-          edited_at: new Date().toISOString(),
+-          template_id: resolvedTemplateId,
+-          markdown_length: markdown.length,
+-        },
+-      };
+-
+-      await db
+-        .update(resumeGenerations)
+-        .set({ auditJson: updatedAudit })
+-        .where(eq(resumeGenerations.id, latestGen.id));
+-    }
+-
+-    // Also transition any pending "needs_review" request to "completed" in durable ledger
+-    await db
+-      .update(resumeGenerationRequests)
+-      .set({ status: "completed" })
+-      .where(
+-        and(
+-          eq(resumeGenerationRequests.userId, user.id),
+-          eq(resumeGenerationRequests.jobId, jobId),
+-          eq(resumeGenerationRequests.status, "needs_review")
+-        )
+-      );
+-
+-    return { success: true };
+-  } catch (error: unknown) {
+-    const message = error instanceof Error ? error.message : "Failed to save edits";
+-    console.error("Error updating tailored resume markdown:", error);
+-    return { success: false, error: message };
++    if (!user?.id || !UUID_REGEX.test(user.id)) return { success: false, error: "Unauthorized" };
++    return await db.transaction(async tx => {
++      const [generation] = await tx.select().from(resumeGenerations)
++        .where(and(eq(resumeGenerations.userId, user.id), eq(resumeGenerations.jobId, jobId)))
++        .orderBy(sql`${resumeGenerations.createdAt} DESC`).limit(1);
++      if (!generation || generation.id !== expectedGenerationId) return { success: false, code: "STALE_GENERATION", error: "Reload the latest resume before saving." };
++      if (!["completed", "completed_with_estimates", "needs_review"].includes(generation.status)) return { success: false, error: "Generation is not usable." };
++      const [existing] = await tx.select().from(userJobResumes)
++        .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId))).limit(1);
++      const template = getTemplateById(templateId || existing?.templateId || "mit-capd");
++      const changed = existing?.markdown !== markdown || existing?.templateId !== template.id;
++      const status = resumeReviewError(generation, generation.id, markdown) ? "draft" : "ready";
++      const values = { markdown, templateId: template.id, theme: template.themeId, status,
++        updatedAt: new Date(), ...(changed ? { r2ObjectKey: null, fileSize: null, exportedAt: null } : {}) };
++      await tx.insert(userJobResumes).values({ userId: user.id, jobId, ...values })
++        .onConflictDoUpdate({ target: [userJobResumes.userId, userJobResumes.jobId], set: values });
++      await tx.update(resumeGenerations).set({ auditJson: {
++        ...(generation.auditJson as Record<string, unknown>),
++        manual_edit: { edited_at: new Date().toISOString(), template_id: template.id, markdown_length: markdown.length },
++      } }).where(eq(resumeGenerations.id, generation.id));
++      // Saving edits never certifies that generation review failures were resolved.
++      return { success: true };
++    }, { isolationLevel: "serializable" });
++  } catch {
++    return { success: false, error: "Could not save this version. Reload and retry." };
+   }
+ }
+ 
+@@ -863,60 +773,29 @@
+   expectedGenerationId?: string | null
+ ): Promise<{ success: boolean; error?: string; code?: string }> {
+   try {
+-    if (!jobId || !UUID_REGEX.test(jobId)) {
+-      return { success: false, error: "Invalid job identifier." };
+-    }
+     const user = await getCurrentUser();
+-    if (!user || !user.id || !UUID_REGEX.test(user.id)) {
+-      return { success: false, error: "Unauthorized" };
+-    }
+-
+-    // 1. Concurrency Check: If expectedGenerationId is provided, verify it is still the latest generation
+-    if (expectedGenerationId && UUID_REGEX.test(expectedGenerationId)) {
+-      const [latestGen] = await db
+-        .select({ id: resumeGenerations.id })
+-        .from(resumeGenerations)
++    if (!user?.id || !UUID_REGEX.test(jobId)) return { success: false, error: "Unauthorized or invalid job." };
++    const result = await db.transaction(async tx => {
++      const [generation] = await tx.select().from(resumeGenerations)
+         .where(and(eq(resumeGenerations.userId, user.id), eq(resumeGenerations.jobId, jobId)))
+-        .orderBy(sql`${resumeGenerations.createdAt} DESC`)
+-        .limit(1);
+-
+-      if (latestGen && latestGen.id !== expectedGenerationId) {
+-        return {
+-          success: false,
+-          code: "STALE_GENERATION",
+-          error: "A newer draft was generated in the background. Please reload to inspect the newest version.",
+-        };
+-      }
+-    }
+-
+-    // 2. Mark user_job_resumes as ready
+-    await db
+-      .update(userJobResumes)
+-      .set({
+-        status: "ready",
+-        updatedAt: new Date(),
+-      })
+-      .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId)));
+-
+-    // 3. Mark pending needs_review requests as completed in durable ledger
+-    await db
+-      .update(resumeGenerationRequests)
+-      .set({ status: "completed" })
+-      .where(
+-        and(
+-          eq(resumeGenerationRequests.userId, user.id),
+-          eq(resumeGenerationRequests.jobId, jobId),
+-          eq(resumeGenerationRequests.status, "needs_review")
+-        )
+-      );
+-
++        .orderBy(sql`${resumeGenerations.createdAt} DESC`).limit(1);
++      if (!generation || generation.id !== expectedGenerationId) return { success: false, code: "STALE_GENERATION", error: "Reload the latest resume before approving." };
++      if (!["completed", "completed_with_estimates", "needs_review"].includes(generation.status)) return { success: false, error: "Generation is not usable." };
++      const [saved] = await tx.select().from(userJobResumes)
++        .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId))).limit(1);
++      const contentError = resumeContentError(saved?.markdown);
++      if (contentError || !saved) return { success: false, error: contentError || "Save the resume before approving." };
++      await tx.update(resumeGenerations).set({ auditJson: {
++        ...(generation.auditJson as Record<string, unknown>),
++        human_review: { generation_id: generation.id, markdown_sha256: resumeDigest(saved.markdown), reviewed_at: new Date().toISOString() },
++      } }).where(eq(resumeGenerations.id, generation.id));
++      await tx.update(userJobResumes).set({ status: "ready", updatedAt: new Date() }).where(eq(userJobResumes.id, saved.id));
++      // Keep the original needs_review status and audit; approval is a separate recorded decision.
++      return { success: true };
++    }, { isolationLevel: "serializable" });
+     revalidatePath("/job-hunt/applications");
+-    return { success: true };
+-  } catch (error: unknown) {
+-    const message = error instanceof Error ? error.message : "Failed to mark resume as ready";
+-    console.error("Error marking tailored resume as ready:", error);
+-    return { success: false, error: message };
++    return result;
++  } catch {
++    return { success: false, error: "Could not approve this version. Reload and retry." };
+   }
+ }
+-
+-
+--- a/app/actions/resume-applications.ts
++++ b/app/actions/resume-applications.ts
+@@ -13,6 +13,7 @@
+ import { getTemplateById } from "@/data/resume-templates";
+ import { getCurrentUser } from "@/lib/auth/server";
+ import { eq, and, desc } from "drizzle-orm";
++import { resumeReviewError } from "@/lib/resume-review";
+ import { revalidatePath } from "next/cache";
+ import { Job } from "@/types";
+ import { mapDbRowToJob } from "@/lib/job-utils";
+@@ -85,6 +86,9 @@
+         createdAt: resumeGenerationRequests.createdAt,
+         finishedAt: resumeGenerationRequests.finishedAt,
+         genMarkdown: resumeGenerations.resumeMarkdown,
++        genStatus: resumeGenerations.status,
++        genCreatedAt: resumeGenerations.createdAt,
++        userJobUpdatedAt: userJobResumes.updatedAt,
+         genAudit: resumeGenerations.auditJson,
+         appStatus: applications.status,
+         appNotes: applications.notes,
+@@ -131,6 +135,7 @@
+ 
+       const audit = (r.genAudit as Record<string, unknown>) || {};
+       let reviewReason =
++        (audit.error as string) ||
+         (audit.review_reason as string) ||
+         (audit.reason as string) ||
+         (audit.summary as string) ||
+@@ -141,7 +146,7 @@
+       }
+ 
+       // Candidate's manually saved edits in userJobResumes take precedence over raw genMarkdown
+-      const markdown = (r.userJobMarkdown && r.userJobMarkdown.trim().length > 0)
++      const markdown = (r.userJobMarkdown && r.userJobMarkdown.trim().length > 0 && (!r.genCreatedAt || (r.userJobUpdatedAt && r.userJobUpdatedAt >= r.genCreatedAt)))
+         ? r.userJobMarkdown
+         : (r.genMarkdown || null);
+       const hasDraft = Boolean(markdown);
+@@ -162,32 +167,10 @@
+       const templateId = resolvedTmpl.id;
+       const theme = r.userJobTheme ?? resolvedTmpl.themeId;
+ 
+-      // Lazy backfill: If an application has completed generation and userJobResumes is missing
+-      // or has empty markdown, immediately persist into user_job_resumes with status: 'ready'!
+-      if (r.genMarkdown && (!r.userJobMarkdown || r.userJobMarkdown.trim().length === 0)) {
+-        db.insert(userJobResumes)
+-          .values({
+-            userId: user.id,
+-            jobId: r.jobId,
+-            markdown: r.genMarkdown,
+-            templateId,
+-            theme,
+-            status: "ready",
+-            createdAt: new Date(),
+-            updatedAt: new Date(),
+-          })
+-          .onConflictDoUpdate({
+-            target: [userJobResumes.userId, userJobResumes.jobId],
+-            set: {
+-              markdown: r.genMarkdown,
+-              templateId,
+-              theme,
+-              status: "ready",
+-              updatedAt: new Date(),
+-            },
+-          })
+-          .catch((err) => console.warn("[listResumeApplications] Lazy sync warning:", err));
+-      }
++      const approved = !!markdown && !!r.genStatus && !resumeReviewError(
++        { id: r.requestId, status: r.genStatus, auditJson: r.genAudit }, r.requestId, markdown);
++      if (approved) reviewReason = null;
++      // Listing applications is read-only; it never rewrites a saved edit or approval.
+ 
+       // Stage mapping:
+       // "applied" -> 0
+@@ -231,7 +214,7 @@
+         externalApplyUrl: r.externalApplyUrl,
+         job: canonicalJob,
+         requestedAt: r.createdAt.toISOString(),
+-        requestStatus: r.requestStatus as ResumeApplicationItem["requestStatus"],
++        requestStatus: (approved && r.requestStatus === "needs_review" ? "completed" : r.requestStatus) as ResumeApplicationItem["requestStatus"],
+         creditState: r.creditState,
+         errorCode: r.errorCode,
+         applicationStage: stageIndex,
+--- a/app/api/resume/export/route.ts
++++ b/app/api/resume/export/route.ts
+@@ -1,11 +1,14 @@
+ import { NextResponse } from "next/server";
++import { HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
++import { resumeContentError } from "@/lib/resume-validation";
++import { resumeReviewError } from "@/lib/resume-review";
+ import { getCurrentUser } from "@/lib/auth/server";
+ import { db } from "@/lib/db";
+ import { userJobResumes, resumeGenerations, jobs } from "@/lib/db/schema";
+ import { eq, and, desc } from "drizzle-orm";
+-import { parseResumeMarkdown } from "@/lib/resume-parser";
+-import { getTemplateById } from "@/data/resume-templates";
+-import { generateResumeUploadUrl, generateResumeDownloadUrl, pruneOldTailoredResumes } from "@/lib/storage/r2";
++import { parseResumeMarkdown, resumePlainText } from "@/lib/resume-parser";
++import { RESUME_TEMPLATES, getTemplateById } from "@/data/resume-templates";
++import { generateResumeUploadUrl, generateResumeDownloadUrl, r2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
+ 
+ export const dynamic = "force-dynamic";
+ 
+@@ -20,6 +23,7 @@
+ }
+ 
+ export async function POST(request: Request) {
++  let uncommittedKey: string | undefined;
+   try {
+     const user = await getCurrentUser().catch(() => null);
+     if (!user || !user.id || !UUID_REGEX.test(user.id)) {
+@@ -48,25 +52,16 @@
+       return NextResponse.json({ error: "Job record not found." }, { status: 404 });
+     }
+ 
+-    // 2. Concurrency & Stale Draft Guard
+-    // If expectedGenerationId is provided, ensure it matches the latest generation
+-    if (expectedGenerationId && UUID_REGEX.test(expectedGenerationId)) {
+-      const [latestGen] = await db
+-        .select({ id: resumeGenerations.id })
+-        .from(resumeGenerations)
+-        .where(and(eq(resumeGenerations.userId, user.id), eq(resumeGenerations.jobId, jobId)))
+-        .orderBy(desc(resumeGenerations.createdAt))
+-        .limit(1);
+-
+-      if (latestGen && latestGen.id !== expectedGenerationId) {
+-        return NextResponse.json(
+-          {
+-            error: "A newer draft was generated for this job. Please reload the current draft before exporting.",
+-            code: "STALE_GENERATION",
+-          },
+-          { status: 409 }
+-        );
+-      }
++    const contentError = resumeContentError(markdown);
++    if (contentError) return NextResponse.json({ error: contentError, code: "INVALID_RESUME" }, { status: 422 });
++    const [latestGen] = await db.select().from(resumeGenerations)
++      .where(and(eq(resumeGenerations.userId, user.id), eq(resumeGenerations.jobId, jobId)))
++      .orderBy(desc(resumeGenerations.createdAt)).limit(1);
++    const reviewError = resumeReviewError(latestGen, expectedGenerationId, markdown);
++    if (reviewError) return NextResponse.json({ error: reviewError,
++      code: latestGen?.id !== expectedGenerationId ? "STALE_GENERATION" : "REVIEW_REQUIRED" }, { status: 409 });
++    if (templateId && !RESUME_TEMPLATES.some(item => item.id === templateId)) {
++      return NextResponse.json({ error: "Unsupported resume template." }, { status: 400 });
+     }
+ 
+     // 3. Resolve template and theme
+@@ -76,9 +71,11 @@
+ 
+     // 4. Parse markdown to structured Typst model
+     const parsedResume = parseResumeMarkdown(markdown);
++    for (const section of Object.values(parsedResume.additionalSections || {})) section.lines = section.lines.map(resumePlainText);
+ 
+     // 5. Generate Cloudflare R2 Presigned PUT Upload URL
+     const { uploadUrl, objectKey } = await generateResumeUploadUrl(user.id, jobId, 300);
++    uncommittedKey = objectKey;
+ 
+ // 6. Call GCP Cloud Run Typst PDF Compiler
+     const compilerBaseUrl = (process.env.RESUME_COMPILER_URL || "").trim().replace(/\/$/, "");
+@@ -107,17 +104,25 @@
+     }
+ 
+ 
++    if (Object.keys(parsedResume.additionalSections || {}).length || parsedResume.personalInfo.extraContacts?.length) {
++      const health = await fetch(`${compilerBaseUrl}/health`, { signal: AbortSignal.timeout(10000), cache: "no-store" });
++      const capabilities = await health.json();
++      if (capabilities.resumeContractVersion !== 2) return NextResponse.json({
++        error: "PDF service needs the content-preservation update before exporting this resume.", code: "COMPILER_UPDATE_REQUIRED",
++      }, { status: 503 });
++    }
+     const compilerPayload = {
+-      resume: parsedResume,
++      resume: { ...parsedResume, rawMarkdown: undefined },
+       theme: resolvedTheme,
+       templateId: resolvedTemplateId,
+       uploadUrl,
+     };
+ 
+     let compilerResponse: Response;
++    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+     try {
+       const controller = new AbortController();
+-      const timeoutId = setTimeout(() => controller.abort(), 35000);
++      timeoutId = setTimeout(() => controller.abort(), 90000);
+ 
+       compilerResponse = await fetch(`${compilerBaseUrl}/api/v1/ui-export`, {
+         method: "POST",
+@@ -127,10 +132,12 @@
+         },
+         body: JSON.stringify(compilerPayload),
+         signal: controller.signal,
++        cache: "no-store",
+       });
+ 
+       clearTimeout(timeoutId);
+     } catch (fetchErr: unknown) {
++      if (timeoutId) clearTimeout(timeoutId);
+       console.error("Failed to reach resume-pdf-compiler service:", fetchErr);
+       return NextResponse.json(
+         {
+@@ -141,6 +148,7 @@
+       );
+     }
+ 
++    if (timeoutId) clearTimeout(timeoutId);
+     if (!compilerResponse.ok) {
+       const errText = await compilerResponse.text().catch(() => "Unknown compiler error");
+       console.error("Resume compiler error response:", compilerResponse.status, errText);
+@@ -168,45 +176,31 @@
+       );
+     }
+ 
++    const head = await r2Client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: objectKey }));
++    const firstBytes = await r2Client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: objectKey, Range: "bytes=0-4" }));
++    if (!head.ContentLength || head.ContentType !== "application/pdf" ||
++        Buffer.from(await firstBytes.Body!.transformToByteArray()).toString() !== "%PDF-") throw new Error("Invalid uploaded PDF");
++    compilerResult.fileSize = head.ContentLength;
+     // 7. Update database: save object key and exported timestamp in user_job_resumes
+-    const [existingResume] = await db
+-      .select({ id: userJobResumes.id })
+-      .from(userJobResumes)
+-      .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId)))
+-      .limit(1);
+-
+     const now = new Date();
+-    if (existingResume) {
+-      await db
+-        .update(userJobResumes)
+-        .set({
+-          r2ObjectKey: objectKey,
+-          markdown,
+-          templateId: resolvedTemplateId,
+-          theme: resolvedTheme,
+-          fileSize: compilerResult.fileSize ?? null,
+-          exportedAt: now,
+-          updatedAt: now,
+-        })
+-        .where(eq(userJobResumes.id, existingResume.id));
+-    } else {
+-      await db.insert(userJobResumes).values({
+-        userId: user.id,
+-        jobId,
+-        markdown,
+-        r2ObjectKey: objectKey,
+-        templateId: resolvedTemplateId,
+-        theme: resolvedTheme,
+-        fileSize: compilerResult.fileSize ?? null,
+-        exportedAt: now,
+-        status: "ready",
+-      });
+-    }
+-
+-    // 8. Storage Invariant: Prune all previous PDF versions for this user and job in Cloudflare R2
+-    pruneOldTailoredResumes(user.id, jobId, objectKey).catch((pruneErr) => {
+-      console.warn(`[R2 Prune] Non-fatal: failed to prune previous PDFs for job ${jobId}:`, pruneErr);
+-    });
++    const previousKey = await db.transaction(async tx => {
++      const [currentGen] = await tx.select().from(resumeGenerations)
++        .where(and(eq(resumeGenerations.userId, user.id), eq(resumeGenerations.jobId, jobId)))
++        .orderBy(desc(resumeGenerations.createdAt)).limit(1);
++      if (resumeReviewError(currentGen, expectedGenerationId, markdown)) throw new Error("Draft changed during compilation");
++      const [saved] = await tx.select().from(userJobResumes)
++        .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId))).limit(1);
++      const values = { markdown, templateId: resolvedTemplateId, theme: resolvedTheme, status: "ready",
++        r2ObjectKey: objectKey, fileSize: head.ContentLength, exportedAt: now, updatedAt: now };
++      await tx.insert(userJobResumes).values({ userId: user.id, jobId, ...values })
++        .onConflictDoUpdate({ target: [userJobResumes.userId, userJobResumes.jobId], set: values });
++      return saved?.r2ObjectKey;
++    }, { isolationLevel: "serializable" });
++    uncommittedKey = undefined;
++    // Delete only the replaced object; a prefix prune can delete another export.
++    if (previousKey && previousKey !== objectKey) {
++      await r2Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: previousKey })).catch(() => undefined);
++    }
+ 
+     // 8. Generate a short-lived download URL from R2
+     const downloadFileName = `${(jobRecord.company || "Company").replace(/\s+/g, "_")}_${(jobRecord.title || "Resume").replace(/\s+/g, "_")}`;
+@@ -221,8 +215,9 @@
+     });
+   } catch (error: unknown) {
+     console.error("Unhandled error in POST /api/resume/export:", error);
+-    const message = error instanceof Error ? error.message : "Internal server error during resume export.";
+-    return NextResponse.json({ error: message }, { status: 500 });
++    return NextResponse.json({ error: "Unable to export this version. Reload the latest draft and retry." }, { status: 503 });
++  } finally {
++    if (uncommittedKey) await r2Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: uncommittedKey })).catch(() => undefined);
+   }
+ }
+ 
+@@ -243,6 +238,8 @@
+     const [record] = await db
+       .select({
+         r2ObjectKey: userJobResumes.r2ObjectKey,
++        markdown: userJobResumes.markdown,
++        updatedAt: userJobResumes.updatedAt,
+         exportedAt: userJobResumes.exportedAt,
+         templateId: userJobResumes.templateId,
+       })
+@@ -250,7 +247,11 @@
+       .where(and(eq(userJobResumes.userId, user.id), eq(userJobResumes.jobId, jobId)))
+       .limit(1);
+ 
+-    if (!record || !record.r2ObjectKey) {
++    const [generation] = await db.select().from(resumeGenerations)
++      .where(and(eq(resumeGenerations.userId, user.id), eq(resumeGenerations.jobId, jobId)))
++      .orderBy(desc(resumeGenerations.createdAt)).limit(1);
++    if (!record || !record.r2ObjectKey || !record.exportedAt || record.exportedAt < record.updatedAt ||
++        resumeContentError(record.markdown) || resumeReviewError(generation, searchParams.get("expectedGenerationId"), record.markdown)) {
+       return NextResponse.json({ success: true, hasExportedPdf: false });
+     }
+ 
+@@ -269,6 +270,7 @@
+       downloadUrl,
+       exportedAt: record.exportedAt?.toISOString(),
+       templateId: record.templateId,
++      markdown: record.markdown,
+     });
+   } catch (error: unknown) {
+     console.error("Error in GET /api/resume/export:", error);
+--- a/app/(main)/job-hunt/manage/page.tsx
++++ b/app/(main)/job-hunt/manage/page.tsx
+@@ -1,7 +1,6 @@
+ "use client";
+ 
+ import { 
+-  UploadCloud, 
+   MapPin, 
+   Check, 
+   X, 
+@@ -33,21 +32,17 @@
+ import { PdfPreviewModal, PdfPreviewDocument } from "@/components/PdfPreviewModal";
+ import { RESUME_TEMPLATES, ResumeTemplate } from "@/data/resume-templates";
+ import { toast } from "sonner";
+-import { sampleResumeMarkdown } from "@/data/sample-resume";
+ import { FlagUS } from "@/components/LocationDropdown";
+ import { useResumeStore } from "@/store/useResumeStore";
+-import { useCreditStore } from "@/store/useCreditStore";
+ import { getPreferenceTagOptions } from "@/app/actions/recommendations";
++import { ResumeImportPanel } from "@/components/ResumeImportPanel";
+ import { getUserJobPreferences, saveUserJobPreferences, saveResumeDetails } from "@/app/actions/preferences";
+ import type { JobPreferencesData, ResumeDetailsData } from "@/lib/db/schema/preferences";
+ import { ManageJobHuntFormSkeleton } from "@/components/ManageJobHuntSkeleton";
+-import { useR2Storage } from "@/lib/hooks/useR2Storage";
+ import { useClickOutside } from "@/lib/hooks/useClickOutside";
+ import {
+   getAllTemplatePresignedUrls,
+   TemplateAssetUrls,
+-  commitResumeUpload,
+-  deleteUserResume,
+   getUserActiveResume,
+ } from "@/app/actions/storage";
+ import { JobHuntMobileMenuButton } from "@/components/JobHuntSidebar";
+@@ -166,13 +161,6 @@
+ 
+ const INPUT_BASE_CLASSES = "text-[0.875rem] font-medium text-gray-700 dark:text-gray-300 bg-bg-input border-[1.5px] border-transparent rounded-[10px] focus:outline-none focus:border-black dark:focus:border-white transition-all duration-200 ease-out";
+ 
+-function formatFileSize(bytes: number): string {
+-  if (!bytes || bytes <= 0) return "";
+-  if (bytes < 1024) return `${bytes} B`;
+-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+-}
+-
+ 
+ interface EducationEntry {
+   id: string;
+@@ -662,7 +650,7 @@
+   resumeFileKey: string | null;
+ }
+ 
+-export function serializePreferencesState(state: Partial<PreferencesStateValues>): string {
++function serializePreferencesState(state: Partial<PreferencesStateValues>): string {
+   const normalized = {
+     country: (state.country || "us").trim().toLowerCase(),
+     cities: Array.isArray(state.cities) ? [...state.cities].map(s => s.trim().toLowerCase()).sort() : [],
+@@ -735,12 +723,11 @@
+ 
+ export default function ManageJobHuntPage() {
+   // Resume
+-  const [dragActive, setDragActive] = useState(false);
+-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
++  const [selectedFile] = useState<File | null>(null);
+   const [autofill, setAutofill] = useState(true);
+   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
+   const [showDetailsForm, setShowDetailsForm] = useState(false);
+-  const [generatedMarkdown, setGeneratedMarkdown] = useState(sampleResumeMarkdown);
++  const [generatedMarkdown] = useState("");
+   const resumeStore = useResumeStore();
+   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
+     resumeStore.selectedTemplateId || RESUME_TEMPLATES[0].id
+@@ -829,13 +816,10 @@
+   const [resumeUploaded, setResumeUploaded] = useState(false);
+   const [resumeFileName, setResumeFileName] = useState<string | null>(null);
+   const [resumeFileKey, setResumeFileKey] = useState<string | null>(null);
+-  const [resumeFileSize, setResumeFileSize] = useState<number | null>(null);
+-  const [isViewingResume, setIsViewingResume] = useState(false);
+-
+-  const { uploadFile, getFileUrl, isUploading: isR2Uploading, progress: uploadProgress } = useR2Storage();
++  const [, setResumeFileSize] = useState<number | null>(null);
++
+ 
+   const [isConfirming, setIsConfirming] = useState(false);
+-  const [isExtracting, setIsExtracting] = useState(false);
+   const [confirmedSnapshot, setConfirmedSnapshot] = useState<string | null>(null);
+   const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false);
+ 
+@@ -1167,289 +1151,6 @@
+   }, [hasLoadedPreferences, showDetailsForm, personalDetails, educations, experiences]);
+ 
+   // Handlers
+-  const hasResume = Boolean(selectedFile || resumeUploaded);
+-
+-  const handleDrag = (e: React.DragEvent) => {
+-    e.preventDefault();
+-    e.stopPropagation();
+-    if (hasResume) return;
+-    if (e.type === "dragenter" || e.type === "dragover") {
+-      setDragActive(true);
+-    } else if (e.type === "dragleave") {
+-      setDragActive(false);
+-    }
+-  };
+-
+-  const handleResumeFileUpload = async (file: File) => {
+-    if (hasResume) {
+-      toast.info("A resume is already uploaded. Please remove it first to upload a new file.");
+-      return;
+-    }
+-
+-    if (isR2Uploading) {
+-      toast.info("Upload is already in progress. Please wait.");
+-      return;
+-    }
+-
+-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+-    if (file.size > MAX_FILE_SIZE) {
+-      toast.error("File size exceeds 10MB limit. Please upload a smaller file.");
+-      return;
+-    }
+-
+-    const allowedExtensions = [".pdf", ".doc", ".docx"];
+-    const fileExt = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+-    if (!allowedExtensions.includes(fileExt)) {
+-      toast.error("Invalid file format. Please upload a PDF, DOC, or DOCX file.");
+-      return;
+-    }
+-
+-    setSelectedFile(file);
+-    setResumeUploaded(true);
+-    setResumeFileName(file.name);
+-    setResumeFileSize(file.size);
+-
+-    toast.loading("Uploading resume to Cloudflare R2...", { id: "resume-upload-toast" });
+-    const res = await uploadFile({
+-      file,
+-      category: "resume",
+-    });
+-
+-    if (res.success && res.objectKey) {
+-      setResumeFileKey(res.objectKey);
+-
+-      // Invariant: strictly ONE resume per account in Cloudflare R2.
+-      // commitResumeUpload prunes previous versions from R2 and upserts the DB record.
+-      const commitRes = await commitResumeUpload({
+-        objectKey: res.objectKey,
+-        fileName: file.name,
+-        fileSize: file.size,
+-      });
+-
+-      if (commitRes.success) {
+-        setIsExtracting(true);
+-        toast.loading("Resume saved! Extracting details and skills with AI...", { id: "resume-upload-toast" });
+-
+-        try {
+-          const profileRes = await fetch("/api/job-hunt/profile", {
+-            method: "POST",
+-            headers: { "Content-Type": "application/json" },
+-            body: JSON.stringify({
+-              objectKey: res.objectKey,
+-              fileName: file.name,
+-            }),
+-          });
+-
+-          const profileData = await profileRes.json();
+-          if (profileRes.ok && profileData.success) {
+-            const extPref = profileData.preferences;
+-            const extDetails = profileData.resume_details;
+-
+-            // 1. Always cache the raw Cloud Run extraction in memory and sessionStorage
+-            cloudRunExtractionCacheRef.current = {
+-              preferences: extPref,
+-              resume_details: extDetails,
+-            };
+-            if (typeof window !== "undefined") {
+-              try {
+-                sessionStorage.setItem(
+-                  "cached_resume_extraction",
+-                  JSON.stringify({ preferences: extPref, resume_details: extDetails })
+-                );
+-              } catch {
+-                // Ignore storage error
+-              }
+-            }
+-
+-            // 2. If 'Autofill from resume' is ON, auto-fill form immediately
+-            if (autofill) {
+-              if (extPref) {
+-                if (Array.isArray(extPref.skills) && extPref.skills.length > 0) {
+-                  setSkills(extPref.skills);
+-                }
+-                if (Array.isArray(extPref.domains) && extPref.domains.length > 0) {
+-                  setDomains(extPref.domains);
+-                }
+-                if (extPref.seniority) {
+-                  setSeniority(extPref.seniority);
+-                }
+-                if (Array.isArray(extPref.cities) && extPref.cities.length > 0) {
+-                  setCities(extPref.cities.slice(0, 3));
+-                }
+-                if (extPref.country) {
+-                  setCountry(extPref.country.toLowerCase());
+-                }
+-                if (Array.isArray(extPref.jobTypes) && extPref.jobTypes.length > 0) {
+-                  setJobTypes(extPref.jobTypes);
+-                }
+-                if (extPref.experienceYears != null) {
+-                  setExperience(String(extPref.experienceYears));
+-                }
+-                if (extPref.selectedTemplateId) {
+-                  setSelectedTemplateId(extPref.selectedTemplateId);
+-                  useResumeStore.getState().setSelectedTemplateId(extPref.selectedTemplateId);
+-                }
+-              }
+-
+-              if (extDetails) {
+-                if (extDetails.personalDetails) {
+-                  setPersonalDetails({
+-                    fullName: extDetails.personalDetails.fullName || "",
+-                    email: extDetails.personalDetails.email || "",
+-                    phoneNumber: extDetails.personalDetails.phoneNumber || "",
+-                    location: extDetails.personalDetails.location || "",
+-                  });
+-                }
+-                if (Array.isArray(extDetails.educationHistory) && extDetails.educationHistory.length > 0) {
+-                  setEducations(extDetails.educationHistory);
+-                }
+-                if (Array.isArray(extDetails.experienceHistory) && extDetails.experienceHistory.length > 0) {
+-                  setExperiences(extDetails.experienceHistory);
+-                }
+-              }
+-
+-              toast.success("Resume processed & details auto-filled! Please review and confirm your changes.", {
+-                id: "resume-upload-toast",
+-                duration: 5000,
+-              });
+-            } else {
+-              // Autofill is OFF: Do NOT touch screen fields!
+-              toast.success("Resume uploaded! 'Autofill from resume' is OFF, so your form was not modified. Turn on the toggle anytime to apply extracted details.", {
+-                id: "resume-upload-toast",
+-                duration: 6000,
+-              });
+-            }
+-          } else {
+-            console.warn("Profile extraction returned non-ok:", profileData);
+-            toast.success("Resume uploaded! (Auto-fill was unavailable, enter details manually)", {
+-              id: "resume-upload-toast",
+-              duration: 4000,
+-            });
+-          }
+-        } catch (extractErr) {
+-          console.error("Error calling profile extraction:", extractErr);
+-          toast.success("Resume uploaded! (Auto-fill was unavailable, enter details manually)", {
+-            id: "resume-upload-toast",
+-            duration: 4000,
+-          });
+-        } finally {
+-          setIsExtracting(false);
+-        }
+-      } else {
+-        toast.error(commitRes.error || "Failed to commit resume record to database.", { id: "resume-upload-toast" });
+-      }
+-    } else {
+-      setSelectedFile(null);
+-      setResumeUploaded(false);
+-      setResumeFileName(null);
+-      setResumeFileKey(null);
+-      setResumeFileSize(null);
+-      toast.error(res.error || "Failed to upload resume to Cloudflare R2.", { id: "resume-upload-toast" });
+-    }
+-  };
+-
+-  const handleDeleteResume = async (e: React.MouseEvent) => {
+-    e.preventDefault();
+-    e.stopPropagation();
+-    if (resumeFileKey) {
+-      toast.loading("Removing resume from Cloudflare R2 & database...", { id: "resume-delete-toast" });
+-      try {
+-        const res = await deleteUserResume();
+-        if (res.success) {
+-          setSelectedFile(null);
+-          setResumeUploaded(false);
+-          setResumeFileName(null);
+-          setResumeFileKey(null);
+-          setResumeFileSize(null);
+-          cloudRunExtractionCacheRef.current = null;
+-          if (typeof window !== "undefined") {
+-            try {
+-              sessionStorage.removeItem("cached_resume_extraction");
+-            } catch {
+-              // Ignore
+-            }
+-          }
+-          toast.success("Resume removed from Cloudflare R2 & database.", { id: "resume-delete-toast" });
+-        } else {
+-          toast.error(res.error || "Failed to remove resume.", { id: "resume-delete-toast" });
+-        }
+-      } catch {
+-        toast.error("Failed to remove resume.", { id: "resume-delete-toast" });
+-      }
+-    } else {
+-      setSelectedFile(null);
+-      setResumeUploaded(false);
+-      setResumeFileName(null);
+-      setResumeFileKey(null);
+-      setResumeFileSize(null);
+-    }
+-  };
+-
+-  const handlePreviewStoredResume = async (e: React.MouseEvent) => {
+-    e.preventDefault();
+-    e.stopPropagation();
+-
+-    const fileName = selectedFile ? selectedFile.name : (resumeFileName || "");
+-    const lowerName = fileName.toLowerCase();
+-
+-    // Check if uploaded file is non-PDF (e.g. .docx or .doc)
+-    if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
+-      toast.info("Document Preview", {
+-        description: "In-browser preview is available for PDF files. Your Word document is safely uploaded.",
+-      });
+-      return;
+-    }
+-
+-    // Case 1: Freshly selected local PDF (instant preview via Object URL)
+-    if (selectedFile && (selectedFile.type === "application/pdf" || lowerName.endsWith(".pdf"))) {
+-      const blobUrl = URL.createObjectURL(selectedFile);
+-      setPreviewTemplate({
+-        id: "uploaded-resume",
+-        name: selectedFile.name.replace(/\.[^/.]+$/, "") || "Uploaded Resume",
+-        category: "Uploaded Resume",
+-        fileName: selectedFile.name,
+-        filePath: blobUrl,
+-      });
+-      return;
+-    }
+-
+-    // Case 2: Resume stored in Cloudflare R2
+-    if (!resumeFileKey) {
+-      toast.info("Please upload a resume first to preview it.");
+-      return;
+-    }
+-
+-    setIsViewingResume(true);
+-    const displayName = resumeFileName?.replace(/\.[^/.]+$/, "") || "Uploaded Resume";
+-    const displayFileName = resumeFileName || "Resume.pdf";
+-
+-    // Open modal immediately with streaming loader for instant visual feedback
+-    setPreviewTemplate({
+-      id: "uploaded-resume",
+-      name: displayName,
+-      category: "Uploaded Resume",
+-      fileName: displayFileName,
+-      filePath: "",
+-    });
+-
+-    try {
+-      const url = await getFileUrl(resumeFileKey);
+-      if (url) {
+-        setPreviewTemplate((prev) => 
+-          prev ? { ...prev, filePath: url } : null
+-        );
+-      } else {
+-        setPreviewTemplate(null);
+-        toast.error("Resume file not found in storage. Please re-upload your resume.");
+-      }
+-    } catch (err) {
+-      console.error("Failed to load resume preview:", err);
+-      setPreviewTemplate(null);
+-      toast.error("Error retrieving preview link.");
+-    } finally {
+-      setIsViewingResume(false);
+-    }
+-  };
+ 
+   const handleClosePdfPreview = () => {
+     if (previewTemplate?.filePath?.startsWith("blob:")) {
+@@ -1458,19 +1159,6 @@
+     setPreviewTemplate(null);
+   };
+ 
+-  const handleDrop = (e: React.DragEvent) => {
+-    e.preventDefault();
+-    e.stopPropagation();
+-    setDragActive(false);
+-    if (hasResume) {
+-      toast.info("A resume is already uploaded. Please remove it first to upload a new file.");
+-      return;
+-    }
+-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+-      const file = e.dataTransfer.files[0];
+-      handleResumeFileUpload(file);
+-    }
+-  };
+ 
+   /**
+    * [DEV NOTE - IN DEVELOPMENT / NON-FUNCTIONAL BASE RESUME GENERATOR]
+@@ -1495,98 +1183,8 @@
+    * Part of the incomplete base resume generator, NOT related to AI job tailoring.
+    */
+   const generateAndShowResume = async () => {
+-    // 1. Deduct Credit
+-    const { deductCredit } = useCreditStore.getState();
+-    const res = await deductCredit("generate_resume");
+-    
+-    if (!res.success) {
+-      toast.error(res.error || "Failed to deduct credit. Insufficient balance.");
+-      return;
+-    }
+-
+-    const candidateName = personalDetails.fullName?.trim() || "Alex Rivera";
+-    const candidateEmail = personalDetails.email?.trim() || "alex.rivera@email.com";
+-    const candidatePhone = personalDetails.phoneNumber?.trim() || "(555) 123-4567";
+-    const candidateLocation = personalDetails.location?.trim() || cities[0] || "San Francisco, CA";
+-
+-    const primaryRole = domains[0] || "Frontend Engineer";
+-    const currentSkills = skills.length > 0 ? skills.join(", ") : "React, TypeScript, Next.js, Node.js";
+-
+-    // Build Education Section dynamically
+-    const validEducations = educations.filter(e => e.college?.trim() || e.degree?.trim());
+-    const educationSection = validEducations.length > 0
+-      ? validEducations.map(e => {
+-          const title = e.college ? `**${e.college}**` : "**University**";
+-          const degreeInfo = e.degree ? `*${e.degree}${e.field ? ` in ${e.field}` : ""}*` : "";
+-          const dateRange = (e.startDate || e.endDate) ? ` (${e.startDate || "Start"} – ${e.endDate || "Present"})` : "";
+-          const gradeInfo = e.grade ? ` • ${e.gradeType || "Grade"}: ${e.grade}${e.maxGrade ? `/${e.maxGrade}` : ""}` : "";
+-          return `${title}  \n${degreeInfo}${dateRange}${gradeInfo}`.trim();
+-        }).join("\n\n")
+-      : `**University of Texas at Austin**  \n*Bachelor of Science in Computer Science*`;
+-
+-    // Build Experience Section dynamically
+-    const validExperiences = experiences.filter(e => e.company?.trim() || e.role?.trim());
+-    const experienceSection = validExperiences.length > 0
+-      ? validExperiences.map(e => {
+-          const roleTitle = `### ${e.role || primaryRole}`;
+-          const compLine = `**${e.company || "Company"}** | *${candidateLocation}* | *${e.startDate || "2021"} – ${e.endDate || "Present"}*`;
+-          const desc = e.jobDescription?.trim() ? `${e.jobDescription}\n` : "";
+-          let resp = "";
+-          if (e.responsibilities?.trim()) {
+-            resp = e.responsibilities.split("\n").filter(Boolean).map(line => line.trim().startsWith("-") ? line.trim() : `- ${line.trim()}`).join("\n");
+-          } else {
+-            resp = `- Spearheaded modernization of web applications, improving core performance and reliability metrics.\n- Designed and implemented clean modular components, establishing unified architectural patterns.`;
+-          }
+-          return `${roleTitle}\n${compLine}\n${desc}${resp}`.trim();
+-        }).join("\n\n")
+-      : `### Senior ${primaryRole}\n**TechFlow Innovations** | *${candidateLocation}* | *2021 – Present*\n- Spearheaded the modernization of web application architecture, improving performance and SEO metrics.\n- Designed and implemented clean modular components, establishing unified patterns across key features.`;
+-
+-    const customResume = `# ${candidateName}
+-**${primaryRole}**  
+-${candidateLocation} • ${candidatePhone} • ${candidateEmail} • [LinkedIn](#) • [GitHub](#)
+-
+----
+-
+-## Professional Summary
+-Detail-oriented and innovative ${primaryRole} with ${experience || "3"}+ years of experience building highly scalable applications. Proficient in ${currentSkills} and modern web architectures. Demonstrated history of improving system performance and leading cross-functional teams to deliver production-grade software on time.
+-
+----
+-
+-## Experience
+-
+-${experienceSection}
+-
+----
+-
+-## Education
+-
+-${educationSection}
+-
+----
+-
+-## Skills & Technologies
+-- **Core Stack:** ${currentSkills}
+-`;
+-
+-    const safeFileName = `${candidateName.replace(/[^a-zA-Z0-9_-]/g, "_")}_Resume.pdf`;
+-    const generatedFile = new File([customResume], safeFileName, { type: "application/pdf" });
+-    setSelectedFile(generatedFile);
+-    setResumeUploaded(true);
+-    setResumeFileName(safeFileName);
+-    setResumeFileSize(generatedFile.size);
+-    setGeneratedMarkdown(customResume);
+-    setIsResumeModalOpen(true);
+-
+-    toast.success("Resume generated successfully!", {
+-      description: "Credit deducted. Previewing tailored resume for your profile.",
+-    });
+-
+-    // Asynchronously snapshot resume details in the database independently
+-    saveResumeDetails({
+-      personalDetails,
+-      educationHistory: educations,
+-      experienceHistory: experiences,
+-    }).catch(err => console.error("Background resume details save failed:", err));
++    // The unfinished generator must never charge credits or invent candidate history.
++    toast.info("Base resume generation is not available. Upload your original resume to continue.");
+   };
+ 
+   const handleAddCity = (city: string) => {
+@@ -1853,98 +1451,9 @@
+             */}
+           </div>
+           
+-          {hasResume ? (
+-            <div 
+-              className="flex items-center justify-between w-full p-3 sm:px-4 sm:py-3.5 rounded-md bg-bg-input transition-colors mb-4 border border-border-subtle/50"
+-            >
+-              <div className="flex items-center gap-3 min-w-0 pr-3">
+-                <div className="w-10 h-10 rounded-full bg-black/10 text-black dark:bg-white/20 dark:text-[#F3F4F6] flex items-center justify-center shrink-0">
+-                  {isR2Uploading || isExtracting ? (
+-                    <Loader2 className="w-5 h-5 animate-spin text-black dark:text-[#F3F4F6]" />
+-                  ) : (
+-                    <Check className="w-5 h-5 stroke-[2.5] shrink-0" strokeWidth={2.5} />
+-                  )}
+-                </div>
+-                <div className="text-left min-w-0">
+-                  <p className="font-bold text-sm truncate text-text-primary">
+-                    {selectedFile ? selectedFile.name : (resumeFileName || "Uploaded_Resume.pdf")}
+-                  </p>
+-                  <p className="text-xs text-text-muted truncate">
+-                    {isR2Uploading 
+-                      ? `Uploading directly to R2... ${uploadProgress}%` 
+-                      : isExtracting
+-                        ? "Extracting skills & profile details via AI..."
+-                        : resumeFileSize 
+-                          ? `${formatFileSize(resumeFileSize)} • Uploaded resume` 
+-                          : "Uploaded resume • Ready for applications"}
+-                  </p>
+-                </div>
+-              </div>
+-
+-              {/* Action buttons inside container: pushed cleanly to the right with symmetrical container padding */}
+-              <div className="flex items-center gap-2 shrink-0">
+-                <button
+-                  type="button"
+-                  onClick={handlePreviewStoredResume}
+-                  disabled={isViewingResume || isR2Uploading || isExtracting}
+-                  className="h-10 px-4 rounded-full font-heading text-xs sm:text-[13px] font-semibold bg-white dark:bg-[#202330] text-text-primary border-0 shadow-xs hover:bg-zinc-100 dark:hover:bg-[#2B3042] transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap inline-flex items-center justify-center gap-2"
+-                  title="Preview resume document"
+-                  aria-label="Preview resume"
+-                >
+-                  {isViewingResume ? (
+-                    <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
+-                  ) : (
+-                    <Eye className="w-4 h-4 text-text-muted dark:text-gray-300" strokeWidth={2} />
+-                  )}
+-                  <span>Preview</span>
+-                </button>
+-
+-                <button
+-                  type="button"
+-                  onClick={handleDeleteResume}
+-                  disabled={isR2Uploading || isExtracting}
+-                  title="Delete resume from cloud"
+-                  aria-label="Delete resume"
+-                  className="w-10 h-10 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 bg-red-100/80 dark:bg-red-950/40 hover:bg-red-200/90 dark:hover:bg-red-900/60 border-0 shadow-xs transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+-                >
+-                  <Trash2 className="w-4 h-4" strokeWidth={2} />
+-                </button>
+-              </div>
+-            </div>
+-          ) : (
+-            <div 
+-              className={`relative flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed rounded-md transition-colors mb-4
+-                ${dragActive ? "border-brand-lime bg-brand-lime/10" : "border-border-input hover:border-text-subtle"}
+-              `}
+-              onDragEnter={handleDrag}
+-              onDragLeave={handleDrag}
+-              onDragOver={handleDrag}
+-              onDrop={handleDrop}
+-            >
+-              <input 
+-                type="file" 
+-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+-                onChange={(e) => {
+-                  if (e.target.files && e.target.files[0]) {
+-                    const file = e.target.files[0];
+-                    handleResumeFileUpload(file);
+-                    e.target.value = "";
+-                  }
+-                }}
+-                accept=".pdf,.doc,.docx"
+-                title="Click or drag to upload resume"
+-              />
+-              <div className="flex flex-col items-center gap-2 text-center pointer-events-none">
+-                <div className="w-10 h-10 rounded-full bg-bg-input flex items-center justify-center">
+-                  <UploadCloud className="w-5 h-5 text-text-muted" />
+-                </div>
+-                <div>
+-                  <p className="font-bold text-sm text-text-primary">Click to upload or drag and drop</p>
+-                  <p className="text-xs text-text-muted mt-0.5">PDF, DOCX up to 10MB</p>
+-                </div>
+-              </div>
+-            </div>
+-          )}
++          <ResumeImportPanel currentKey={resumeFileKey} currentFileName={resumeFileName} autofill={autofill}
++            themeId={RESUME_TEMPLATES.find(t=>t.id===selectedTemplateId)?.themeId || 2}
++            onConfirmed={()=>{sessionStorage.removeItem("cached_resume_extraction");window.location.reload();}} />
+ 
+           <div className="flex items-center justify-end">
+             <label className="flex items-center gap-3 cursor-pointer group select-none">
+@@ -2586,6 +2095,7 @@
+       )}
+ 
+       {/* SECTION 3: Resume Template Preferences */}
++      <div id="resume-templates" />
+       {!showDetailsForm && (
+           <section className="bg-bg-card border border-border-subtle rounded-lg shadow-sm">
+             <div className="p-5 md:p-6 border-b border-border-subtle">
+--- a/app/(main)/job-hunt/applications/page.tsx
++++ b/app/(main)/job-hunt/applications/page.tsx
+@@ -905,7 +905,7 @@
+             }));
+             toast.success("Resume approved and marked as ready!");
+           } else {
+-            toast.error(res.error || "Failed to mark as ready.");
++            throw new Error(res.error || "Failed to mark as ready.");
+           }
+         }}
+         onSave={async (newMarkdown, newTemplateId, expectedGenId) => {
+--- a/store/useResumeStore.ts
++++ b/store/useResumeStore.ts
+@@ -1,5 +1,4 @@
+ import { create } from "zustand";
+-import { sampleResumeMarkdown } from "@/data/sample-resume";
+ import { 
+   RESUME_TEMPLATES, 
+   ResumeTemplate, 
+@@ -39,17 +38,8 @@
+   return RESUME_TEMPLATES[0].id;
+ };
+ 
+-const getInitialMarkdown = (): string => {
+-  if (typeof window !== "undefined") {
+-    try {
+-      const saved = localStorage.getItem(STORAGE_KEY_MARKDOWN);
+-      if (saved && saved.trim().length > 0) {
+-        return saved;
+-      }
+-    } catch {}
+-  }
+-  return sampleResumeMarkdown;
+-};
++// Resume contents are hydrated from authenticated DB storage, never shared browser keys.
++const getInitialMarkdown = (): string => "";
+ 
+ const initialTmplId = getInitialTemplateId();
+ const initialTemplate = getTemplateById(initialTmplId);
+@@ -75,25 +65,10 @@
+         localStorage.setItem(STORAGE_KEY_TEMPLATE, templateId);
+       } catch {}
+     }
+-    // Update local file payload in the background
+-    const { resumeMarkdown } = get();
+-    saveResumePayloadLocally({
+-      markdown: resumeMarkdown,
+-      theme: template.themeId,
+-      templateId: template.id,
+-      templateName: template.name,
+-      include_base64: true,
+-    });
++
+   },
+ 
+-  setResumeMarkdown: (markdown: string) => {
+-    set({ resumeMarkdown: markdown });
+-    if (typeof window !== "undefined") {
+-      try {
+-        localStorage.setItem(STORAGE_KEY_MARKDOWN, markdown);
+-      } catch {}
+-    }
+-  },
++  setResumeMarkdown: (markdown: string) => { set({ resumeMarkdown: markdown }); },
+ 
+   setHasOverflow: (hasOverflow: boolean) => {
+     set({ hasOverflow });
+@@ -107,13 +82,6 @@
+ 
+     set({ isSaving: true });
+ 
+-    if (typeof window !== "undefined") {
+-      try {
+-        localStorage.setItem(STORAGE_KEY_MARKDOWN, markdown);
+-        localStorage.setItem(STORAGE_KEY_TEMPLATE, templateId);
+-      } catch {}
+-    }
+-
+     const res = await saveResumePayloadLocally({
+       markdown,
+       theme: template.themeId,
+@@ -122,6 +90,7 @@
+       include_base64: true,
+     });
+ 
++    if (!res.success) { set({ isSaving: false }); return false; }
+     const now = new Date().toISOString();
+     set({
+       resumeMarkdown: markdown,
+@@ -136,26 +105,8 @@
+   },
+ 
+   resetToSample: () => {
+-    const defaultTemplate = RESUME_TEMPLATES[0];
+-    set({
+-      resumeMarkdown: sampleResumeMarkdown,
+-      selectedTemplateId: defaultTemplate.id,
+-      activeTemplate: defaultTemplate,
+-      activeThemeId: defaultTemplate.themeId,
+-      hasOverflow: false,
+-    });
+-    if (typeof window !== "undefined") {
+-      try {
+-        localStorage.removeItem(STORAGE_KEY_MARKDOWN);
+-        localStorage.setItem(STORAGE_KEY_TEMPLATE, defaultTemplate.id);
+-      } catch {}
+-    }
+-    saveResumePayloadLocally({
+-      markdown: sampleResumeMarkdown,
+-      theme: defaultTemplate.themeId,
+-      templateId: defaultTemplate.id,
+-      templateName: defaultTemplate.name,
+-      include_base64: true,
+-    });
++    const template = RESUME_TEMPLATES[0];
++    set({ resumeMarkdown: "", selectedTemplateId: template.id, activeTemplate: template, activeThemeId: template.themeId, hasOverflow: false });
++    if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY_MARKDOWN);
+   },
+ }));
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -1,6 +1,8 @@
+ import type { NextConfig } from "next";
+ 
+ const nextConfig: NextConfig = {
++  allowedDevOrigins: ["127.0.0.1"],
++  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
+   reactStrictMode: true,
+   poweredByHeader: false,
+   compiler: {
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -9,6 +9,8 @@
+   globalIgnores([
+     // Default ignores of eslint-config-next:
+     ".next/**",
++    ".next-dev/**",
++    "scratch/**",
+     "out/**",
+     "build/**",
+     "next-env.d.ts",
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -1,7 +1,11 @@
+ {
+   "compilerOptions": {
+     "target": "ES2017",
+-    "lib": ["dom", "dom.iterable", "esnext"],
++    "lib": [
++      "dom",
++      "dom.iterable",
++      "esnext"
++    ],
+     "allowJs": true,
+     "skipLibCheck": true,
+     "strict": true,
+@@ -19,7 +23,9 @@
+       }
+     ],
+     "paths": {
+-      "@/*": ["./*"]
++      "@/*": [
++        "./*"
++      ]
+     }
+   },
+   "include": [
+@@ -28,7 +34,14 @@
+     "**/*.tsx",
+     ".next/types/**/*.ts",
+     ".next/dev/types/**/*.ts",
+-    "**/*.mts"
++    "**/*.mts",
++    ".next-dev/types/**/*.ts",
++    ".next-dev/dev/types/**/*.ts"
+   ],
+-  "exclude": ["node_modules", "scripts", "project_docs"]
++  "exclude": [
++    "node_modules",
++    "scratch",
++    "scripts",
++    "project_docs"
++  ]
+ }
+--- a/.gitignore
++++ b/.gitignore
+@@ -39,3 +39,10 @@
+ # typescript
+ *.tsbuildinfo
+ next-env.d.ts
++
++# Local resume verification artifacts
++.next-dev/
++scratch/
++backend-fixes/pdf-compiler/target/
++**/__pycache__/
++!.env.example
+--- a/app/actions/storage.ts
++++ b/app/actions/storage.ts
+@@ -4,15 +4,14 @@
+   PutObjectCommand,
+   GetObjectCommand,
+   DeleteObjectCommand,
+-  ListObjectsV2Command,
+   HeadObjectCommand,
+ } from "@aws-sdk/client-s3";
+ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+ import { r2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
+ import { getCurrentUser } from "@/lib/auth/server";
+ import { db } from "@/lib/db";
+-import { userPrefResumes, userJobPreferences } from "@/lib/db/schema";
+-import { eq, sql } from "drizzle-orm";
++import { userPrefResumes } from "@/lib/db/schema";
++import { eq } from "drizzle-orm";
+ import { revalidatePath } from "next/cache";
+ import crypto from "crypto";
+ 
+@@ -60,13 +59,17 @@
+       return { success: false, error: "Invalid storage category." };
+     }
+ 
++    if (category === "resume" && (!fileName.toLowerCase().endsWith(".pdf") || fileType !== "application/pdf")) {
++      return {success:false,error:"Upload a PDF. Export Word files to PDF first."};
++    }
++
+     // Sanitize file name to prevent illegal characters or path traversal
+     const sanitizedFileName = fileName
+       .replace(/[^a-zA-Z0-9._-]/g, "_")
+       .replace(/^\.+/, "");
+ 
+     const fileUuid = crypto.randomUUID();
+-    const folder = category === "resume" ? "user_pref_resumes" : `${category}s`;
++    const folder = category === "resume" ? "resume_imports" : `${category}s`;
+     const objectKey = `${folder}/${user.id}/${fileUuid}-${sanitizedFileName}`;
+ 
+     const command = new PutObjectCommand({
+@@ -294,132 +297,10 @@
+  */
+ export type UserPrefResumeRecord = typeof userPrefResumes.$inferSelect;
+ 
+-export async function commitResumeUpload({
+-  objectKey,
+-  fileName,
+-  fileSize,
+-}: CommitResumeParams): Promise<{
+-  success: boolean;
+-  data?: UserPrefResumeRecord;
+-  error?: string;
+-}> {
+-  try {
+-    const user = await getCurrentUser();
+-    if (!user || !user.id) {
+-      return { success: false, error: "Authentication required." };
+-    }
+-
+-    if (!objectKey || typeof objectKey !== "string") {
+-      return { success: false, error: "Invalid object key." };
+-    }
+-
+-    // Security validation: verify key ownership & path
+-    const expectedPrefix = `user_pref_resumes/${user.id}/`;
+-    if (!objectKey.startsWith(expectedPrefix)) {
+-      return { success: false, error: "Unauthorized file key." };
+-    }
+-
+-    // 1. Storage Invariant Enforcement:
+-    // List and delete ALL existing objects in Cloudflare R2 under user_pref_resumes/{user.id}/
+-    // EXCEPT the newly uploaded objectKey. Never delete the persistent directory marker (.keep).
+-    try {
+-      const listCommand = new ListObjectsV2Command({
+-        Bucket: R2_BUCKET_NAME,
+-        Prefix: expectedPrefix,
+-      });
+-      const listRes = await r2Client.send(listCommand);
+-      if (listRes.Contents && listRes.Contents.length > 0) {
+-        for (const item of listRes.Contents) {
+-          if (item.Key && item.Key !== objectKey && !item.Key.endsWith("/.keep")) {
+-            console.log(`[R2 Prune] Deleting old resume version: ${item.Key}`);
+-            await r2Client.send(
+-              new DeleteObjectCommand({
+-                Bucket: R2_BUCKET_NAME,
+-                Key: item.Key,
+-              })
+-            );
+-          }
+-        }
+-      }
+-    } catch (r2Err) {
+-      console.error("Failed to prune old R2 resumes:", r2Err);
+-      // Non-fatal if R2 list fails, but we continue to DB commit
+-    }
+-
+-    const now = new Date();
+-    const cleanFileName = fileName || "Uploaded_Resume.pdf";
+-
+-    // 2. Database Upsert into normalized 'user_pref_resumes' table
+-    const [savedResume] = await db
+-      .insert(userPrefResumes)
+-      .values({
+-        userId: user.id,
+-        title: cleanFileName,
+-        fileName: cleanFileName,
+-        fileKey: objectKey,
+-        fileSize: fileSize || null,
+-        fileUrl: objectKey,
+-        isPrimary: true,
+-        updatedAt: now,
+-      })
+-      .onConflictDoUpdate({
+-        target: userPrefResumes.userId,
+-        set: {
+-          title: cleanFileName,
+-          fileName: cleanFileName,
+-          fileKey: objectKey,
+-          fileSize: fileSize || null,
+-          fileUrl: objectKey,
+-          content: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN NULL ELSE ${userPrefResumes.content} END`,
+-          parsedData: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN '{}'::jsonb ELSE ${userPrefResumes.parsedData} END`,
+-          isPrimary: true,
+-          updatedAt: now,
+-        },
+-      })
+-      .returning();
+-
+-    // 3. Update user_job_preferences with activeResumeId foreign key
+-    // and sync JSON document for backward compatibility
+-    const [existingPref] = await db
+-      .select()
+-      .from(userJobPreferences)
+-      .where(eq(userJobPreferences.userId, user.id))
+-      .limit(1);
+-
+-    if (existingPref) {
+-      const updatedPrefs = {
+-        ...(existingPref.preferences as Record<string, unknown>),
+-        resumeUploaded: true,
+-        resumeFileName: cleanFileName,
+-        resumeFileKey: objectKey,
+-      };
+-
+-      await db
+-        .update(userJobPreferences)
+-        .set({
+-          activeResumeId: savedResume.id,
+-          preferences: updatedPrefs,
+-          updatedAt: now,
+-        })
+-        .where(eq(userJobPreferences.userId, user.id));
+-    }
+-
+-    revalidatePath("/job-hunt/manage");
+-    revalidatePath("/job-hunt");
+-    revalidatePath("/(main)/job-hunt/manage", "page");
+-
+-    return {
+-      success: true,
+-      data: savedResume,
+-    };
+-  } catch (error: unknown) {
+-    const message = error instanceof Error ? error.message : "Failed to register resume in database.";
+-    console.error("Failed to commit resume upload:", error);
+-    return {
+-      success: false,
+-      error: message,
+-    };
+-  }
++export async function commitResumeUpload(params: CommitResumeParams): Promise<{success:boolean;data?:UserPrefResumeRecord;error?:string}> {
++  void params;
++  await getCurrentUser();
++  return {success:false,error:"Validate and confirm the PDF through Manage Job Hunt before activation."};
+ }
+ 
+ /**
+@@ -428,77 +309,17 @@
+  * Guarantees zero orphaned files remain in the cloud while preserving
+  * the persistent folder marker in the bucket.
+  */
+-export async function deleteUserResume(): Promise<{ success: boolean; error?: string }> {
+-  try {
+-    const user = await getCurrentUser();
+-    if (!user || !user.id) {
+-      return { success: false, error: "Authentication required." };
+-    }
+-
+-    const expectedPrefix = `user_pref_resumes/${user.id}/`;
+-
+-    // 1. Purge all files in Cloudflare R2 under user_pref_resumes/{user.id}/
+-    // (Never purges the root user_pref_resumes/.keep folder marker)
+-    try {
+-      const listCommand = new ListObjectsV2Command({
+-        Bucket: R2_BUCKET_NAME,
+-        Prefix: expectedPrefix,
+-      });
+-      const listRes = await r2Client.send(listCommand);
+-      if (listRes.Contents && listRes.Contents.length > 0) {
+-        for (const item of listRes.Contents) {
+-          if (item.Key && !item.Key.endsWith("/.keep")) {
+-            console.log(`[R2 Delete] Removing resume: ${item.Key}`);
+-            await r2Client.send(
+-              new DeleteObjectCommand({
+-                Bucket: R2_BUCKET_NAME,
+-                Key: item.Key,
+-              })
+-            );
+-          }
+-        }
+-      }
+-    } catch (r2Err) {
+-      console.error("Failed to purge R2 files on resume delete:", r2Err);
+-    }
+-
+-    // 2. Remove from 'user_pref_resumes' table
+-    await db.delete(userPrefResumes).where(eq(userPrefResumes.userId, user.id));
+-
+-    // 3. Clear active_resume_id and JSON fields in user_job_preferences
+-    const [existingPref] = await db
+-      .select()
+-      .from(userJobPreferences)
+-      .where(eq(userJobPreferences.userId, user.id))
+-      .limit(1);
+-
+-    if (existingPref) {
+-      const updatedPrefs = {
+-        ...(existingPref.preferences as Record<string, unknown>),
+-        resumeUploaded: false,
+-        resumeFileName: null,
+-        resumeFileKey: null,
+-      };
+-
+-      await db
+-        .update(userJobPreferences)
+-        .set({
+-          activeResumeId: null,
+-          preferences: updatedPrefs,
+-          updatedAt: new Date(),
+-        })
+-        .where(eq(userJobPreferences.userId, user.id));
+-    }
+-
+-    revalidatePath("/job-hunt/manage");
+-    revalidatePath("/job-hunt");
+-    revalidatePath("/(main)/job-hunt/manage", "page");
+-
+-    return { success: true };
+-  } catch (error: unknown) {
+-    const message = error instanceof Error ? error.message : "Failed to delete resume.";
+-    console.error("Failed to delete user resume:", error);
+-    return { success: false, error: message };
++export async function deleteUserResume(): Promise<{success:boolean;error?:string}> {
++  const user=await getCurrentUser();
++  if(!user?.id)return {success:false,error:"Authentication required."};
++  try {
++    const {removeActiveResume}=await import("@/lib/resume-imports");
++    await removeActiveResume(user.id);
++    revalidatePath('/job-hunt/manage');revalidatePath('/job-hunt');
++    return {success:true};
++  }catch(error){
++    console.error('Resume removal failed:',error);
++    return {success:false,error:error instanceof Error?error.message:"Could not remove resume."};
+   }
+ }
+ 
+--- a/app/actions/preferences.ts
++++ b/app/actions/preferences.ts
+@@ -168,6 +168,14 @@
+           manualEdits: record.preferences.manualEdits,
+         };
+       }
++      // Draft preferences cannot restore a deleted file or activate a stale one.
++      record.preferences = {
++        ...record.preferences,
++        resumeUploaded: Boolean(activeResume?.fileKey),
++        resumeFileKey: activeResume?.fileKey || null,
++        resumeFileName: activeResume?.fileKey ? activeResume.fileName || 'Uploaded_Resume.pdf' : null,
++      };
++      record.activeResumeId = activeResume?.id || null;
+     }
+ 
+     return {
+@@ -300,39 +308,14 @@
+           }),
+     };
+ 
+-    // 1. Ensure normalized user_pref_resumes table is synchronized if file key is present
+-    let activeResumeId: string | null = null;
+-    if (cleanPreferences.resumeFileKey) {
+-      const [resRecord] = await db
+-        .insert(userPrefResumes)
+-        .values({
+-          userId: user.id,
+-          title: cleanPreferences.resumeFileName || "Primary Resume",
+-          fileName: cleanPreferences.resumeFileName || "Uploaded_Resume.pdf",
+-          fileKey: cleanPreferences.resumeFileKey,
+-          fileUrl: cleanPreferences.resumeFileKey,
+-          isPrimary: true,
+-          updatedAt: now,
+-        })
+-        .onConflictDoUpdate({
+-          target: userPrefResumes.userId,
+-          set: {
+-            title: cleanPreferences.resumeFileName || "Primary Resume",
+-            fileName: cleanPreferences.resumeFileName || "Uploaded_Resume.pdf",
+-            fileKey: cleanPreferences.resumeFileKey,
+-            fileUrl: cleanPreferences.resumeFileKey,
+-            content: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${cleanPreferences.resumeFileKey} THEN NULL ELSE ${userPrefResumes.content} END`,
+-            parsedData: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${cleanPreferences.resumeFileKey} THEN '{}'::jsonb ELSE ${userPrefResumes.parsedData} END`,
+-            isPrimary: true,
+-            updatedAt: now,
+-          },
+-        })
+-        .returning();
+-      activeResumeId = resRecord.id;
+-    } else if (cleanPreferences.resumeUploaded === false) {
+-      // If user unsets resume, dissociate activeResumeId
+-      activeResumeId = null;
+-    }
++    const [activeBase] = await db.select().from(userPrefResumes).where(eq(userPrefResumes.userId,user.id)).limit(1);
++    if (cleanPreferences.resumeFileKey && cleanPreferences.resumeFileKey !== activeBase?.fileKey) {
++      return {success:false,error:"Validate and confirm the replacement PDF before saving preferences."};
++    }
++    const activeResumeId = activeBase?.id ?? null;
++    cleanPreferences.resumeFileKey = activeBase?.fileKey ?? null;
++    cleanPreferences.resumeFileName = activeBase?.fileName ?? null;
++    cleanPreferences.resumeUploaded = Boolean(activeBase?.fileKey);
+ 
+     // 2. Atomic Upsert: Replaces preferences for the user without touching resume_details
+     const [saved] = await db
+@@ -351,9 +334,7 @@
+         target: userJobPreferences.userId,
+         set: {
+           preferences: cleanPreferences,
+-          activeResumeId: cleanPreferences.resumeFileKey 
+-            ? activeResumeId 
+-            : (cleanPreferences.resumeUploaded === false ? null : sql`user_job_preferences.active_resume_id`),
++          activeResumeId: sql`user_job_preferences.active_resume_id`,
+           preferencesCreatedAt: sql`COALESCE(${userJobPreferences.preferencesCreatedAt}, ${now})`,
+           preferencesUpdatedAt: now,
+           updatedAt: now,
+--- a/app/api/job-hunt/profile/route.ts
++++ b/app/api/job-hunt/profile/route.ts
+@@ -1,106 +1,37 @@
+ import { NextResponse } from "next/server";
+ import { getCurrentUser } from "@/lib/auth/server";
+-import { getPresignedDownloadUrl } from "@/app/actions/storage";
+-import { extractResumeProfileFromR2 } from "@/lib/profile-service";
++import { previewResumeImport, confirmResumeImport, cancelResumeImport } from "@/lib/resume-imports";
+ import { revalidatePath } from "next/cache";
+ 
+ export const dynamic = "force-dynamic";
+ 
+ export async function POST(request: Request) {
++  const user = await getCurrentUser();
++  if (!user?.id) return NextResponse.json({success:false,error:"Authentication required."},{status:401});
+   try {
+-    const user = await getCurrentUser();
+-    if (!user || !user.id) {
+-      return NextResponse.json(
+-        { success: false, error: "Unauthorized: Authentication required." },
+-        { status: 401 }
+-      );
++    const raw = await request.text();
++    if (raw.length > 220000) return NextResponse.json({success:false,error:"Request too large."},{status:413});
++    const body = JSON.parse(raw);
++    if (body.operation === "confirm") {
++      if (typeof body.importId !== 'string' || typeof body.markdown !== 'string') throw new Error("Invalid confirmation.");
++      const result = await confirmResumeImport(user.id,body.importId,body.revision,body.markdown,typeof body.autofill==='boolean'?body.autofill:undefined);
++      revalidatePath('/job-hunt/manage');revalidatePath('/job-hunt');
++      return NextResponse.json(result);
+     }
+-
+-    const body = await request.json().catch(() => null);
+-    if (!body || typeof body !== "object") {
+-      return NextResponse.json(
+-        { success: false, error: "Invalid request payload." },
+-        { status: 400 }
+-      );
++    if (body.operation === "cancel") {
++      if (typeof body.importId !== 'string') throw new Error("Invalid import.");
++      return NextResponse.json(await cancelResumeImport(user.id,body.importId));
+     }
+-
+-    const { objectKey, fileName } = body as { objectKey?: string; fileName?: string };
+-
+-    if (!objectKey || typeof objectKey !== "string") {
+-      return NextResponse.json(
+-        { success: false, error: "Missing required parameter 'objectKey'." },
+-        { status: 400 }
+-      );
++    if (body.operation && body.operation !== 'preview') throw new Error("Unknown import operation.");
++    if (typeof body.objectKey !== 'string' || typeof body.fileName !== 'string') throw new Error("Select a PDF to validate.");
++    const result = await previewResumeImport(user.id,body.objectKey,body.fileName);
++    return NextResponse.json(result,{status:result.accepted?200:422});
++  } catch (error) {
++    if (error && typeof error === 'object' && 'code' in error && error.code === '42P01') {
++      console.error('Resume import schema is unavailable. Apply strict-resume-imports.sql before enabling uploads.');
++      return NextResponse.json({success:false,error:'Resume uploads are temporarily unavailable. Your current resume has not changed.'},{status:503});
+     }
+-
+-    if (!fileName || typeof fileName !== "string") {
+-      return NextResponse.json(
+-        { success: false, error: "Missing required parameter 'fileName'." },
+-        { status: 400 }
+-      );
+-    }
+-
+-    // Security Guard: Prevent directory traversal & enforce multi-tenant isolation
+-    if (objectKey.includes("..")) {
+-      return NextResponse.json(
+-        { success: false, error: "Illegal path traversal in object key." },
+-        { status: 400 }
+-      );
+-    }
+-
+-    const expectedPrefix = `user_pref_resumes/${user.id}/`;
+-    if (!objectKey.startsWith(expectedPrefix)) {
+-      return NextResponse.json(
+-        { success: false, error: "Forbidden: You do not have permission to access this resume." },
+-        { status: 403 }
+-      );
+-    }
+-
+-    // Generate a secure, time-limited presigned GET URL from R2 for the microservice
+-    const downloadRes = await getPresignedDownloadUrl(objectKey);
+-    if (!downloadRes.success || !downloadRes.downloadUrl) {
+-      return NextResponse.json(
+-        {
+-          success: false,
+-          error: downloadRes.error || "Failed to generate presigned download URL for extraction.",
+-        },
+-        { status: 500 }
+-      );
+-    }
+-
+-    // Call the Cloud Run profile service
+-    const extractionResult = await extractResumeProfileFromR2({
+-      userId: user.id,
+-      objectKey,
+-      fileName,
+-      downloadUrl: downloadRes.downloadUrl,
+-    });
+-
+-    if (!extractionResult.success) {
+-      return NextResponse.json(
+-        {
+-          success: false,
+-          error: extractionResult.error || "Failed to extract profile details from resume.",
+-        },
+-        { status: 502 }
+-      );
+-    }
+-
+-    revalidatePath("/job-hunt/manage");
+-    revalidatePath("/job-hunt");
+-
+-    return NextResponse.json({
+-      success: true,
+-      preferences: extractionResult.preferences,
+-      resume_details: extractionResult.resume_details,
+-      compiler_payload: extractionResult.compiler_payload,
+-    });
+-  } catch (error: unknown) {
+-    const message = error instanceof Error ? error.message : "Internal server error";
+-    console.error("[API /api/job-hunt/profile] Error processing extraction:", error);
+-    return NextResponse.json(
+-      { success: false, error: message },
+-      { status: 500 }
+-    );
++    const message=error instanceof Error ? error.message : 'Resume validation failed. Please retry.';
++    return NextResponse.json({success:false,error:message},{status:400});
+   }
+ }
+--- a/lib/profile-service.ts
++++ b/lib/profile-service.ts
+@@ -2,7 +2,7 @@
+ import type { JobPreferencesData, ResumeDetailsData } from "@/lib/db/schema/preferences";
+ 
+ const PROFILE_SERVICE_URL =
+-  process.env.JOB_HUNT_SERVICE_URL || "https://job-hunt-profile-znsph25yja-ue.a.run.app";
++  process.env.JOB_HUNT_SERVICE_URL || "https://layout-v1---job-hunt-profile-znsph25yja-ue.a.run.app";
+ const PROFILE_SERVICE_SECRET = process.env.JOB_HUNT_SERVICE_SECRET;
+ 
+ export interface ExtractResumeFromR2Params {
+@@ -14,6 +14,13 @@
+ 
+ export interface ExtractResumeResult {
+   success: boolean;
++  accepted?: boolean;
++  reasonCode?: string;
++  validatorVersion?: string;
++  fileSha256?: string;
++  markdown?: string;
++  message?: string;
++  detail?: string;
+   preferences?: JobPreferencesData;
+   resume_details?: ResumeDetailsData;
+   compiler_payload?: unknown;
+@@ -92,6 +99,13 @@
+ 
+     return {
+       success: true,
++      accepted: data.accepted,
++      reasonCode: data.reasonCode,
++      validatorVersion: data.validatorVersion,
++      fileSha256: data.fileSha256,
++      markdown: data.markdown,
++      message: data.message,
++      detail: data.detail,
+       preferences: data.preferences,
+       resume_details: data.resume_details,
+       compiler_payload: data.compiler_payload ?? data.resume_details?.compiler_payload,
+--- a/lib/hooks/useR2Storage.ts
++++ b/lib/hooks/useR2Storage.ts
+@@ -42,7 +42,7 @@
+         // 1. Request presigned upload URL from Server Action (Control Plane)
+         const presigned = await getPresignedUploadUrl({
+           fileName: file.name,
+-          fileType: file.type || "application/octet-stream",
++          fileType: category === "resume" ? "application/pdf" : (file.type || "application/octet-stream"),
+           category,
+         });
+ 
+@@ -56,7 +56,7 @@
+         await new Promise<void>((resolve, reject) => {
+           const xhr = new XMLHttpRequest();
+           xhr.open("PUT", uploadUrl, true);
+-          xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
++          xhr.setRequestHeader("Content-Type", category === "resume" ? "application/pdf" : (file.type || "application/octet-stream"));
+ 
+           xhr.upload.onprogress = (event) => {
+             if (event.lengthComputable) {
+--- /dev/null
++++ b/lib/resume-review.ts
+@@ -0,0 +1,23 @@
++import { createHash } from "node:crypto";
++
++export interface ResumeGenerationReview {
++  id: string;
++  status: string;
++  auditJson: unknown;
++}
++
++export function resumeDigest(markdown: string): string {
++  return createHash("sha256").update(markdown).digest("hex");
++}
++
++export function resumeReviewError(generation: ResumeGenerationReview | undefined, expectedId: string | null | undefined, markdown: string): string | null {
++  if (!generation || generation.id !== expectedId) return "Reload the latest resume before continuing.";
++  if (!["completed", "completed_with_estimates", "needs_review"].includes(generation.status)) return "This generation did not produce a usable resume.";
++  if (generation.status === "needs_review") {
++    const audit = generation.auditJson as { human_review?: { generation_id?: string; markdown_sha256?: string } } | null;
++    if (audit?.human_review?.generation_id !== generation.id || audit.human_review.markdown_sha256 !== resumeDigest(markdown)) {
++      return "This draft needs review. Save your corrections, then explicitly approve the saved version before exporting.";
++    }
++  }
++  return null;
++}
+--- /dev/null
++++ b/lib/resume-validation.ts
+@@ -0,0 +1,26 @@
++import { parseResumeMarkdown } from "./resume-parser";
++
++/** Structural checks apply to saved edits as well as generated drafts. */
++export function resumeContentError(markdown: unknown, options: {allowUndatedExperience?:boolean} = {}): string | null {
++  if (typeof markdown !== "string" || !markdown.trim()) return "Resume content cannot be empty.";
++  if (markdown.length > 200_000) return "Resume content is too large.";
++  let parserJson = /^\s*(?:#\s*)?\{/.test(markdown) || /"(?:source_file|compiler_payload|experienceHistory)"\s*:/.test(markdown);
++  try {
++    const value = JSON.parse(markdown.trim().replace(/^#\s*/, ""));
++    parserJson ||= value !== null && typeof value === "object";
++  } catch { /* Ordinary Markdown is not JSON. */ }
++  if (parserJson) {
++    return "Resume contains parser JSON instead of resume text. Regenerate from the original resume.";
++  }
++  if (/^#{3,6}\s+#{1,6}\s/m.test(markdown)) return "Resume contains malformed role headings. Correct the headings before continuing.";
++  const resume = parseResumeMarkdown(markdown);
++  if (!resume.personalInfo.name) return "Resume must include a name heading.";
++  if (resume.sectionOrder.includes("experience") && !resume.experience.length) return "Experience section is empty.";
++  if (resume.experience.some(role => !role.role || !role.company || (!options.allowUndatedExperience && !role.duration) || !role.bullets.length)) {
++    return "Each experience entry needs a role, employer, dates and at least one bullet.";
++  }
++  if (resume.education.some(education => !education.institution || !education.degree)) {
++    return "Each education entry needs an institution and degree. Check for missing degree text.";
++  }
++  return null;
++}
+--- /dev/null
++++ b/lib/resume-admission.ts
+@@ -0,0 +1,14 @@
++import { createHash } from "node:crypto";
++
++export const RESUME_VALIDATOR_VERSION = "single-column-v1";
++export const UNSUPPORTED_LAYOUT = "This layout isn't supported. Use one of our four templates or upload a standard single-column PDF.";
++export const sourceDigest = (text: string) => createHash("sha256").update(text.replace(/\r\n?/g, "\n")).digest("hex");
++
++export function admissionError(content: string, parsed: Record<string, unknown>): string | null {
++  const proof = parsed.layoutValidation as Record<string, unknown> | undefined;
++  if (proof?.validatorVersion !== RESUME_VALIDATOR_VERSION || !proof.confirmedAt ||
++      proof.contentSha256 !== sourceDigest(content) || typeof proof.importId !== "string") {
++    return "Your base resume needs format validation and confirmation. Open Manage Job Hunt and review a supported PDF before generating.";
++  }
++  return null;
++}
+--- /dev/null
++++ b/lib/resume-imports.ts
+@@ -0,0 +1,151 @@
++import { pool } from "@/lib/db";
++import { r2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
++import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
++import { getPresignedDownloadUrl } from "@/app/actions/storage";
++import { extractResumeProfileFromR2 } from "@/lib/profile-service";
++import { resumeContentError } from "@/lib/resume-validation";
++import { RESUME_VALIDATOR_VERSION, sourceDigest, UNSUPPORTED_LAYOUT } from "@/lib/resume-admission";
++import { createHash, randomUUID } from "node:crypto";
++import { parseResumeMarkdown } from "@/lib/resume-parser";
++
++const UUID = /^[0-9a-f-]{36}$/i;
++type ImportRow = { id: string; user_id: string; object_key: string; file_name: string; file_size: number; baseline_key: string | null;
++  baseline_content_sha256: string | null;
++  status: string; revision: number; file_sha256: string; validator_version: string; parsed_data: Record<string, unknown>; markdown: string; expires_at: Date };
++
++export async function previewResumeImport(userId: string, objectKey: string, fileName: string) {
++  if (!(objectKey.startsWith(`resume_imports/${userId}/`) || objectKey.startsWith(`user_pref_resumes/${userId}/`)) || objectKey.includes("..")) throw new Error("Invalid resume file ownership.");
++  if (!fileName.toLowerCase().endsWith(".pdf")) throw new Error("Upload a PDF. Export Word files to PDF first.");
++  const baseline = await pool.query(`SELECT r.file_key,r.content FROM user_pref_resumes r JOIN user_job_preferences p
++    ON p.user_id=r.user_id AND p.active_resume_id=r.id WHERE r.user_id=$1`, [userId]);
++  const inserted = await pool.query(`INSERT INTO resume_imports(user_id,object_key,file_name,status,baseline_key,baseline_content_sha256)
++    VALUES($1,$2,$3,'parsing',$4,$5) RETURNING id,revision`,
++    [userId,objectKey,fileName,baseline.rows[0]?.file_key ?? null,baseline.rows[0] ? sourceDigest(baseline.rows[0].content || '') : null]);
++  const {id,revision} = inserted.rows[0];
++  try {
++    const signed = await getPresignedDownloadUrl(objectKey);
++    if (!signed.success || !signed.downloadUrl) throw new Error("The uploaded PDF could not be read. Please retry.");
++    const result = await extractResumeProfileFromR2({userId,objectKey,fileName,downloadUrl:signed.downloadUrl});
++    if (!result.success || result.validatorVersion !== RESUME_VALIDATOR_VERSION) throw new Error(result.error || "The profile service needs the layout validation update before uploads can continue.");
++    if (!result.accepted) {
++      await pool.query(`UPDATE resume_imports SET status='rejected',reason_code=$3 WHERE id=$1 AND revision=$2 AND status='parsing'`,[id,revision,result.reasonCode]);
++      return {success:false,accepted:false,reasonCode:result.reasonCode,message:UNSUPPORTED_LAYOUT,detail:result.detail,importId:id};
++    }
++    if (!result.markdown || !result.fileSha256 || !result.resume_details) throw new Error("Incomplete validation response.");
++    const changed = await pool.query(`UPDATE resume_imports SET status='accepted',validator_version=$3,file_sha256=$4,
++      markdown=$5,parsed_data=$6,reason_code='ACCEPTED' WHERE id=$1 AND revision=$2 AND status='parsing' RETURNING id`,
++      [id,revision,result.validatorVersion,result.fileSha256,result.markdown,JSON.stringify({...result.resume_details,inferredPreferences:result.preferences||{}})]);
++    if (!changed.rows.length) throw new Error("This upload changed. Please retry the latest PDF.");
++    return {success:true,accepted:true,importId:id,revision,markdown:result.markdown,resume_details:result.resume_details,
++      message:result.message,previewUrl:signed.downloadUrl};
++  } catch (error) {
++    await pool.query(`UPDATE resume_imports SET status='rejected',reason_code='VALIDATION_UNAVAILABLE' WHERE id=$1 AND revision=$2 AND status='parsing'`,[id,revision]);
++    throw error;
++  }
++}
++
++export async function confirmResumeImport(userId: string, importId: string, revision: number, markdown: string, autofill?:boolean) {
++  if (!UUID.test(importId) || !Number.isInteger(revision)) throw new Error("Invalid import revision.");
++  const invalid = resumeContentError(markdown,{allowUndatedExperience:true});
++  if (invalid) throw new Error(invalid);
++  if (/\b(?:20XX|19XX|First Last|Company Name\s*\d*|University Name)\b/i.test(markdown)) throw new Error("Replace template placeholders with your own details and actual dates before confirming.");
++  markdown = markdown.replace(/\r\n?/g,"\n").trim();
++  const client = await pool.connect();
++  let oldKey: string | null = null;
++  let permanentKey: string | null = null;
++  try {
++    await client.query("BEGIN");
++    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[userId]);
++    const imports = await client.query(`SELECT * FROM resume_imports WHERE id=$1 AND user_id=$2 FOR UPDATE`,[importId,userId]);
++    const candidate = imports.rows[0] as ImportRow | undefined;
++    if (!candidate || candidate.status !== 'accepted' || candidate.revision !== revision || new Date(candidate.expires_at).getTime() <= Date.now() || candidate.validator_version !== RESUME_VALIDATOR_VERSION) throw new Error("This upload is expired or changed. Validate the PDF again.");
++    const current = await client.query(`SELECT r.file_key,r.content,p.preferences FROM user_pref_resumes r JOIN user_job_preferences p
++      ON p.user_id=r.user_id AND p.active_resume_id=r.id WHERE r.user_id=$1 FOR UPDATE OF r,p`,[userId]);
++    oldKey = current.rows[0]?.file_key ?? null;
++    const currentDigest=current.rows[0]?sourceDigest(current.rows[0].content || ''):null;
++    if (oldKey !== candidate.baseline_key || currentDigest !== candidate.baseline_content_sha256) throw new Error("Your active resume changed in another tab. Validate the PDF again.");
++    const busy = await client.query(`SELECT id FROM resume_generation_requests WHERE user_id=$1 AND status IN ('queued','running') LIMIT 1`,[userId]);
++    if (busy.rows.length) throw new Error("Wait for current resume generation to finish before replacing your resume.");
++    // Verify the exact bytes again: a reusable presigned PUT could overwrite a staged object.
++    const object = await r2Client.send(new GetObjectCommand({Bucket:R2_BUCKET_NAME,Key:candidate.object_key}));
++    if (!object.ContentLength || object.ContentLength > 10*1024*1024) throw new Error("Invalid PDF size.");
++    const bytes = await object.Body!.transformToByteArray();
++    if (bytes.length > 10*1024*1024 || createHash('sha256').update(bytes).digest('hex') !== candidate.file_sha256) throw new Error("The uploaded file changed. Validate the PDF again.");
++    // Browser PUT URLs remain valid briefly. Store the verified bytes under a
++    // fresh server-only key, so an old upload URL cannot overwrite the active PDF.
++    permanentKey=`user_pref_resumes/${userId}/${randomUUID()}.pdf`;
++    await r2Client.send(new PutObjectCommand({Bucket:R2_BUCKET_NAME,Key:permanentKey,Body:bytes,ContentType:'application/pdf'}));
++    const digest = sourceDigest(markdown);
++    const model=parseResumeMarkdown(markdown);
++    const dateFields=(duration:string)=>{
++      const parts=duration.split(/\s+[–—-]\s+/,2);
++      return {dates:duration,startDate:parts.length===2?parts[0]:'',endDate:parts.length===2?parts[1]:duration};
++    };
++    // Keep legacy editable fields consistent with reviewed Markdown. Raw PDF
++    // extraction is provenance only and must not override the confirmed source.
++    const details = {...candidate.parsed_data, originalText:candidate.parsed_data.text, text:markdown,
++      header:{name:model.personalInfo.name,title:model.personalInfo.title,email:model.personalInfo.email,phone:model.personalInfo.phone,
++        location:model.personalInfo.location,links:[model.personalInfo.linkedin,model.personalInfo.github,...(model.personalInfo.extraContacts||[])].filter(Boolean)},
++      personalDetails:{fullName:model.personalInfo.name,email:model.personalInfo.email,phoneNumber:model.personalInfo.phone,location:model.personalInfo.location},
++      experience:model.experience.map(e=>({company:e.company,title:e.role,location:e.location,bullets:e.bullets,...dateFields(e.duration)})),
++      experienceHistory:model.experience.map((e,i)=>({id:String(i+1),company:e.company,role:e.role,...dateFields(e.duration),jobDescription:e.bullets.map(b=>'- '+b).join('\n'),responsibilities:'',skills:[],domains:[]})),
++      educationHistory:model.education.map((e,i)=>({id:String(i+1),college:e.institution,degree:e.degree,field:'',...dateFields(e.duration),details:e.details||'',grade:'',maxGrade:'',gradeType:'CGPA'})),
++      summary:model.summary,skills:model.skills,projects:model.projects,additionalSections:model.additionalSections,
++      compiler_payload:{markdown}, layoutValidation:{importId,
++      validatorVersion:RESUME_VALIDATOR_VERSION,fileSha256:candidate.file_sha256,contentSha256:digest,confirmedAt:new Date().toISOString()}};
++    const base = await client.query(`INSERT INTO user_pref_resumes(user_id,title,file_name,file_key,file_url,file_size,is_primary,content,parsed_data)
++      VALUES($1,$2,$2,$3,$3,$4,true,$5,$6) ON CONFLICT(user_id) DO UPDATE SET title=EXCLUDED.title,file_name=EXCLUDED.file_name,
++      file_key=EXCLUDED.file_key,file_url=EXCLUDED.file_url,file_size=EXCLUDED.file_size,is_primary=true,content=EXCLUDED.content,parsed_data=EXCLUDED.parsed_data,updated_at=now() RETURNING id`,
++      [userId,candidate.file_name,permanentKey,bytes.length,markdown,JSON.stringify(details)]);
++    const prefs = {resumeUploaded:true,resumeFileName:candidate.file_name,resumeFileKey:permanentKey,isConfirmed:false};
++    const inferred=candidate.parsed_data.inferredPreferences as Record<string,unknown>||{};
++    const inferredPrefs=Object.fromEntries(['country','cities','domains','seniority','experienceYears'].filter(k=>k in inferred).map(k=>[k,inferred[k]]));
++    inferredPrefs.skills=Array.from(new Set(model.skills.flatMap(s=>s.items.split(/[,;]+/).map(v=>v.trim()).filter(Boolean))));
++    const shouldAutofill=autofill ?? (current.rows[0]?.preferences?.autofillFromResume !== false);
++    await client.query(`INSERT INTO user_job_preferences(user_id,active_resume_id,preferences,resume_details,resume_details_created_at,resume_details_updated_at)
++      VALUES($1,$2,$3,$4,now(),now()) ON CONFLICT(user_id) DO UPDATE SET active_resume_id=EXCLUDED.active_resume_id,
++      preferences=user_job_preferences.preferences || EXCLUDED.preferences,
++      resume_details=EXCLUDED.resume_details,resume_details_updated_at=now(),updated_at=now()`,
++      [userId,base.rows[0].id,JSON.stringify({...shouldAutofill?inferredPrefs:{},...prefs}),JSON.stringify(details)]);
++    await client.query(`UPDATE resume_imports SET status='confirmed',confirmed_at=now(),content_sha256=$3,markdown=$4,parsed_data=$5,file_size=$6,object_key=$7
++      WHERE id=$1 AND user_id=$2`,[importId,userId,digest,markdown,JSON.stringify(details),bytes.length,permanentKey]);
++    await client.query("COMMIT");
++    // The cleanup job removes baseline_key after activation under the same user
++    // lock. Deleting here after releasing the lock could race a reactivation.
++    return {success:true,fileName:candidate.file_name,objectKey:permanentKey};
++  } catch (error) {
++    await client.query("ROLLBACK");
++    // A failed COMMIT acknowledgement can have an unknown outcome. Never delete
++    // here: the cleanup job checks active ownership before removing abandoned keys.
++    throw error;
++  }
++  finally { client.release(); }
++}
++
++export async function cancelResumeImport(userId: string, importId: string) {
++  if (!UUID.test(importId)) throw new Error("Invalid import.");
++  await pool.query(`UPDATE resume_imports SET status='cancelled' WHERE id=$1 AND user_id=$2 AND status IN ('parsing','accepted','rejected')`,[importId,userId]);
++  return {success:true};
++}
++
++export async function removeActiveResume(userId: string) {
++  const client=await pool.connect();
++  try {
++    await client.query('BEGIN');
++    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[userId]);
++    const busy=await client.query(`SELECT id FROM resume_generation_requests WHERE user_id=$1 AND status IN ('queued','running') LIMIT 1`,[userId]);
++    if(busy.rows.length)throw new Error('Wait for resume generation to finish before removing your resume.');
++    const current=await client.query('SELECT file_key,file_name FROM user_pref_resumes WHERE user_id=$1 FOR UPDATE',[userId]);
++    const file=current.rows[0];
++    // Removal also works before the upload-policy migration. The cleanup job
++    // discovers retired R2 files by prefix when no import ledger exists yet.
++    const ledger=await client.query("SELECT to_regclass('public.resume_imports') IS NOT NULL AS available");
++    if(file?.file_key && ledger.rows[0]?.available)await client.query(`INSERT INTO resume_imports(user_id,object_key,file_name,status,reason_code)
++      VALUES($1,$2,$3,'cancelled','USER_REMOVED')`,[userId,file.file_key,file.file_name||'resume.pdf']);
++    await client.query(`UPDATE user_job_preferences SET active_resume_id=NULL,resume_details='{}'::jsonb,
++      preferences=preferences || '{"resumeUploaded":false,"resumeFileName":null,"resumeFileKey":null,"isConfirmed":false}'::jsonb,updated_at=now() WHERE user_id=$1`,[userId]);
++    await client.query('DELETE FROM user_pref_resumes WHERE user_id=$1',[userId]);
++    await client.query('COMMIT');
++    return {success:true};
++  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
++}
+--- /dev/null
++++ b/lib/resume-upload-policy.ts
+@@ -0,0 +1,2 @@
++// Browser-safe copy; backend admission remains authoritative.
++export const UNSUPPORTED_LAYOUT = "This layout isn't supported. Use one of our four templates or upload a standard single-column PDF.";
+--- /dev/null
++++ b/components/ResumeImportPanel.tsx
+@@ -0,0 +1,71 @@
++"use client";
++
++import { useRef, useState } from "react";
++import { Check, Eye, Loader2, Trash2, UploadCloud } from "lucide-react";
++import { useR2Storage } from "@/lib/hooks/useR2Storage";
++import { UNSUPPORTED_LAYOUT } from "@/lib/resume-upload-policy";
++import { deleteUserResume, getPresignedDownloadUrl } from "@/app/actions/storage";
++
++export function ResumeImportPanel({currentKey,currentFileName,onConfirmed,autofill=true}: {
++  currentKey?:string|null;currentFileName?:string|null;themeId?:2|3|5|6;onConfirmed:()=>void;autofill?:boolean;
++}) {
++  const picker=useRef<HTMLInputElement>(null);
++  const pending=useRef(false);
++  const {uploadFile}=useR2Storage();
++  const [busy,setBusy]=useState(false);
++  const [error,setError]=useState("");
++  const request=async(body:object)=>{
++    const response=await fetch('/api/job-hunt/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
++    const result=await response.json();
++    if (!response.ok || !result.success) throw new Error([result.message||result.error||UNSUPPORTED_LAYOUT,result.detail].filter(Boolean).join(' '));
++    return result;
++  };
++  const upload=async(file:File)=>{
++    if(pending.current)return;
++    setError('');
++    if(!file.name.toLowerCase().endsWith('.pdf')) {setError('Upload a PDF. Export Word files to PDF first.');return;}
++    if(file.size>10*1024*1024){setError('PDFs must be 10 MB or smaller.');return;}
++    pending.current=true;setBusy(true);
++    try{
++      const uploaded=await uploadFile({file,category:'resume'});
++      if(!uploaded.success || !uploaded.objectKey)throw new Error(uploaded.error||'Upload failed. Please retry.');
++      const validated=await request({operation:'preview',objectKey:uploaded.objectKey,fileName:file.name});
++      if(!validated.accepted)throw new Error(UNSUPPORTED_LAYOUT);
++      await request({operation:'confirm',importId:validated.importId,revision:validated.revision,markdown:validated.markdown,autofill});
++      onConfirmed();
++    }catch(e){setError(e instanceof Error?e.message:'Validation failed. Please retry.');}
++    finally{pending.current=false;setBusy(false);}
++  };
++  const preview=async()=>{
++    if(!currentKey||pending.current)return;
++    pending.current=true;setBusy(true);setError('');
++    try{const result=await getPresignedDownloadUrl(currentKey);if(!result.success||!result.downloadUrl)throw new Error('Preview unavailable.');window.open(result.downloadUrl,'_blank','noopener,noreferrer');}
++    catch(e){setError(e instanceof Error?e.message:'Preview unavailable.');}
++    finally{pending.current=false;setBusy(false);}
++  };
++  const remove=async()=>{
++    if(pending.current)return;
++    pending.current=true;setBusy(true);setError('');
++    try{const result=await deleteUserResume();if(!result.success)throw new Error(result.error||'Could not remove resume. Please retry.');onConfirmed();}
++    catch(e){setError(e instanceof Error?e.message:'Could not remove resume. Please retry.');}
++    finally{pending.current=false;setBusy(false);}
++  };
++  return <div className="mb-4" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(e.dataTransfer.files[0])void upload(e.dataTransfer.files[0]);}}>
++    <input ref={picker} className="sr-only" type="file" accept=".pdf,application/pdf" aria-label="Choose resume PDF" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void upload(file);}} />
++    {currentKey?<div className="flex items-center justify-between w-full p-3 sm:px-4 sm:py-3.5 rounded-md bg-bg-input border border-border-subtle/50 gap-2">
++      <button type="button" disabled={busy} onClick={()=>picker.current?.click()} title="Replace resume" className="flex items-center gap-3 min-w-0 text-left flex-1 cursor-pointer disabled:cursor-wait">
++        <span className="w-10 h-10 rounded-full bg-black/10 dark:bg-white/20 flex items-center justify-center shrink-0">{busy?<Loader2 className="w-5 h-5 animate-spin"/>:<Check className="w-5 h-5"/>}</span>
++        <span className="min-w-0"><span className="block font-bold text-sm truncate">{currentFileName||'Uploaded_Resume.pdf'}</span><span role="status" className="block text-xs text-text-muted">{busy?'Checking PDF format…':'Uploaded resume'}</span></span>
++      </button>
++      <div className="flex gap-2 shrink-0">
++        <button type="button" disabled={busy} onClick={()=>void preview()} aria-label="Preview resume" className="h-10 px-4 rounded-full text-xs font-semibold bg-white dark:bg-[#202330] inline-flex items-center gap-2 disabled:opacity-60"><Eye className="w-4 h-4"/>Preview</button>
++        <button type="button" disabled={busy} onClick={()=>void remove()} aria-label="Delete resume" className="w-10 h-10 rounded-full flex items-center justify-center text-red-600 bg-red-100/80 dark:bg-red-950/40 disabled:opacity-60"><Trash2 className="w-4 h-4"/></button>
++      </div>
++    </div>:<button type="button" disabled={busy} onClick={()=>picker.current?.click()} className="w-full flex flex-col items-center justify-center py-6 px-4 border-2 border-dashed border-border-input rounded-md hover:border-text-subtle gap-2 disabled:cursor-wait">
++      <span className="w-10 h-10 rounded-full bg-bg-input flex items-center justify-center">{busy?<Loader2 className="w-5 h-5 animate-spin"/>:<UploadCloud className="w-5 h-5 text-text-muted"/>}</span>
++      <span className="font-bold text-sm">{busy?'Checking PDF format…':'Click to upload or drag and drop'}</span>
++      <span className="text-xs text-text-muted">PDF up to 10 MB · Single-column resume</span>
++    </button>}
++    {error&&<p role="alert" className="text-red-600 text-sm mt-3">{error}</p>}
++  </div>;
++}
+--- /dev/null
++++ b/drizzle/strict-resume-imports.sql
+@@ -0,0 +1,59 @@
++BEGIN;
++CREATE EXTENSION IF NOT EXISTS pgcrypto;
++CREATE TABLE IF NOT EXISTS public.resume_imports (
++  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
++  user_id text NOT NULL,
++  object_key text NOT NULL,
++  file_name text NOT NULL,
++  file_size integer NOT NULL DEFAULT 0,
++  baseline_key text,
++  baseline_content_sha256 text,
++  baseline_cleaned_at timestamptz,
++  status text NOT NULL CHECK(status IN ('parsing','accepted','rejected','confirmed','cancelled','expired')),
++  revision integer NOT NULL DEFAULT 1,
++  validator_version text,
++  file_sha256 text,
++  content_sha256 text,
++  markdown text,
++  parsed_data jsonb NOT NULL DEFAULT '{}'::jsonb,
++  reason_code text,
++  created_at timestamptz NOT NULL DEFAULT now(),
++  expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours',
++  confirmed_at timestamptz,
++  cleaned_at timestamptz
++);
++ALTER TABLE public.resume_imports ADD COLUMN IF NOT EXISTS baseline_cleaned_at timestamptz;
++ALTER TABLE public.resume_imports ADD COLUMN IF NOT EXISTS baseline_content_sha256 text;
++ALTER TABLE public.resume_imports DROP CONSTRAINT IF EXISTS resume_imports_user_id_object_key_key;
++CREATE INDEX IF NOT EXISTS resume_import_file_lookup ON public.resume_imports(user_id,object_key);
++CREATE INDEX IF NOT EXISTS resume_import_cleanup ON public.resume_imports(expires_at) WHERE cleaned_at IS NULL;
++-- Admission checks are shared by request creation and the worker. A stored
++-- snapshot stays verifiable even if the active base is subsequently replaced.
++CREATE OR REPLACE FUNCTION public.resume_source_is_admitted(candidate_user text, candidate_source text, candidate_import uuid)
++RETURNS boolean LANGUAGE sql STABLE AS $$
++ SELECT EXISTS(SELECT 1 FROM public.resume_imports i
++   WHERE i.id=candidate_import AND i.user_id=candidate_user AND i.status='confirmed'
++     AND i.validator_version='single-column-v1'
++     AND i.content_sha256=encode(digest(replace(replace(candidate_source,E'\r\n',E'\n'),E'\r',E'\n'),'sha256'),'hex'))
++$$;
++ALTER TABLE public.resume_generation_requests ADD COLUMN IF NOT EXISTS source_import_id uuid REFERENCES public.resume_imports(id);
++CREATE OR REPLACE FUNCTION public.enforce_resume_source_admission() RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE admitted_import uuid;
++BEGIN
++  SELECT i.id INTO admitted_import FROM public.user_pref_resumes r
++    JOIN public.user_job_preferences p ON p.user_id=r.user_id AND p.active_resume_id=r.id
++    JOIN public.resume_imports i ON i.user_id=r.user_id AND i.object_key=r.file_key
++   WHERE r.id=NEW.base_resume_id AND r.user_id=NEW.user_id::text
++     AND r.content=NEW.source_text AND i.status='confirmed'
++     AND public.resume_source_is_admitted(NEW.user_id::text,NEW.source_text,i.id)
++   LIMIT 1;
++  IF admitted_import IS NULL THEN
++    RAISE EXCEPTION 'Resume requires supported-format validation and confirmation' USING ERRCODE='23514';
++  END IF;
++  NEW.source_import_id := admitted_import;
++  RETURN NEW;
++END $$;
++DROP TRIGGER IF EXISTS resume_source_admission ON public.resume_generation_requests;
++CREATE TRIGGER resume_source_admission BEFORE INSERT ON public.resume_generation_requests
++ FOR EACH ROW EXECUTE FUNCTION public.enforce_resume_source_admission();
++COMMIT;

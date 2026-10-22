@@ -1117,14 +1117,10 @@ new file mode 100644
 +  }catch(error){return failure(error);}
 +}
 diff --git a/app/api/resume/publication/[artifactId]/pdf/route.ts b/app/api/resume/publication/[artifactId]/pdf/route.ts
---- a/app/api/resume/publication/[artifactId]/pdf/route.ts
+new file mode 100644
+--- /dev/null
 +++ b/app/api/resume/publication/[artifactId]/pdf/route.ts
-@@ -1,5 +1,15 @@
--commit 2ac85607297de89094fa58b973c46875beb5b906
--Author: jobnex <mahiswar.dmr@gmail.com>
--Date:   Wed Oct 21 23:29:02 2026 -0400
--
--    Fix resume name parsing, grouped skills and source-backed quality checks
+@@ -0,0 +1,15 @@
 +import { getCurrentUser } from "@/lib/auth/server";
 +import { forwardPublication,publicationBackend,UUID } from "@/lib/resume-publication-server";
 +export const dynamic="force-dynamic";

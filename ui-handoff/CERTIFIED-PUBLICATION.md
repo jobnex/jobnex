@@ -13,6 +13,8 @@ npm run build
 
 If application files changed, resolve conflicts against `ui-handoff/my-app`, which contains the updated source files. The patch changes the resume modal and sheet, canonical document/schema adapter, authenticated publication routes, import confirmation, profile response typing, DB URL handling, old export guards, and the portable contract check/fixture. Existing upload layout remains unchanged.
 
+`UI-FILES.sha256.json` hashes the exact repository file bytes. Text files use Git's LF line endings; normalize CRLF to LF when checking a Windows checkout. Binary files are hashed unchanged.
+
 ## Server environment
 
 Keep existing database, R2 and Neon session settings. Configure these on the Next.js server:

@@ -1,0 +1,51 @@
+{
+  "services": {
+    "legacy-profile": {
+      "name": "job-hunt-profile",
+      "revision": "job-hunt-profile-00024-zav",
+      "url": "https://quality-compat---job-hunt-profile-znsph25yja-ue.a.run.app",
+      "digestImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile@sha256:d35ff63488217cf90f469c6c5d0d9e7e175ab17926c4c404657c61b4e1f8b3d9",
+      "buildId": "97e7b6a4-c3f1-46d3-97f0-d1c4e502d6f1",
+      "beforeRevision": "job-hunt-profile-parser-dates-v4-1018",
+      "baseImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile@sha256:23cffbbe55d6f1e203647455a6ee25b9283eeeea4ccb161d125bc5031b733f73"
+    },
+    "profile": {
+      "name": "job-hunt-profile",
+      "revision": "job-hunt-profile-00026-rof",
+      "url": "https://layout-v1---job-hunt-profile-znsph25yja-ue.a.run.app",
+      "digestImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile@sha256:ec3aaa0eb046b38a9d57aa340f815f4bb4d037d162fefd44e7f01ed1835303cc",
+      "buildId": "48d5199d-7ae0-4424-af6c-92a4d9f5f876",
+      "beforeRevision": "job-hunt-profile-00023-xiq",
+      "baseImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile@sha256:c314512ff38e36bac7323271faf0b31897ac64ee117bf68474a5c0fb7a6c8efa"
+    },
+    "legacy-worker": {
+      "name": "job-hunt-resume-worker",
+      "revision": "job-hunt-resume-worker-00053-kab",
+      "url": "https://quality-compat---job-hunt-resume-worker-znsph25yja-ue.a.run.app",
+      "digestImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-resume-worker@sha256:60e4a5fd1d311b3f7e06c407300da12b23143e45380f15f2273bb22ab74168d1",
+      "buildId": "397eb2c8-183f-4708-b865-70d9b2f03426",
+      "beforeRevision": "job-hunt-resume-worker-project-review-1018",
+      "baseImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-resume-worker@sha256:79c2d7c37598b15945521470cafd894519235dad15a52fad4a74b500eb6d4032"
+    },
+    "worker": {
+      "name": "job-hunt-resume-worker-layout",
+      "revision": "job-hunt-resume-worker-layout-00004-xoc",
+      "url": "https://layout-v1---job-hunt-resume-worker-layout-znsph25yja-ue.a.run.app",
+      "digestImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-resume-worker-layout@sha256:adbc123eabebd6b3df1bdeb3afd9d3389155efcf8b85fb0502920135d19bd295",
+      "buildId": "b0057644-0335-462b-95bc-c200bcea0ba9",
+      "beforeRevision": "job-hunt-resume-worker-layout-00003-zdq",
+      "baseImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-resume-worker-layout@sha256:05b51b7faaf25c27f32567bc2ec0cc7e48ed502be401090ca640158364cf393c"
+    }
+  },
+  "checks": {
+    "service_health": true,
+    "immutable_images": true,
+    "legacy_contracts_preserved": true,
+    "signed_double_space_name_pdf": true,
+    "source_bytes_hash": true,
+    "unauthorized_validation_blocked": true,
+    "paid_generation_executed": false,
+    "global_cutover_enabled": false,
+    "global_trigger_remains_disabled": true
+  }
+}

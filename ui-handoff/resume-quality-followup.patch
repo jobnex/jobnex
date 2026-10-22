@@ -1,0 +1,114 @@
+diff --git a/app/actions/resume-applications.ts b/app/actions/resume-applications.ts
+index 5e63aa2..eed6c74 100644
+--- a/app/actions/resume-applications.ts
++++ b/app/actions/resume-applications.ts
+@@ -13,7 +13,7 @@ import { countries } from "@/lib/db/schema/countries";
+ import { getTemplateById } from "@/data/resume-templates";
+ import { getCurrentUser } from "@/lib/auth/server";
+ import { eq, and, desc } from "drizzle-orm";
+-import { resumeReviewError } from "@/lib/resume-review";
++import { resumeReviewError, resumeReviewReason } from "@/lib/resume-review";
+ import { revalidatePath } from "next/cache";
+ import { Job } from "@/types";
+ import { mapDbRowToJob } from "@/lib/job-utils";
+@@ -134,12 +134,7 @@ export async function listResumeApplications(): Promise<ListResumeApplicationsRe
+       seenJobs.add(r.jobId);
+ 
+       const audit = (r.genAudit as Record<string, unknown>) || {};
+-      let reviewReason =
+-        (audit.error as string) ||
+-        (audit.review_reason as string) ||
+-        (audit.reason as string) ||
+-        (audit.summary as string) ||
+-        (Array.isArray(audit.issues) ? (audit.issues as string[]).join("; ") : null);
++      let reviewReason = resumeReviewReason(audit);
+ 
+       if (r.requestStatus === "needs_review" && !reviewReason) {
+         reviewReason = "Length or entity verification suggested. Review bullet points before applying.";
+diff --git a/app/actions/tailored-resume.ts b/app/actions/tailored-resume.ts
+index ecd0ff0..c4b8de3 100644
+--- a/app/actions/tailored-resume.ts
++++ b/app/actions/tailored-resume.ts
+@@ -13,7 +13,7 @@ import { activeResumeId } from "@/lib/active-resume";
+ import { getTemplateById } from "@/data/resume-templates";
+ import crypto from "crypto";
+ import { resumeContentError } from "@/lib/resume-validation";
+-import { resumeDigest, resumeReviewError } from "@/lib/resume-review";
++import { resumeDigest, resumeReviewError, resumeReviewReason } from "@/lib/resume-review";
+ 
+ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ 
+@@ -549,11 +549,8 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
+             genJson.markdown_content ||
+             genJson.markdown ||
+             "";
+-          reviewReason =
+-            genJson.generation?.review_reason ||
+-            genJson.review_reason ||
+-            request.review_reason ||
+-            undefined;
++          reviewReason = resumeReviewReason({review_reason:
++            genJson.generation?.review_reason || genJson.review_reason || request.review_reason}) || undefined;
+         }
+       } catch (jsonErr) {
+         console.warn("JSON fetch of generated markdown failed, trying raw text attachment:", jsonErr);
+@@ -665,12 +662,7 @@ export async function listResumeRequests(): Promise<ListResumeRequestsResult> {
+ 
+     const requests: ResumeRequestItem[] = rows.map((r) => {
+       const audit = (r.genAudit as Record<string, unknown>) || {};
+-      let reviewReason =
+-        (audit.error as string) ||
+-        (audit.review_reason as string) ||
+-        (audit.reason as string) ||
+-        (audit.summary as string) ||
+-        (Array.isArray(audit.issues) ? (audit.issues as string[]).join("; ") : null);
++      let reviewReason = resumeReviewReason(audit);
+ 
+       if (r.status === "needs_review" && !reviewReason) {
+         reviewReason = "Length or entity verification suggested. Review bullet points before export.";
+diff --git a/lib/resume-review.ts b/lib/resume-review.ts
+index ff6d99d..79312c9 100644
+--- a/lib/resume-review.ts
++++ b/lib/resume-review.ts
+@@ -21,3 +21,26 @@ export function resumeReviewError(generation: ResumeGenerationReview | undefined
+   }
+   return null;
+ }
++
++const messages: Record<string, string> = {
++  "experience.metric_count": "Review the number of source-backed results in each flagged role.",
++  "projects.metric_count": "Review the source-backed results in the project bullets.",
++  "length.word_count": "Review resume length and retain relevant source details without adding filler.",
++  "length.fit_unavailable": "Automatic length fitting could not finish. Review the saved draft.",
++  "experience.bullet_count": "Review the number of bullets under each role.",
++  "project.bullet_count": "Review the number of project bullets.",
++  "skills.category_count": "Review skill categories and remove duplicate technologies.",
++};
++
++export function resumeReviewReason(audit: Record<string, unknown>): string | null {
++  const ledger = Array.isArray(audit.compliance_ledger) ? audit.compliance_ledger : [];
++  const codes = ledger.filter((entry) => entry && typeof entry === "object" && entry.passed === false)
++    .map((entry) => String(entry.code || ""));
++  const raw = [audit.error, audit.review_reason, audit.reason, audit.summary,
++    ...(Array.isArray(audit.issues) ? audit.issues : [])].filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
++  const reasons = [...new Set([...codes, ...raw.flatMap(value => value.split(/[,;]/).map(code => code.trim()))]
++    .map(code => messages[code]).filter(Boolean))];
++  if (reasons.length) return reasons.join(" ");
++  if (!raw.length && !codes.length) return null;
++  return "Review this draft's factual accuracy, role details and formatting before approving.";
++}
+diff --git a/scripts/check-resume-quality.cjs b/scripts/check-resume-quality.cjs
+new file mode 100644
+index 0000000..ef12e25
+--- /dev/null
++++ b/scripts/check-resume-quality.cjs
+@@ -0,0 +1,9 @@
++const assert=require('node:assert/strict');const {load}=require('./load-ts.cjs');
++const {resumeReviewReason,resumeReviewError,resumeDigest}=load('lib/resume-review.ts');
++assert.equal(typeof resumeReviewError,'function');assert.equal(typeof resumeDigest,'function');
++const message=resumeReviewReason({error:'experience.metric_count, length.word_count'});
++assert(message.includes('source-backed'));assert(message.includes('resume length'));assert(!message.includes('metric_count'));
++assert.equal(resumeReviewReason({}),null);
++assert(!resumeReviewReason({error:'internal.private_code'}).includes('internal.private_code'));
++assert.equal(resumeReviewReason({compliance_ledger:[{code:'length.word_count',passed:true}]}),null);
++console.log('RESUME_QUALITY_UI_PASSED');

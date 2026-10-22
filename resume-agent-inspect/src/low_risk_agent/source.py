@@ -184,10 +184,21 @@ def _skill_spans(line: ParsedLine) -> list[tuple[str, int, int]]:
     else:
         offset, value = 0, text
     spans: list[tuple[str, int, int]] = []
-    for match in re.finditer(r"[^,;|\u2022\u25cf]+", value):
+    # Commas inside parentheses belong to the same displayed skill group.
+    depth = 0
+    boundaries = [0]
+    for index, char in enumerate(value):
+        if char == "(": depth += 1
+        elif char == ")": depth = max(0, depth - 1)
+        elif char in ",;|\u2022\u25cf" and depth == 0:
+            boundaries.extend([index, index + 1])
+    boundaries.append(len(value))
+    for begin, finish in zip(boundaries[::2], boundaries[1::2]):
+        match = re.match(r".*", value[begin:finish], re.S)
+        if not match: continue
         raw_item = match.group()
         item = raw_item.strip()
-        local = offset + match.start() + raw_item.find(item)
+        local = offset + begin + raw_item.find(item)
         marker = re.match(r"\*+\s*", item)
         if marker:
             local += marker.end()

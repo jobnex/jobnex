@@ -85,7 +85,22 @@ def _skill_key(value: str) -> str:
         "apache kafka": "kafka",
         "apache spark": "spark",
         "apache airflow": "airflow",
+        "aws bedrock": "bedrock",
+        "model context protocol": "mcp",
+        "google cloud platform": "gcp",
+        "google cloud": "gcp",
     }.get(key, key)
+
+
+def _skill_keys(value: str) -> set[str]:
+    """Recognize a group and its named members without losing its display text."""
+    value = re.sub(r"\s+", " ", value).strip()
+    parts = [value]
+    if "(" in value:
+        parts.append(value.split("(", 1)[0].strip())
+        for group in re.findall(r"\(([^()]*)\)", value):
+            parts.extend(part.strip() for part in re.split(r"[,;]", group))
+    return {_skill_key(part) for part in parts if part}
 
 
 def _experience_tools(source, requested_tools):
@@ -143,7 +158,8 @@ def _preserve_skill_categories(categories, source):
     spellings = {}
     for name, items in originals.items():
         for item in items:
-            owners.setdefault(_skill_key(item), name.casefold())
+            for key in _skill_keys(item):
+                owners.setdefault(key, name.casefold())
             spellings.setdefault(_skill_key(item), item)
     planned = {}
     names = {name.casefold(): name for name in originals}
@@ -161,9 +177,10 @@ def _preserve_skill_categories(categories, source):
         unique = []
         for item in items:
             key = _skill_key(item)
-            if key not in seen:
+            keys = _skill_keys(item)
+            if not keys <= seen:
                 unique.append(item)
-                seen.add(key)
+                seen.update(keys)
         # Keep the category even if its only original skills were duplicated elsewhere.
         if unique or display in originals:
             result.append(SkillCategoryPlan(category=display, items=unique))

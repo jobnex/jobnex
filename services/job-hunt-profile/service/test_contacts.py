@@ -13,6 +13,12 @@ from service.resume_content import normalize, markdown_from
 from scripts.resume_to_json import convert, resume_details, recover_pdf_spacing
 
 class ContactTests(unittest.TestCase):
+    def test_double_space_does_not_split_family_name_into_contacts(self):
+        for name in ['Example  Person', 'Example   Middle  Person', 'José  Example']:
+            details = resume_details(name+'\nAI Solutions Engineer\nexample@example.com\nSKILLS\nPython')
+            self.assertEqual(details['header']['name'], ' '.join(name.split()))
+            self.assertEqual(details['header'].get('additional_contacts', []), [])
+
     def test_layout_and_negative_controls(self):
         for phone in ['(212) 555-0123', '+44 20 7946 0958', '+91 98765 43210', '+49 (30) 12345678', '212.555.0123 ext 42', '5550123']:
             with self.subTest(phone=phone):

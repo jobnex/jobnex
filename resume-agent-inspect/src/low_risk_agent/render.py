@@ -68,7 +68,9 @@ def estimate_word_budget(source_word_count: int, config: PipelineConfig) -> tupl
         minimum = round(source_word_count * (1 - _MULTI_PAGE_BAND))
         maximum = round(source_word_count * (1 + _MULTI_PAGE_BAND))
         return "single_page", minimum, maximum
-    minimum = max(config.min_resume_words, round(source_word_count * (1 - _MULTI_PAGE_BAND)))
+    # Long sources can be condensed by removing repetition (especially skills).
+    # Keep a bounded 75% floor; entity, role and claim checks remain mandatory.
+    minimum = max(config.min_resume_words, round(source_word_count * 0.75))
     maximum = round(source_word_count * (1 + _MULTI_PAGE_BAND))
     return "multi_page", minimum, maximum
 

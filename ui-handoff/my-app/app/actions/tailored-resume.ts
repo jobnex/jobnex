@@ -13,7 +13,7 @@ import { activeResumeId } from "@/lib/active-resume";
 import { getTemplateById } from "@/data/resume-templates";
 import crypto from "crypto";
 import { resumeContentError } from "@/lib/resume-validation";
-import { resumeDigest, resumeReviewError } from "@/lib/resume-review";
+import { resumeDigest, resumeReviewError, resumeReviewReason } from "@/lib/resume-review";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -549,11 +549,8 @@ export async function getResumeRequestStatus(requestId: string): Promise<Tailori
             genJson.markdown_content ||
             genJson.markdown ||
             "";
-          reviewReason =
-            genJson.generation?.review_reason ||
-            genJson.review_reason ||
-            request.review_reason ||
-            undefined;
+          reviewReason = resumeReviewReason({review_reason:
+            genJson.generation?.review_reason || genJson.review_reason || request.review_reason}) || undefined;
         }
       } catch (jsonErr) {
         console.warn("JSON fetch of generated markdown failed, trying raw text attachment:", jsonErr);
@@ -665,12 +662,7 @@ export async function listResumeRequests(): Promise<ListResumeRequestsResult> {
 
     const requests: ResumeRequestItem[] = rows.map((r) => {
       const audit = (r.genAudit as Record<string, unknown>) || {};
-      let reviewReason =
-        (audit.error as string) ||
-        (audit.review_reason as string) ||
-        (audit.reason as string) ||
-        (audit.summary as string) ||
-        (Array.isArray(audit.issues) ? (audit.issues as string[]).join("; ") : null);
+      let reviewReason = resumeReviewReason(audit);
 
       if (r.status === "needs_review" && !reviewReason) {
         reviewReason = "Length or entity verification suggested. Review bullet points before export.";

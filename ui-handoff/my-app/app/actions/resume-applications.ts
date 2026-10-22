@@ -13,7 +13,7 @@ import { countries } from "@/lib/db/schema/countries";
 import { getTemplateById } from "@/data/resume-templates";
 import { getCurrentUser } from "@/lib/auth/server";
 import { eq, and, desc } from "drizzle-orm";
-import { resumeReviewError } from "@/lib/resume-review";
+import { resumeReviewError, resumeReviewReason } from "@/lib/resume-review";
 import { revalidatePath } from "next/cache";
 import { Job } from "@/types";
 import { mapDbRowToJob } from "@/lib/job-utils";
@@ -134,12 +134,7 @@ export async function listResumeApplications(): Promise<ListResumeApplicationsRe
       seenJobs.add(r.jobId);
 
       const audit = (r.genAudit as Record<string, unknown>) || {};
-      let reviewReason =
-        (audit.error as string) ||
-        (audit.review_reason as string) ||
-        (audit.reason as string) ||
-        (audit.summary as string) ||
-        (Array.isArray(audit.issues) ? (audit.issues as string[]).join("; ") : null);
+      let reviewReason = resumeReviewReason(audit);
 
       if (r.requestStatus === "needs_review" && !reviewReason) {
         reviewReason = "Length or entity verification suggested. Review bullet points before applying.";

@@ -2,6 +2,8 @@
 
 Release date: October 21, 2026. Repository branch: `release/resume-layout-20261021`.
 
+Quality follow-up: parser/generator revisions are superseded by [resume quality corrections](resume-quality-2026-10-21.md) and `resume-quality-deployment.json`. The original `deployment.json` remains the initial rollout snapshot.
+
 Operations update: hourly cleanup is deployed. See [backend follow-up](backend-rollout-followup-2026-10-21.md). The owner requested keeping legacy generation working until UI deployment; enforcement and routing cutover remain deferred.
 
 ## Delivered behavior

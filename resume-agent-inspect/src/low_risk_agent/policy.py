@@ -482,7 +482,9 @@ def lint_draft(
                 and not re.fullmatch(r"(?:19|20)\d{2}", fact.source_span.strip())
             )
             metric_floor = min(2, available_metrics)
-            metric_ceiling = max(metric_floor, min(3, available_metrics))
+            # Source-backed outcomes need no arbitrary three-metric cap.
+            # Per-metric provenance and claim checks still reject invented numbers.
+            metric_ceiling = max(metric_floor, available_metrics)
         checks.append(
             check(
                 "experience.metric_count",

@@ -517,7 +517,7 @@
  import { getTemplateById } from "@/data/resume-templates";
  import crypto from "crypto";
 +import { resumeContentError } from "@/lib/resume-validation";
-+import { resumeDigest, resumeReviewError } from "@/lib/resume-review";
++import { resumeDigest, resumeReviewError, resumeReviewReason } from "@/lib/resume-review";
  
  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  
@@ -541,7 +541,21 @@
  
      // 3. Resolve the confirmed template to lock for this specific job application
      const [prefRow] = await db
-@@ -573,46 +581,7 @@
+@@ -541,11 +549,8 @@
+             genJson.markdown_content ||
+             genJson.markdown ||
+             "";
+-          reviewReason =
+-            genJson.generation?.review_reason ||
+-            genJson.review_reason ||
+-            request.review_reason ||
+-            undefined;
++          reviewReason = resumeReviewReason({review_reason:
++            genJson.generation?.review_reason || genJson.review_reason || request.review_reason}) || undefined;
+         }
+       } catch (jsonErr) {
+         console.warn("JSON fetch of generated markdown failed, trying raw text attachment:", jsonErr);
+@@ -573,46 +578,7 @@
        }
  
        if (markdown) {
@@ -589,15 +603,20 @@
          const isReview = rawStatus === "needs_review";
          return {
            success: true,
-@@ -697,6 +666,7 @@
+@@ -696,11 +662,7 @@
+ 
      const requests: ResumeRequestItem[] = rows.map((r) => {
        const audit = (r.genAudit as Record<string, unknown>) || {};
-       let reviewReason =
-+        (audit.error as string) ||
-         (audit.review_reason as string) ||
-         (audit.reason as string) ||
-         (audit.summary as string) ||
-@@ -762,95 +732,35 @@
+-      let reviewReason =
+-        (audit.review_reason as string) ||
+-        (audit.reason as string) ||
+-        (audit.summary as string) ||
+-        (Array.isArray(audit.issues) ? (audit.issues as string[]).join("; ") : null);
++      let reviewReason = resumeReviewReason(audit);
+ 
+       if (r.status === "needs_review" && !reviewReason) {
+         reviewReason = "Length or entity verification suggested. Review bullet points before export.";
+@@ -762,95 +724,35 @@
    expectedGenerationId?: string | null
  ): Promise<{ success: boolean; error?: string; code?: string }> {
    try {
@@ -721,7 +740,7 @@
    }
  }
  
-@@ -863,60 +773,29 @@
+@@ -863,60 +765,29 @@
    expectedGenerationId?: string | null
  ): Promise<{ success: boolean; error?: string; code?: string }> {
    try {
@@ -809,7 +828,7 @@
  import { getTemplateById } from "@/data/resume-templates";
  import { getCurrentUser } from "@/lib/auth/server";
  import { eq, and, desc } from "drizzle-orm";
-+import { resumeReviewError } from "@/lib/resume-review";
++import { resumeReviewError, resumeReviewReason } from "@/lib/resume-review";
  import { revalidatePath } from "next/cache";
  import { Job } from "@/types";
  import { mapDbRowToJob } from "@/lib/job-utils";
@@ -823,15 +842,19 @@
          genAudit: resumeGenerations.auditJson,
          appStatus: applications.status,
          appNotes: applications.notes,
-@@ -131,6 +135,7 @@
+@@ -130,18 +134,14 @@
+       seenJobs.add(r.jobId);
  
        const audit = (r.genAudit as Record<string, unknown>) || {};
-       let reviewReason =
-+        (audit.error as string) ||
-         (audit.review_reason as string) ||
-         (audit.reason as string) ||
-         (audit.summary as string) ||
-@@ -141,7 +146,7 @@
+-      let reviewReason =
+-        (audit.review_reason as string) ||
+-        (audit.reason as string) ||
+-        (audit.summary as string) ||
+-        (Array.isArray(audit.issues) ? (audit.issues as string[]).join("; ") : null);
++      let reviewReason = resumeReviewReason(audit);
+ 
+       if (r.requestStatus === "needs_review" && !reviewReason) {
+         reviewReason = "Length or entity verification suggested. Review bullet points before applying.";
        }
  
        // Candidate's manually saved edits in userJobResumes take precedence over raw genMarkdown
@@ -840,7 +863,7 @@
          ? r.userJobMarkdown
          : (r.genMarkdown || null);
        const hasDraft = Boolean(markdown);
-@@ -162,32 +167,10 @@
+@@ -162,32 +162,10 @@
        const templateId = resolvedTmpl.id;
        const theme = r.userJobTheme ?? resolvedTmpl.themeId;
  
@@ -877,7 +900,7 @@
  
        // Stage mapping:
        // "applied" -> 0
-@@ -231,7 +214,7 @@
+@@ -231,7 +209,7 @@
          externalApplyUrl: r.externalApplyUrl,
          job: canonicalJob,
          requestedAt: r.createdAt.toISOString(),
@@ -2522,7 +2545,7 @@
              if (event.lengthComputable) {
 --- /dev/null
 +++ b/lib/resume-review.ts
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,46 @@
 +import { createHash } from "node:crypto";
 +
 +export interface ResumeGenerationReview {
@@ -2545,6 +2568,29 @@
 +    }
 +  }
 +  return null;
++}
++
++const messages: Record<string, string> = {
++  "experience.metric_count": "Review the number of source-backed results in each flagged role.",
++  "projects.metric_count": "Review the source-backed results in the project bullets.",
++  "length.word_count": "Review resume length and retain relevant source details without adding filler.",
++  "length.fit_unavailable": "Automatic length fitting could not finish. Review the saved draft.",
++  "experience.bullet_count": "Review the number of bullets under each role.",
++  "project.bullet_count": "Review the number of project bullets.",
++  "skills.category_count": "Review skill categories and remove duplicate technologies.",
++};
++
++export function resumeReviewReason(audit: Record<string, unknown>): string | null {
++  const ledger = Array.isArray(audit.compliance_ledger) ? audit.compliance_ledger : [];
++  const codes = ledger.filter((entry) => entry && typeof entry === "object" && entry.passed === false)
++    .map((entry) => String(entry.code || ""));
++  const raw = [audit.error, audit.review_reason, audit.reason, audit.summary,
++    ...(Array.isArray(audit.issues) ? audit.issues : [])].filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
++  const reasons = [...new Set([...codes, ...raw.flatMap(value => value.split(/[,;]/).map(code => code.trim()))]
++    .map(code => messages[code]).filter(Boolean))];
++  if (reasons.length) return reasons.join(" ");
++  if (!raw.length && !codes.length) return null;
++  return "Review this draft's factual accuracy, role details and formatting before approving.";
 +}
 --- /dev/null
 +++ b/lib/resume-validation.ts

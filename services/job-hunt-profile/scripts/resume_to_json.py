@@ -132,10 +132,12 @@ def resume_details(text: str, targets=()) -> dict:
     header = {}
     candidates = [line.strip() for line in header_lines if line.strip()]
     for line in candidates[:6]:
-        for candidate in re.split(r'\s*\|\s*|\s{2,}', line):
+        # PDF extraction often inserts double spaces between given and family names.
+        # Prefer the intact name before splitting positioned contact fields.
+        for candidate in [*re.split(r'\s*\|\s*', line), *re.split(r'\s{2,}', line)]:
             candidate = candidate.strip('#* ')
             if re.fullmatch(r"[^\W\d_][\w .'\u2019-]{1,79}", candidate) and candidate.lower() not in {'resume','curriculum vitae','cv','linkedin','github','portfolio'} and not re.search(r'\b(?:engineer|scientist|developer|architect|analyst|designer|manager|consultant)\b',candidate,re.I):
-                header['name'] = candidate
+                header['name'] = re.sub(r'\s+', ' ', candidate)
                 break
         if header.get('name'): break
     if match := EMAIL.search(header_text):
@@ -156,6 +158,8 @@ def resume_details(text: str, targets=()) -> dict:
     additional = []
     known = [header.get('name',''), *header.get('title','').split('|'), *contacts['emails'], *contacts['phones'], *contacts['links']]
     for line in candidates:
+        if re.sub(r'\s+', ' ', line.strip('#* ')) == header.get('name'):
+            continue
         for part in re.split(r'\s*\|\s*|\s{2,}', line):
             part = part.strip('#* ')
             if not part or part.lower() in {'resume','cv','linkedin','github','portfolio'}: continue

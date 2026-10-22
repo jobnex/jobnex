@@ -2,6 +2,8 @@
 
 These commands are operator references. The backend deployment and prepare migration are already complete; do not rerun blindly. The global trigger and UI production cutover remain pending the UI team. Check `deployment.json` and `verification.json` for the actual released images/revisions.
 
+Update: hourly cleanup is now deployed. See [backend follow-up](backend-rollout-followup-2026-10-21.md) and `cleanup-deployment.json`. Preserve legacy generation until UI deployment, as requested by the owner.
+
 ## Reproduce backend images from the release branch
 
 From the repository root, authenticated to GCP project `job-scout-508222`:
@@ -34,7 +36,7 @@ An unauthenticated request to the private worker's `/health` must return 401/403
 
 ## Cleanup scheduling during cutover
 
-Install an hourly job using `scripts/cleanup-resume-imports.cjs` and existing private database/R2 bindings. Run without `--apply` first, review counts, then schedule with `--apply`. It expires abandoned imports after 24 hours and deletes only exact expired/retired keys after active/fresh-source checks under the user lock. It never deletes prefixes or historical generated PDF namespaces. Keep job logs free of candidate documents and credentials. Scheduling is a required cutover operation, not an already-deployed scheduler in this release.
+The `resume-import-cleanup` job and hourly scheduler are installed. Cleanup expires abandoned imports after 24 hours and deletes only exact expired/retired keys after active/preference/fresh-source checks under the user lock. It never deletes prefixes or historical generated PDF namespaces. Permanent files require explicit retirement records. Keep logs free of documents and credentials. Review the follow-up before changing or recreating the scheduler.
 
 ## Recorded rollback targets
 

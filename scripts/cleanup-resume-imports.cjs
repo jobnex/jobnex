@@ -6,7 +6,8 @@ const {S3Client,ListObjectsV2Command,DeleteObjectCommand}=require('@aws-sdk/clie
 
 async function cleanup({pool,r2,bucket,apply=false,now=Date.now()}) {
   const keys=new Set();
-  for(const prefix of ['resume_imports/','user_pref_resumes/']){
+  // Legacy permanent uploads are eligible only through an explicit retired baseline.
+  for(const prefix of ['resume_imports/']){
     let token;
     do {
       const page=await r2.send(new ListObjectsV2Command({Bucket:bucket,Prefix:prefix,ContinuationToken:token}));
@@ -29,6 +30,9 @@ async function cleanup({pool,r2,bucket,apply=false,now=Date.now()}) {
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[userId]);
       const active=await client.query('SELECT id FROM user_pref_resumes WHERE user_id=$1 AND file_key=$2',[userId,key]);
       if(active.rows.length){await client.query('COMMIT');continue;}
+      const preferences=await client.query(`SELECT user_id FROM user_job_preferences WHERE
+        preferences->>'resumeFileKey'=$1 OR preferences->'manualEdits'->>'resumeFileKey'=$1`,[key]);
+      if(preferences.rows.length){await client.query('COMMIT');continue;}
       // Do not delete a fresh revalidation of an older staged object.
       const fresh=await client.query(`SELECT id FROM resume_imports WHERE user_id=$1 AND object_key=$2 AND status IN ('accepted','parsing') AND expires_at>now()`,[userId,key]);
       if(fresh.rows.length){await client.query('COMMIT');continue;}

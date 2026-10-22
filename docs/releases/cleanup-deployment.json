@@ -1,0 +1,16 @@
+{
+  "job": "resume-import-cleanup",
+  "project": "job-scout-508222",
+  "region": "us-east1",
+  "schedulerState": "ENABLED",
+  "schedule": "17 * * * *",
+  "timeZone": "Etc/UTC",
+  "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/resume-import-cleanup@sha256:aab7d1dfd8444c6750fb5b17002cc4ff10b2b3fab4f6e8546a8df50baeffef1a",
+  "buildId": "c4f4cac5-0b3b-430a-aa8a-2b0dd4d66060",
+  "dryRunExecution": "resume-import-cleanup-pw89d",
+  "verifiedSchedulerExecution": "resume-import-cleanup-xqkl4",
+  "dryRunCandidates": 0,
+  "dryRunDeleted": 0,
+  "legacyRecoveryPreserved": true,
+  "globalEnforcementDeferredByOwner": true
+}

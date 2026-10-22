@@ -2,6 +2,8 @@
 
 Release date: October 21, 2026. Repository branch: `release/resume-layout-20261021`.
 
+Operations update: hourly cleanup is deployed. See [backend follow-up](backend-rollout-followup-2026-10-21.md). The owner requested keeping legacy generation working until UI deployment; enforcement and routing cutover remain deferred.
+
 ## Delivered behavior
 
 The new UI retains the compact upload card: filename, Preview, delete, and the existing Autofill toggle. Empty cards accept click or drag-and-drop. Backend validation runs automatically; accepted PDFs activate through an ownership/hash/revision checked transaction. Rejection or failure leaves the current resume unchanged. No separate review screen is shown, following the final product decision.
@@ -40,7 +42,7 @@ Deletion works before and after the staging migration. Saved draft preferences n
 4. Switch the production Vercel deployment to this UI. Set `JOB_HUNT_SERVICE_URL` and `JOB_HUNT_WEB_URL` to the versioned URLs above. Keep existing authentication secrets, database and R2 bindings.
 5. After confirming all upload clients use the new flow, pause legacy generation admissions and let old in-flight jobs settle. Apply `migrations/20261021_strict_resume_imports.sql` to enable global source enforcement. Existing stored resumes must be reuploaded/validated before their next generation; historical outputs stay readable. Do not apply this strict trigger while the old UI is the only upload client.
 6. Route all generation producers through the new strict backend and worker; update the recovery scheduler to the new worker. Keep Cloud Tasks OIDC audience equal to the new worker service URL. The old worker must no longer consume newly admitted work after final enforcement.
-7. Schedule hourly `node scripts/cleanup-resume-imports.cjs --apply` using the established private DATABASE_URL/R2 bindings. Dry-run first. The script defaults to dry-run and deletes no prefixes. This release includes the job code; the UI team/operator must confirm the scheduler binding during cutover.
+7. Verify the already-deployed hourly `resume-import-cleanup` job and scheduler. Do not create a duplicate. See the backend follow-up for deployment and safety checks.
 8. Run the acceptance checks and record the Vercel deployment URL, commit and final trigger/worker/scheduler activation in the deployment record.
 
 ## Rollback

@@ -19,6 +19,8 @@ These are UI application/server-layer changes. They do not require a new GCP val
 
 ## Integrate
 
+If you already adopted the previous handoff, download `ui-handoff/resume-autofill-followup.patch` and run `git apply --check resume-autofill-followup.patch`, then `git apply resume-autofill-followup.patch` from your UI project root. This incremental patch contains only four UI source/test files changed between `8aec728` and `2f2838b`; its paths are relative to the UI root. Resolve conflicts if your team has edited these files. Do not apply both the incremental and cumulative patches. The GitHub commit itself also contains handoff documentation and generated patch artifacts, so prefer the UI-only patch over cherry-picking the whole commit into a separate UI repository.
+
 Apply the latest cumulative `ui-handoff/latest-ui.patch` against the original supplied `my-app(4)` source, resolving conflicts if the UI has changed. If the initial patch was already applied, adopt the two updated files above and the regression updates in `scripts/check-import-database.cjs` and `scripts/check-autofill-regressions.cjs` from the current branch.
 
 The PostgreSQL regression exercises activation with stale top-level and draft values, checks canonical skills/clean labels and normalized seniority, preserves unrelated preferences, verifies transaction rollback, and confirms Autofill-off preservation. Browser verification reuploads the supplied supported PDF and checks the updated form and saved preferences. No private fixture content or account information is published here.

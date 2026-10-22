@@ -1,0 +1,169 @@
+diff --git a/app/(main)/job-hunt/manage/page.tsx b/app/(main)/job-hunt/manage/page.tsx
+index 8e7acca..96a41ce 100644
+--- a/app/(main)/job-hunt/manage/page.tsx
++++ b/app/(main)/job-hunt/manage/page.tsx
+@@ -837,17 +837,6 @@ export default function ManageJobHuntPage() {
+     let isMounted = true;
+     async function loadPreferences() {
+       try {
+-        if (typeof window !== "undefined") {
+-          try {
+-            const cached = sessionStorage.getItem("cached_resume_extraction");
+-            if (cached) {
+-              cloudRunExtractionCacheRef.current = JSON.parse(cached);
+-            }
+-          } catch {
+-            // Ignore
+-          }
+-        }
+-
+         const [res, , tplRes, activeResumeRes] = await Promise.all([
+           getUserJobPreferences(),
+           fetchTagOptions(),
+@@ -873,6 +862,10 @@ export default function ManageJobHuntPage() {
+           const activeKey = activeResumeRes?.data?.fileKey || p.resumeFileKey || null;
+           const activeName = activeResumeRes?.data?.fileName || p.resumeFileName || null;
+           const activeUploaded = activeKey ? true : Boolean(p.resumeUploaded);
++          const inferred = (r as ResumeDetailsData & {inferredPreferences?: JobPreferencesData}).inferredPreferences;
++          cloudRunExtractionCacheRef.current = activeKey && inferred
++            ? {preferences:inferred,resume_details:r}
++            : null;
+ 
+           if (p.country) setCountry(p.country);
+           if (Array.isArray(p.cities)) setCities(p.cities);
+@@ -1204,26 +1197,15 @@ export default function ManageJobHuntPage() {
+   const handleToggleAutofill = (enabled: boolean) => {
+     setAutofill(enabled);
+     if (enabled) {
+-      let extraction = cloudRunExtractionCacheRef.current;
+-      if (!extraction && typeof window !== "undefined") {
+-        try {
+-          const stored = sessionStorage.getItem("cached_resume_extraction");
+-          if (stored) {
+-            extraction = JSON.parse(stored);
+-            cloudRunExtractionCacheRef.current = extraction;
+-          }
+-        } catch {
+-          // Ignore
+-        }
+-      }
++      const extraction = cloudRunExtractionCacheRef.current;
+ 
+       if (extraction) {
+         const { preferences: extPref, resume_details: extDetails } = extraction;
+         if (extPref) {
+-          if (Array.isArray(extPref.skills) && extPref.skills.length > 0) setSkills(extPref.skills);
+-          if (Array.isArray(extPref.domains) && extPref.domains.length > 0) setDomains(extPref.domains);
++          if (Array.isArray(extPref.skills)) setSkills(extPref.skills);
++          if (Array.isArray(extPref.domains)) setDomains(extPref.domains);
+           if (extPref.seniority) setSeniority(extPref.seniority);
+-          if (Array.isArray(extPref.cities) && extPref.cities.length > 0) setCities(extPref.cities.slice(0, 3));
++          if (Array.isArray(extPref.cities)) setCities(extPref.cities.slice(0, 3));
+           if (extPref.country) setCountry(extPref.country.toLowerCase());
+           if (Array.isArray(extPref.jobTypes) && extPref.jobTypes.length > 0) setJobTypes(extPref.jobTypes);
+           if (extPref.experienceYears != null) setExperience(String(extPref.experienceYears));
+diff --git a/lib/resume-imports.ts b/lib/resume-imports.ts
+index 427fdfc..e98dfa1 100644
+--- a/lib/resume-imports.ts
++++ b/lib/resume-imports.ts
+@@ -93,18 +93,27 @@ export async function confirmResumeImport(userId: string, importId: string, revi
+       summary:model.summary,skills:model.skills,projects:model.projects,additionalSections:model.additionalSections,
+       compiler_payload:{markdown}, layoutValidation:{importId,
+       validatorVersion:RESUME_VALIDATOR_VERSION,fileSha256:candidate.file_sha256,contentSha256:digest,confirmedAt:new Date().toISOString()}};
++    const prefs = {resumeUploaded:true,resumeFileName:candidate.file_name,resumeFileKey:permanentKey,isConfirmed:false};
++    const inferred=candidate.parsed_data.inferredPreferences as Record<string,unknown>||{};
++    const inferredPrefs=Object.fromEntries(['country','cities','domains','seniority','experienceYears'].filter(k=>k in inferred).map(k=>[k,inferred[k]]));
++    const labels=(value:unknown)=>Array.isArray(value)?value.filter((v):v is string=>typeof v==='string').map(v=>v.replace(/^[#*\s]+|[*\s]+$/g,'').trim()).filter(Boolean):[];
++    // Matching preferences use the backend's canonical skills, not comma-split
++    // resume prose (which breaks labels such as AWS (SageMaker, Bedrock)).
++    inferredPrefs.skills=Array.from(new Set(labels(inferred.skills)));
++    inferredPrefs.domains=Array.from(new Set(labels([
++      ...labels(inferred.domains), model.personalInfo.title, ...model.experience.map(e=>e.role),
++    ])));
++    if(inferredPrefs.seniority==='Senior-level')inferredPrefs.seniority='Senior';
++    Object.assign(details,{inferredPreferences:inferredPrefs});
+     const base = await client.query(`INSERT INTO user_pref_resumes(user_id,title,file_name,file_key,file_url,file_size,is_primary,content,parsed_data)
+       VALUES($1,$2,$2,$3,$3,$4,true,$5,$6) ON CONFLICT(user_id) DO UPDATE SET title=EXCLUDED.title,file_name=EXCLUDED.file_name,
+       file_key=EXCLUDED.file_key,file_url=EXCLUDED.file_url,file_size=EXCLUDED.file_size,is_primary=true,content=EXCLUDED.content,parsed_data=EXCLUDED.parsed_data,updated_at=now() RETURNING id`,
+       [userId,candidate.file_name,permanentKey,bytes.length,markdown,JSON.stringify(details)]);
+-    const prefs = {resumeUploaded:true,resumeFileName:candidate.file_name,resumeFileKey:permanentKey,isConfirmed:false};
+-    const inferred=candidate.parsed_data.inferredPreferences as Record<string,unknown>||{};
+-    const inferredPrefs=Object.fromEntries(['country','cities','domains','seniority','experienceYears'].filter(k=>k in inferred).map(k=>[k,inferred[k]]));
+-    inferredPrefs.skills=Array.from(new Set(model.skills.flatMap(s=>s.items.split(/[,;]+/).map(v=>v.trim()).filter(Boolean))));
+     const shouldAutofill=autofill ?? (current.rows[0]?.preferences?.autofillFromResume !== false);
+     await client.query(`INSERT INTO user_job_preferences(user_id,active_resume_id,preferences,resume_details,resume_details_created_at,resume_details_updated_at)
+       VALUES($1,$2,$3,$4,now(),now()) ON CONFLICT(user_id) DO UPDATE SET active_resume_id=EXCLUDED.active_resume_id,
+-      preferences=user_job_preferences.preferences || EXCLUDED.preferences,
++      preferences=user_job_preferences.preferences || EXCLUDED.preferences || jsonb_build_object(
++        'manualEdits',COALESCE(NULLIF(user_job_preferences.preferences->'manualEdits','null'::jsonb),'{}'::jsonb) || EXCLUDED.preferences),
+       resume_details=EXCLUDED.resume_details,resume_details_updated_at=now(),updated_at=now()`,
+       [userId,base.rows[0].id,JSON.stringify({...shouldAutofill?inferredPrefs:{},...prefs}),JSON.stringify(details)]);
+     await client.query(`UPDATE resume_imports SET status='confirmed',confirmed_at=now(),content_sha256=$3,markdown=$4,parsed_data=$5,file_size=$6,object_key=$7
+diff --git a/scripts/check-autofill-regressions.cjs b/scripts/check-autofill-regressions.cjs
+new file mode 100644
+index 0000000..ffa4a44
+--- /dev/null
++++ b/scripts/check-autofill-regressions.cjs
+@@ -0,0 +1,8 @@
++const {spawnSync}=require('node:child_process');
++const path=require('node:path');
++for(const name of ['check-import-database.cjs','check-import-flow.cjs','check-deleted-resume-drafts.cjs']){
++  const result=spawnSync(process.execPath,[path.join(__dirname,name)],{encoding:'utf8',windowsHide:true});
++  process.stdout.write(result.stdout||'');process.stderr.write(result.stderr||'');
++  if(result.status!==0)process.exit(result.status||1);
++}
++console.log('AUTOFILL_REGRESSIONS_PASSED');
+diff --git a/scripts/check-import-database.cjs b/scripts/check-import-database.cjs
+index 21a4255..8f70fe2 100644
+--- a/scripts/check-import-database.cjs
++++ b/scripts/check-import-database.cjs
+@@ -53,10 +53,15 @@ const user='11111111-1111-4111-8111-111111111111';
+     const apiPool={query:execute,connect:async()=>({query:execute,release:()=>{}})};
+     const bytes=Buffer.from('%PDF-local-test');const fileHash=crypto.createHash('sha256').update(bytes).digest('hex');
+     const candidate='44444444-4444-4444-8444-444444444444';
++    await db.query(`UPDATE user_job_preferences SET preferences=$1 WHERE user_id=$2`,[JSON.stringify({
++      skills:['Old skill'],domains:['Old role'],experienceYears:6,autofillFromResume:true,
++      salaryMin:90000,jobTypes:['Contract'],manualEdits:{skills:['Stale skill'],domains:[],experienceYears:6,salaryMin:95000,jobTypes:['Part-time']}
++    }),user]);
+     const key=`resume_imports/${user}/new.pdf`;
+     const markdown=fs.readFileSync(path.join(__dirname,'fixtures/resume-regression.md'),'utf8').trim();
+     await db.query(`INSERT INTO resume_imports(id,user_id,object_key,file_name,baseline_key,status,validator_version,file_sha256,baseline_content_sha256)
+       VALUES($1,$2,$3,'new.pdf','file.pdf','accepted','single-column-v1',$4,$5)`,[candidate,user,key,fileHash,sourceDigest(source+' edited')]);
++    await db.query('UPDATE resume_imports SET parsed_data=$1 WHERE id=$2',[JSON.stringify({inferredPreferences:{skills:['Python','AWS'],domains:['**AI Solutions Engineer**'],experienceYears:4,seniority:'Senior-level',cities:[],country:'us'}}),candidate]);
+     class Command{constructor(input){this.input=input;}}
+     const api=load('lib/resume-imports.ts',{'@/lib/db':{pool:apiPool},'@/lib/storage/r2':{
+       r2Client:{send:async()=>({ContentLength:bytes.length,Body:{transformToByteArray:async()=>bytes}})},R2_BUCKET_NAME:'test'},
+@@ -65,6 +70,19 @@ const user='11111111-1111-4111-8111-111111111111';
+     assert.notEqual(activated.objectKey,key);
+     assert.equal((await db.query('SELECT file_key FROM user_pref_resumes WHERE user_id=$1',[user])).rows[0].file_key,activated.objectKey);
+     assert.equal((await db.query('SELECT resume_source_is_admitted($1,$2,$3) AS allowed',[user,markdown,candidate])).rows[0].allowed,true);
++    const updated=(await db.query('SELECT preferences,resume_details FROM user_job_preferences WHERE user_id=$1',[user])).rows[0];
++    assert.deepEqual(updated.preferences.skills,['Python','AWS']);
++    assert.deepEqual(updated.preferences.manualEdits.skills,['Python','AWS']);
++    assert.equal(updated.preferences.experienceYears,4);assert.equal(updated.preferences.manualEdits.experienceYears,4);
++    assert(updated.preferences.domains.includes('AI Solutions Engineer'));
++    assert(updated.preferences.domains.includes('UX Design Intern'));
++    assert(updated.preferences.domains.every(s=>!s.includes('*')));
++    assert.deepEqual(updated.preferences.manualEdits.domains,updated.preferences.domains);
++    assert.equal(updated.preferences.seniority,'Senior');
++    assert.equal(updated.preferences.salaryMin,90000);assert.equal(updated.preferences.manualEdits.salaryMin,95000);
++    assert.deepEqual(updated.preferences.manualEdits.jobTypes,['Part-time']);
++    assert.deepEqual(updated.resume_details.inferredPreferences.skills,['Python','AWS']);
++    assert.equal(updated.resume_details.inferredPreferences.experienceYears,4);
+     const stale='55555555-5555-4555-8555-555555555555';
+     await db.query(`INSERT INTO resume_imports(id,user_id,object_key,file_name,baseline_key,status,validator_version,file_sha256)
+       VALUES($1,$2,$3,'other.pdf','file.pdf','accepted','single-column-v1',$4)`,[stale,user,key+'other',fileHash]);
+@@ -80,6 +98,13 @@ const user='11111111-1111-4111-8111-111111111111';
+     const retained=(await db.query('SELECT file_key,content FROM user_pref_resumes WHERE user_id=$1',[user])).rows[0];
+     assert.equal(retained.file_key,activated.objectKey);assert.equal(retained.content,markdown);
+     assert.equal((await db.query('SELECT status FROM resume_imports WHERE id=$1',[failed])).rows[0].status,'accepted');
++    const beforeOff=(await db.query('SELECT preferences FROM user_job_preferences WHERE user_id=$1',[user])).rows[0].preferences;
++    await api.confirmResumeImport(user,failed,1,markdown,false);
++    const afterOff=(await db.query('SELECT preferences FROM user_job_preferences WHERE user_id=$1',[user])).rows[0].preferences;
++    for(const field of ['skills','domains','experienceYears','salaryMin','jobTypes']){
++      assert.deepEqual(afterOff[field],beforeOff[field],field+' top-level changed with autofill off');
++      assert.deepEqual(afterOff.manualEdits[field],beforeOff.manualEdits[field],field+' draft changed with autofill off');
++    }
+     console.log('IMPORT_DATABASE_PASSED');
+   }finally{await db.close();}
+ })().catch(error=>{console.error(error);process.exit(1);});

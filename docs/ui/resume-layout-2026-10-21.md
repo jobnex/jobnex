@@ -1,5 +1,7 @@
 # UI team: latest resume upload and generation integration
 
+The latest branch patch also includes the [autofill follow-up](resume-autofill-followup-2026-10-21.md), which prevents old drafts from hiding newly uploaded skills/domains/experience. If the initial patch is already integrated, adopt that follow-up's two changed runtime files. The initial release ZIP predates this follow-up.
+
 Use branch `release/resume-layout-20261021`. The latest supplied UI is **`ui-handoff/my-app/`**, based on the user's `my-app(4)` archive. Do not replace it with the older application at repository root; root remains the GCP backend service source.
 
 ## What to pick

@@ -53,10 +53,15 @@ const user='11111111-1111-4111-8111-111111111111';
     const apiPool={query:execute,connect:async()=>({query:execute,release:()=>{}})};
     const bytes=Buffer.from('%PDF-local-test');const fileHash=crypto.createHash('sha256').update(bytes).digest('hex');
     const candidate='44444444-4444-4444-8444-444444444444';
+    await db.query(`UPDATE user_job_preferences SET preferences=$1 WHERE user_id=$2`,[JSON.stringify({
+      skills:['Old skill'],domains:['Old role'],experienceYears:6,autofillFromResume:true,
+      salaryMin:90000,jobTypes:['Contract'],manualEdits:{skills:['Stale skill'],domains:[],experienceYears:6,salaryMin:95000,jobTypes:['Part-time']}
+    }),user]);
     const key=`resume_imports/${user}/new.pdf`;
     const markdown=fs.readFileSync(path.join(__dirname,'fixtures/resume-regression.md'),'utf8').trim();
     await db.query(`INSERT INTO resume_imports(id,user_id,object_key,file_name,baseline_key,status,validator_version,file_sha256,baseline_content_sha256)
       VALUES($1,$2,$3,'new.pdf','file.pdf','accepted','single-column-v1',$4,$5)`,[candidate,user,key,fileHash,sourceDigest(source+' edited')]);
+    await db.query('UPDATE resume_imports SET parsed_data=$1 WHERE id=$2',[JSON.stringify({inferredPreferences:{skills:['Python','AWS'],domains:['**AI Solutions Engineer**'],experienceYears:4,seniority:'Senior-level',cities:[],country:'us'}}),candidate]);
     class Command{constructor(input){this.input=input;}}
     const api=load('lib/resume-imports.ts',{'@/lib/db':{pool:apiPool},'@/lib/storage/r2':{
       r2Client:{send:async()=>({ContentLength:bytes.length,Body:{transformToByteArray:async()=>bytes}})},R2_BUCKET_NAME:'test'},
@@ -65,6 +70,19 @@ const user='11111111-1111-4111-8111-111111111111';
     assert.notEqual(activated.objectKey,key);
     assert.equal((await db.query('SELECT file_key FROM user_pref_resumes WHERE user_id=$1',[user])).rows[0].file_key,activated.objectKey);
     assert.equal((await db.query('SELECT resume_source_is_admitted($1,$2,$3) AS allowed',[user,markdown,candidate])).rows[0].allowed,true);
+    const updated=(await db.query('SELECT preferences,resume_details FROM user_job_preferences WHERE user_id=$1',[user])).rows[0];
+    assert.deepEqual(updated.preferences.skills,['Python','AWS']);
+    assert.deepEqual(updated.preferences.manualEdits.skills,['Python','AWS']);
+    assert.equal(updated.preferences.experienceYears,4);assert.equal(updated.preferences.manualEdits.experienceYears,4);
+    assert(updated.preferences.domains.includes('AI Solutions Engineer'));
+    assert(updated.preferences.domains.includes('UX Design Intern'));
+    assert(updated.preferences.domains.every(s=>!s.includes('*')));
+    assert.deepEqual(updated.preferences.manualEdits.domains,updated.preferences.domains);
+    assert.equal(updated.preferences.seniority,'Senior');
+    assert.equal(updated.preferences.salaryMin,90000);assert.equal(updated.preferences.manualEdits.salaryMin,95000);
+    assert.deepEqual(updated.preferences.manualEdits.jobTypes,['Part-time']);
+    assert.deepEqual(updated.resume_details.inferredPreferences.skills,['Python','AWS']);
+    assert.equal(updated.resume_details.inferredPreferences.experienceYears,4);
     const stale='55555555-5555-4555-8555-555555555555';
     await db.query(`INSERT INTO resume_imports(id,user_id,object_key,file_name,baseline_key,status,validator_version,file_sha256)
       VALUES($1,$2,$3,'other.pdf','file.pdf','accepted','single-column-v1',$4)`,[stale,user,key+'other',fileHash]);
@@ -80,6 +98,13 @@ const user='11111111-1111-4111-8111-111111111111';
     const retained=(await db.query('SELECT file_key,content FROM user_pref_resumes WHERE user_id=$1',[user])).rows[0];
     assert.equal(retained.file_key,activated.objectKey);assert.equal(retained.content,markdown);
     assert.equal((await db.query('SELECT status FROM resume_imports WHERE id=$1',[failed])).rows[0].status,'accepted');
+    const beforeOff=(await db.query('SELECT preferences FROM user_job_preferences WHERE user_id=$1',[user])).rows[0].preferences;
+    await api.confirmResumeImport(user,failed,1,markdown,false);
+    const afterOff=(await db.query('SELECT preferences FROM user_job_preferences WHERE user_id=$1',[user])).rows[0].preferences;
+    for(const field of ['skills','domains','experienceYears','salaryMin','jobTypes']){
+      assert.deepEqual(afterOff[field],beforeOff[field],field+' top-level changed with autofill off');
+      assert.deepEqual(afterOff.manualEdits[field],beforeOff.manualEdits[field],field+' draft changed with autofill off');
+    }
     console.log('IMPORT_DATABASE_PASSED');
   }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exit(1);});

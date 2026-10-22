@@ -93,18 +93,27 @@ export async function confirmResumeImport(userId: string, importId: string, revi
       summary:model.summary,skills:model.skills,projects:model.projects,additionalSections:model.additionalSections,
       compiler_payload:{markdown}, layoutValidation:{importId,
       validatorVersion:RESUME_VALIDATOR_VERSION,fileSha256:candidate.file_sha256,contentSha256:digest,confirmedAt:new Date().toISOString()}};
+    const prefs = {resumeUploaded:true,resumeFileName:candidate.file_name,resumeFileKey:permanentKey,isConfirmed:false};
+    const inferred=candidate.parsed_data.inferredPreferences as Record<string,unknown>||{};
+    const inferredPrefs=Object.fromEntries(['country','cities','domains','seniority','experienceYears'].filter(k=>k in inferred).map(k=>[k,inferred[k]]));
+    const labels=(value:unknown)=>Array.isArray(value)?value.filter((v):v is string=>typeof v==='string').map(v=>v.replace(/^[#*\s]+|[*\s]+$/g,'').trim()).filter(Boolean):[];
+    // Matching preferences use the backend's canonical skills, not comma-split
+    // resume prose (which breaks labels such as AWS (SageMaker, Bedrock)).
+    inferredPrefs.skills=Array.from(new Set(labels(inferred.skills)));
+    inferredPrefs.domains=Array.from(new Set(labels([
+      ...labels(inferred.domains), model.personalInfo.title, ...model.experience.map(e=>e.role),
+    ])));
+    if(inferredPrefs.seniority==='Senior-level')inferredPrefs.seniority='Senior';
+    Object.assign(details,{inferredPreferences:inferredPrefs});
     const base = await client.query(`INSERT INTO user_pref_resumes(user_id,title,file_name,file_key,file_url,file_size,is_primary,content,parsed_data)
       VALUES($1,$2,$2,$3,$3,$4,true,$5,$6) ON CONFLICT(user_id) DO UPDATE SET title=EXCLUDED.title,file_name=EXCLUDED.file_name,
       file_key=EXCLUDED.file_key,file_url=EXCLUDED.file_url,file_size=EXCLUDED.file_size,is_primary=true,content=EXCLUDED.content,parsed_data=EXCLUDED.parsed_data,updated_at=now() RETURNING id`,
       [userId,candidate.file_name,permanentKey,bytes.length,markdown,JSON.stringify(details)]);
-    const prefs = {resumeUploaded:true,resumeFileName:candidate.file_name,resumeFileKey:permanentKey,isConfirmed:false};
-    const inferred=candidate.parsed_data.inferredPreferences as Record<string,unknown>||{};
-    const inferredPrefs=Object.fromEntries(['country','cities','domains','seniority','experienceYears'].filter(k=>k in inferred).map(k=>[k,inferred[k]]));
-    inferredPrefs.skills=Array.from(new Set(model.skills.flatMap(s=>s.items.split(/[,;]+/).map(v=>v.trim()).filter(Boolean))));
     const shouldAutofill=autofill ?? (current.rows[0]?.preferences?.autofillFromResume !== false);
     await client.query(`INSERT INTO user_job_preferences(user_id,active_resume_id,preferences,resume_details,resume_details_created_at,resume_details_updated_at)
       VALUES($1,$2,$3,$4,now(),now()) ON CONFLICT(user_id) DO UPDATE SET active_resume_id=EXCLUDED.active_resume_id,
-      preferences=user_job_preferences.preferences || EXCLUDED.preferences,
+      preferences=user_job_preferences.preferences || EXCLUDED.preferences || jsonb_build_object(
+        'manualEdits',COALESCE(NULLIF(user_job_preferences.preferences->'manualEdits','null'::jsonb),'{}'::jsonb) || EXCLUDED.preferences),
       resume_details=EXCLUDED.resume_details,resume_details_updated_at=now(),updated_at=now()`,
       [userId,base.rows[0].id,JSON.stringify({...shouldAutofill?inferredPrefs:{},...prefs}),JSON.stringify(details)]);
     await client.query(`UPDATE resume_imports SET status='confirmed',confirmed_at=now(),content_sha256=$3,markdown=$4,parsed_data=$5,file_size=$6,object_key=$7

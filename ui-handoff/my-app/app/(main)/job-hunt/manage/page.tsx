@@ -837,17 +837,6 @@ export default function ManageJobHuntPage() {
     let isMounted = true;
     async function loadPreferences() {
       try {
-        if (typeof window !== "undefined") {
-          try {
-            const cached = sessionStorage.getItem("cached_resume_extraction");
-            if (cached) {
-              cloudRunExtractionCacheRef.current = JSON.parse(cached);
-            }
-          } catch {
-            // Ignore
-          }
-        }
-
         const [res, , tplRes, activeResumeRes] = await Promise.all([
           getUserJobPreferences(),
           fetchTagOptions(),
@@ -873,6 +862,10 @@ export default function ManageJobHuntPage() {
           const activeKey = activeResumeRes?.data?.fileKey || p.resumeFileKey || null;
           const activeName = activeResumeRes?.data?.fileName || p.resumeFileName || null;
           const activeUploaded = activeKey ? true : Boolean(p.resumeUploaded);
+          const inferred = (r as ResumeDetailsData & {inferredPreferences?: JobPreferencesData}).inferredPreferences;
+          cloudRunExtractionCacheRef.current = activeKey && inferred
+            ? {preferences:inferred,resume_details:r}
+            : null;
 
           if (p.country) setCountry(p.country);
           if (Array.isArray(p.cities)) setCities(p.cities);
@@ -1204,26 +1197,15 @@ export default function ManageJobHuntPage() {
   const handleToggleAutofill = (enabled: boolean) => {
     setAutofill(enabled);
     if (enabled) {
-      let extraction = cloudRunExtractionCacheRef.current;
-      if (!extraction && typeof window !== "undefined") {
-        try {
-          const stored = sessionStorage.getItem("cached_resume_extraction");
-          if (stored) {
-            extraction = JSON.parse(stored);
-            cloudRunExtractionCacheRef.current = extraction;
-          }
-        } catch {
-          // Ignore
-        }
-      }
+      const extraction = cloudRunExtractionCacheRef.current;
 
       if (extraction) {
         const { preferences: extPref, resume_details: extDetails } = extraction;
         if (extPref) {
-          if (Array.isArray(extPref.skills) && extPref.skills.length > 0) setSkills(extPref.skills);
-          if (Array.isArray(extPref.domains) && extPref.domains.length > 0) setDomains(extPref.domains);
+          if (Array.isArray(extPref.skills)) setSkills(extPref.skills);
+          if (Array.isArray(extPref.domains)) setDomains(extPref.domains);
           if (extPref.seniority) setSeniority(extPref.seniority);
-          if (Array.isArray(extPref.cities) && extPref.cities.length > 0) setCities(extPref.cities.slice(0, 3));
+          if (Array.isArray(extPref.cities)) setCities(extPref.cities.slice(0, 3));
           if (extPref.country) setCountry(extPref.country.toLowerCase());
           if (Array.isArray(extPref.jobTypes) && extPref.jobTypes.length > 0) setJobTypes(extPref.jobTypes);
           if (extPref.experienceYears != null) setExperience(String(extPref.experienceYears));

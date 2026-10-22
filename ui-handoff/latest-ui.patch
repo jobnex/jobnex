@@ -1209,7 +1209,36 @@
    const [confirmedSnapshot, setConfirmedSnapshot] = useState<string | null>(null);
    const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false);
  
-@@ -1167,289 +1151,6 @@
+@@ -853,17 +837,6 @@
+     let isMounted = true;
+     async function loadPreferences() {
+       try {
+-        if (typeof window !== "undefined") {
+-          try {
+-            const cached = sessionStorage.getItem("cached_resume_extraction");
+-            if (cached) {
+-              cloudRunExtractionCacheRef.current = JSON.parse(cached);
+-            }
+-          } catch {
+-            // Ignore
+-          }
+-        }
+-
+         const [res, , tplRes, activeResumeRes] = await Promise.all([
+           getUserJobPreferences(),
+           fetchTagOptions(),
+@@ -889,6 +862,10 @@
+           const activeKey = activeResumeRes?.data?.fileKey || p.resumeFileKey || null;
+           const activeName = activeResumeRes?.data?.fileName || p.resumeFileName || null;
+           const activeUploaded = activeKey ? true : Boolean(p.resumeUploaded);
++          const inferred = (r as ResumeDetailsData & {inferredPreferences?: JobPreferencesData}).inferredPreferences;
++          cloudRunExtractionCacheRef.current = activeKey && inferred
++            ? {preferences:inferred,resume_details:r}
++            : null;
+ 
+           if (p.country) setCountry(p.country);
+           if (Array.isArray(p.cities)) setCities(p.cities);
+@@ -1167,289 +1144,6 @@
    }, [hasLoadedPreferences, showDetailsForm, personalDetails, educations, experiences]);
  
    // Handlers
@@ -1499,7 +1528,7 @@
  
    const handleClosePdfPreview = () => {
      if (previewTemplate?.filePath?.startsWith("blob:")) {
-@@ -1458,19 +1159,6 @@
+@@ -1458,19 +1152,6 @@
      setPreviewTemplate(null);
    };
  
@@ -1519,7 +1548,7 @@
  
    /**
     * [DEV NOTE - IN DEVELOPMENT / NON-FUNCTIONAL BASE RESUME GENERATOR]
-@@ -1495,98 +1183,8 @@
+@@ -1495,98 +1176,8 @@
     * Part of the incomplete base resume generator, NOT related to AI job tailoring.
     */
    const generateAndShowResume = async () => {
@@ -1620,7 +1649,38 @@
    };
  
    const handleAddCity = (city: string) => {
-@@ -1853,98 +1451,9 @@
+@@ -1606,26 +1197,15 @@
+   const handleToggleAutofill = (enabled: boolean) => {
+     setAutofill(enabled);
+     if (enabled) {
+-      let extraction = cloudRunExtractionCacheRef.current;
+-      if (!extraction && typeof window !== "undefined") {
+-        try {
+-          const stored = sessionStorage.getItem("cached_resume_extraction");
+-          if (stored) {
+-            extraction = JSON.parse(stored);
+-            cloudRunExtractionCacheRef.current = extraction;
+-          }
+-        } catch {
+-          // Ignore
+-        }
+-      }
++      const extraction = cloudRunExtractionCacheRef.current;
+ 
+       if (extraction) {
+         const { preferences: extPref, resume_details: extDetails } = extraction;
+         if (extPref) {
+-          if (Array.isArray(extPref.skills) && extPref.skills.length > 0) setSkills(extPref.skills);
+-          if (Array.isArray(extPref.domains) && extPref.domains.length > 0) setDomains(extPref.domains);
++          if (Array.isArray(extPref.skills)) setSkills(extPref.skills);
++          if (Array.isArray(extPref.domains)) setDomains(extPref.domains);
+           if (extPref.seniority) setSeniority(extPref.seniority);
+-          if (Array.isArray(extPref.cities) && extPref.cities.length > 0) setCities(extPref.cities.slice(0, 3));
++          if (Array.isArray(extPref.cities)) setCities(extPref.cities.slice(0, 3));
+           if (extPref.country) setCountry(extPref.country.toLowerCase());
+           if (Array.isArray(extPref.jobTypes) && extPref.jobTypes.length > 0) setJobTypes(extPref.jobTypes);
+           if (extPref.experienceYears != null) setExperience(String(extPref.experienceYears));
+@@ -1853,98 +1433,9 @@
              */}
            </div>
            
@@ -1722,7 +1782,7 @@
  
            <div className="flex items-center justify-end">
              <label className="flex items-center gap-3 cursor-pointer group select-none">
-@@ -2586,6 +2095,7 @@
+@@ -2586,6 +2077,7 @@
        )}
  
        {/* SECTION 3: Resume Template Preferences */}
@@ -2534,7 +2594,7 @@
 +}
 --- /dev/null
 +++ b/lib/resume-imports.ts
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,160 @@
 +import { pool } from "@/lib/db";
 +import { r2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
 +import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -2630,18 +2690,27 @@
 +      summary:model.summary,skills:model.skills,projects:model.projects,additionalSections:model.additionalSections,
 +      compiler_payload:{markdown}, layoutValidation:{importId,
 +      validatorVersion:RESUME_VALIDATOR_VERSION,fileSha256:candidate.file_sha256,contentSha256:digest,confirmedAt:new Date().toISOString()}};
++    const prefs = {resumeUploaded:true,resumeFileName:candidate.file_name,resumeFileKey:permanentKey,isConfirmed:false};
++    const inferred=candidate.parsed_data.inferredPreferences as Record<string,unknown>||{};
++    const inferredPrefs=Object.fromEntries(['country','cities','domains','seniority','experienceYears'].filter(k=>k in inferred).map(k=>[k,inferred[k]]));
++    const labels=(value:unknown)=>Array.isArray(value)?value.filter((v):v is string=>typeof v==='string').map(v=>v.replace(/^[#*\s]+|[*\s]+$/g,'').trim()).filter(Boolean):[];
++    // Matching preferences use the backend's canonical skills, not comma-split
++    // resume prose (which breaks labels such as AWS (SageMaker, Bedrock)).
++    inferredPrefs.skills=Array.from(new Set(labels(inferred.skills)));
++    inferredPrefs.domains=Array.from(new Set(labels([
++      ...labels(inferred.domains), model.personalInfo.title, ...model.experience.map(e=>e.role),
++    ])));
++    if(inferredPrefs.seniority==='Senior-level')inferredPrefs.seniority='Senior';
++    Object.assign(details,{inferredPreferences:inferredPrefs});
 +    const base = await client.query(`INSERT INTO user_pref_resumes(user_id,title,file_name,file_key,file_url,file_size,is_primary,content,parsed_data)
 +      VALUES($1,$2,$2,$3,$3,$4,true,$5,$6) ON CONFLICT(user_id) DO UPDATE SET title=EXCLUDED.title,file_name=EXCLUDED.file_name,
 +      file_key=EXCLUDED.file_key,file_url=EXCLUDED.file_url,file_size=EXCLUDED.file_size,is_primary=true,content=EXCLUDED.content,parsed_data=EXCLUDED.parsed_data,updated_at=now() RETURNING id`,
 +      [userId,candidate.file_name,permanentKey,bytes.length,markdown,JSON.stringify(details)]);
-+    const prefs = {resumeUploaded:true,resumeFileName:candidate.file_name,resumeFileKey:permanentKey,isConfirmed:false};
-+    const inferred=candidate.parsed_data.inferredPreferences as Record<string,unknown>||{};
-+    const inferredPrefs=Object.fromEntries(['country','cities','domains','seniority','experienceYears'].filter(k=>k in inferred).map(k=>[k,inferred[k]]));
-+    inferredPrefs.skills=Array.from(new Set(model.skills.flatMap(s=>s.items.split(/[,;]+/).map(v=>v.trim()).filter(Boolean))));
 +    const shouldAutofill=autofill ?? (current.rows[0]?.preferences?.autofillFromResume !== false);
 +    await client.query(`INSERT INTO user_job_preferences(user_id,active_resume_id,preferences,resume_details,resume_details_created_at,resume_details_updated_at)
 +      VALUES($1,$2,$3,$4,now(),now()) ON CONFLICT(user_id) DO UPDATE SET active_resume_id=EXCLUDED.active_resume_id,
-+      preferences=user_job_preferences.preferences || EXCLUDED.preferences,
++      preferences=user_job_preferences.preferences || EXCLUDED.preferences || jsonb_build_object(
++        'manualEdits',COALESCE(NULLIF(user_job_preferences.preferences->'manualEdits','null'::jsonb),'{}'::jsonb) || EXCLUDED.preferences),
 +      resume_details=EXCLUDED.resume_details,resume_details_updated_at=now(),updated_at=now()`,
 +      [userId,base.rows[0].id,JSON.stringify({...shouldAutofill?inferredPrefs:{},...prefs}),JSON.stringify(details)]);
 +    await client.query(`UPDATE resume_imports SET status='confirmed',confirmed_at=now(),content_sha256=$3,markdown=$4,parsed_data=$5,file_size=$6,object_key=$7

@@ -24,6 +24,7 @@ export interface ExtractResumeResult {
   preferences?: JobPreferencesData;
   resume_details?: ResumeDetailsData;
   compiler_payload?: unknown;
+  resumeDocument?: unknown;
   error?: string;
 }
 
@@ -103,6 +104,7 @@ export async function extractResumeProfileFromR2(
       reasonCode: data.reasonCode,
       validatorVersion: data.validatorVersion,
       fileSha256: data.fileSha256,
+      resumeDocument: data.resumeDocument,
       markdown: data.markdown,
       message: data.message,
       detail: data.detail,

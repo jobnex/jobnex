@@ -57,6 +57,8 @@ next-env.d.ts
 **/ScoringResume/
 **/.pytest_cache/
 **/.ruff_cache/
+**/.test-tmp/
+services/resume-pdf-backend/test-evidence/
 **/node_modules/
 **/.unlazy/
 **/output/

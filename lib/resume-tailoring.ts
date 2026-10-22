@@ -71,6 +71,8 @@ export async function enqueueTailoring(userId: string, jobId: string, resume: Ta
       WHERE i.user_id=$1 AND public.resume_source_is_admitted($1,$2,i.id)
         AND i.object_key=(SELECT file_key FROM user_pref_resumes WHERE user_id=$1 AND id=$3)`,[userId,resume.markdown,resume.id]);
     if (!admitted.rows.length) throw new Error("Validate and confirm a supported PDF in Manage Job Hunt before generating.");
+    if(process.env.RESUME_CERTIFIED_PUBLICATION==='true'&&!currentBase.rows[0].parsed_data?.resumeDocument)
+      throw new Error("Validate your PDF with the current profile service before generating.");
     const job = await client.query(`SELECT job_description FROM jobs WHERE id=$1 AND status='published' FOR SHARE`, [jobId]);
     if (!job.rows[0]) throw new Error("Job is unavailable");
     await client.query(`INSERT INTO wallets(user_id,balance) VALUES($1,0) ON CONFLICT(user_id) DO NOTHING`, [userId]);
@@ -89,9 +91,9 @@ export async function enqueueTailoring(userId: string, jobId: string, resume: Ta
     await client.query(`INSERT INTO credit_transactions(user_id,amount,transaction_type,status,reference_id,metadata)
       VALUES($1,-1,'resume_tailor','pending',$2,$3)`, [userId, id, JSON.stringify({ kind: "tailor_resume_hold" })]);
     await client.query(`INSERT INTO resume_generation_requests
-      (id,user_id,job_id,base_resume_id,idempotency_key,source_text,job_description,include_summary,status,credit_state,credit_cost,source_import_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,true,'queued','held',1,$8)`,
-      [id, userId, jobId, resume.id, idempotencyKey, resume.markdown, job.rows[0].job_description,admitted.rows[0].id]);
+      (id,user_id,job_id,base_resume_id,idempotency_key,source_text,job_description,include_summary,status,credit_state,credit_cost,source_import_id,publication_contract)
+      VALUES($1,$2,$3,$4,$5,$6,$7,true,'queued','held',1,$8,$9)`,
+      [id, userId, jobId, resume.id, idempotencyKey, resume.markdown, job.rows[0].job_description,admitted.rows[0].id,process.env.RESUME_CERTIFIED_PUBLICATION==='true'?'certified-v1':'legacy']);
     await client.query(`INSERT INTO resume_dispatch_outbox(request_id) VALUES($1)`, [id]);
     await client.query("COMMIT");
     return { id, status: "queued", credit_state: "held", duplicate: false };

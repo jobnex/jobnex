@@ -723,6 +723,7 @@ export async function updateTailoredResumeMarkdown(
   templateId?: string,
   expectedGenerationId?: string | null
 ): Promise<{ success: boolean; error?: string; code?: string }> {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return {success:false,code:"USE_CERTIFIED_PUBLICATION",error:"Use the certified resume editor. Required checks cannot be manually overridden."};
   try {
     if (!UUID_REGEX.test(jobId)) return { success: false, error: "Invalid job identifier." };
     const contentError = resumeContentError(markdown);
@@ -764,6 +765,7 @@ export async function markTailoredResumeReady(
   jobId: string,
   expectedGenerationId?: string | null
 ): Promise<{ success: boolean; error?: string; code?: string }> {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return {success:false,code:"USE_CERTIFIED_PUBLICATION",error:"Use the certified resume editor. Required checks cannot be manually overridden."};
   try {
     const user = await getCurrentUser();
     if (!user?.id || !UUID_REGEX.test(jobId)) return { success: false, error: "Unauthorized or invalid job." };

@@ -9,6 +9,8 @@ WORKDIR /app
 COPY --from=node /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY services/resume-tailor ./services/resume-tailor
+COPY lib/resume-document.ts ./lib/resume-document.ts
+COPY lib/contracts ./lib/contracts
 COPY resume-agent-inspect ./resume-agent-inspect
 RUN pip install --no-cache-dir ./resume-agent-inspect
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8080

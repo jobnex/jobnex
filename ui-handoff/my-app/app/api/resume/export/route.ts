@@ -23,6 +23,7 @@ interface ExportRequestBody {
 }
 
 export async function POST(request: Request) {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
   let uncommittedKey: string | undefined;
   try {
     const user = await getCurrentUser().catch(() => null);
@@ -222,6 +223,7 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
   try {
     const user = await getCurrentUser().catch(() => null);
     if (!user || !user.id || !UUID_REGEX.test(user.id)) {

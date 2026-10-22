@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth/server";
 import { isUuid, loadAvailableGeneration } from "@/lib/resume-tailoring";
+import { publicationMetadata } from "@/lib/resume-publication-server";
 
 export async function GET(request: Request, { params }: { params: Promise<{ requestId: string }> }) {
   const user = await getCurrentUser();
@@ -9,7 +10,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ requ
   const generation = await loadAvailableGeneration(user.id, requestId);
   if (!generation) return Response.json({ error: "Generated Markdown is not ready" }, { status: 404 });
   if (new URL(request.url).searchParams.get("format") === "json")
-    return Response.json({ generation }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ generation:{...generation,...await publicationMetadata(user.id,requestId)} }, { headers: { "Cache-Control": "no-store" } });
   return new Response(generation.resume_markdown, { headers: {
     "Cache-Control": "no-store",
     "X-Resume-Review-Required": String(generation.status === "needs_review"),

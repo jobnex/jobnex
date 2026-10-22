@@ -47,6 +47,8 @@ def _cost_by_stage(result) -> dict[str, float]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Tailor a resume with grounded evidence checks.")
     parser.add_argument("--resume", required=True, type=Path, help="UTF-8 text or Markdown resume")
+    parser.add_argument("--source-document", type=Path, help="Confirmed ResumeDocumentV1 source JSON")
+    parser.add_argument("--source-text", type=Path, help="Exact original PDF extraction for canonical evidence")
     parser.add_argument("--jd", required=True, type=Path, help="UTF-8 text job description")
     parser.add_argument(
         "--project-library",
@@ -87,6 +89,11 @@ def main(argv: list[str] | None = None) -> int:
         audit_path = out_path.with_suffix(".audit.json")
         checkpoint_path = args.checkpoint_db.resolve()
         inputs = {resume_path, jd_path}
+        canonical_path = args.source_document.resolve(strict=True) if args.source_document else None
+        source_text_path = args.source_text.resolve(strict=True) if args.source_text else None
+        if source_text_path and not canonical_path:
+            raise ValueError("--source-text requires --source-document")
+        inputs.update(path for path in (canonical_path, source_text_path) if path)
         library_path = args.project_library.resolve(strict=True) if args.project_library else None
         if library_path:
             inputs.add(library_path)
@@ -136,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
                 pipeline,
                 RunRequest(
                     original_resume=resume,
+                    source_document=json.loads(canonical_path.read_text(encoding="utf-8-sig")) if canonical_path else None,
+                    source_text=source_text_path.read_text(encoding="utf-8") if source_text_path else None,
                     job_description=job_description,
                     tenant_id=args.tenant_id,
                     include_summary=args.summary == "yes",

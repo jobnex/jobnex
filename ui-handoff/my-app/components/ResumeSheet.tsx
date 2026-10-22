@@ -12,6 +12,8 @@ interface ResumeSheetProps {
   onMarkdownChange?: (newMarkdown: string) => void;
   onOverflowChange?: (isOverflow: boolean) => void;
   onPageCountChange?: (pageCount: number) => void;
+  structuredData?: ParsedResume;
+  onStructuredChange?: (data: ParsedResume) => void;
 }
 
 export function ResumeSheet({
@@ -22,6 +24,8 @@ export function ResumeSheet({
   onMarkdownChange,
   onOverflowChange,
   onPageCountChange,
+  structuredData,
+  onStructuredChange,
 }: ResumeSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -30,8 +34,8 @@ export function ResumeSheet({
 
   // Parse markdown into structured model
   const parsedData = useMemo(() => {
-    return parseResumeMarkdown(markdown);
-  }, [markdown]);
+    return structuredData || parseResumeMarkdown(markdown);
+  }, [markdown,structuredData]);
 
   // A4 Page measurement & overflow checking
   const checkA4Pages = useCallback(() => {
@@ -90,11 +94,11 @@ export function ResumeSheet({
   const handleFieldChange = (
     updater: (data: ParsedResume) => void
   ) => {
-    if (!onMarkdownChange) return;
+    if (!onMarkdownChange && !onStructuredChange) return;
     const clone: ParsedResume = structuredClone(parsedData);
     updater(clone);
-    const newMd = serializeResumeToMarkdown(clone);
-    onMarkdownChange(newMd);
+    if(onStructuredChange)onStructuredChange(clone);
+    else onMarkdownChange?.(serializeResumeToMarkdown(clone));
   };
 
   // Get theme-specific root styles
@@ -139,10 +143,11 @@ export function ResumeSheet({
     value: string,
     onSave: (val: string) => void,
     className = "",
-    tag: "div" | "span" | "p" | "h1" | "h2" | "h3" = "span"
+    tag: "div" | "span" | "p" | "h1" | "h2" | "h3" = "span",
+    editable = true
   ) => {
     const Tag = tag;
-    if (!isEditable) {
+    if (!isEditable || !editable) {
       return <Tag className={className}>{value}</Tag>;
     }
 
@@ -163,6 +168,9 @@ export function ResumeSheet({
     );
   };
 
+  const renderProtected = (value: string, onSave: (value:string)=>void, className = "", tag: "div"|"span"|"p"|"h1"|"h2"|"h3" = "span") =>
+    renderEditable(value,onSave,className,tag,!structuredData);
+
   // Header Rendering based on Theme
   const renderHeader = () => {
     const info = parsedData.personalInfo;
@@ -182,7 +190,7 @@ export function ResumeSheet({
           {/* Left Column: Name & Title & Profiles */}
           <div className="flex flex-col max-w-[55%] break-words">
             <h1 className="text-[19pt] font-bold leading-tight tracking-tight">
-              {renderEditable(info.name || "Full Name", (val) =>
+              {renderProtected(info.name || "Full Name", (val) =>
                 handleFieldChange((d) => { d.personalInfo.name = val; })
               )}
             </h1>
@@ -196,14 +204,14 @@ export function ResumeSheet({
             <div className="text-[8.5pt] text-black mt-1 flex flex-wrap gap-x-3 gap-y-0.5 break-words">
               {info.linkedin && (
                 <span className="break-all">
-                  {renderEditable(info.linkedin, (val) =>
+                  {renderProtected(info.linkedin, (val) =>
                     handleFieldChange((d) => { d.personalInfo.linkedin = val; })
                   )}
                 </span>
               )}
               {info.github && (
                 <span className="break-all">
-                  {renderEditable(info.github, (val) =>
+                  {renderProtected(info.github, (val) =>
                     handleFieldChange((d) => { d.personalInfo.github = val; })
                   )}
                 </span>
@@ -216,21 +224,21 @@ export function ResumeSheet({
           <div className="flex flex-col items-end text-[8.5pt] text-black leading-snug max-w-[45%] break-words text-right">
             {info.email && (
               <div className="break-all">
-                {renderEditable(info.email, (val) =>
+                {renderProtected(info.email, (val) =>
                   handleFieldChange((d) => { d.personalInfo.email = val; })
                 )}
               </div>
             )}
             {info.phone && (
               <div className="whitespace-nowrap">
-                {renderEditable(info.phone, (val) =>
+                {renderProtected(info.phone, (val) =>
                   handleFieldChange((d) => { d.personalInfo.phone = val; })
                 )}
               </div>
             )}
             {info.location && (
               <div className="break-words">
-                {renderEditable(info.location, (val) =>
+                {renderProtected(info.location, (val) =>
                   handleFieldChange((d) => { d.personalInfo.location = val; })
                 )}
               </div>
@@ -245,7 +253,7 @@ export function ResumeSheet({
       return (
         <div className="mb-[0.45em] text-left resume-section-header">
           <h1 className="text-[21pt] font-normal leading-tight tracking-tight break-words">
-            {renderEditable(info.name || "Full Name", (val) =>
+            {renderProtected(info.name || "Full Name", (val) =>
               handleFieldChange((d) => { d.personalInfo.name = val; })
             )}
           </h1>
@@ -275,7 +283,7 @@ export function ResumeSheet({
       return (
         <div className="text-center mb-[0.4em] resume-section-header">
           <h1 className="text-[20pt] font-normal text-[#111111] leading-tight tracking-tight break-words">
-            {renderEditable(info.name || "Full Name", (val) =>
+            {renderProtected(info.name || "Full Name", (val) =>
               handleFieldChange((d) => { d.personalInfo.name = val; })
             )}
           </h1>
@@ -304,7 +312,7 @@ export function ResumeSheet({
     return (
       <div className="text-center mb-[0.4em] resume-section-header">
         <h1 className="text-[19pt] font-bold text-black leading-tight tracking-tight break-words">
-          {renderEditable(info.name || "Full Name", (val) =>
+          {renderProtected(info.name || "Full Name", (val) =>
             handleFieldChange((d) => { d.personalInfo.name = val; })
           )}
         </h1>
@@ -433,13 +441,13 @@ export function ResumeSheet({
                     {parsedData.skills.map((skill, idx) => (
                       <div key={idx} className="leading-snug break-words">
                         <span className="font-bold">
-                          {renderEditable(skill.category, (val) =>
+                          {renderProtected(skill.category, (val) =>
                             handleFieldChange((d) => { d.skills[idx].category = val; })
                           )}
                           :{" "}
                         </span>
                         <span>
-                          {renderEditable(skill.items, (val) =>
+                          {renderProtected(skill.items, (val) =>
                             handleFieldChange((d) => { d.skills[idx].items = val; })
                           )}
                         </span>
@@ -468,7 +476,7 @@ export function ResumeSheet({
                               <span className="italic font-normal">
                                 {" "}
                                 |{" "}
-                                {renderEditable(exp.company, (val) =>
+                                {renderProtected(exp.company, (val) =>
                                   handleFieldChange((d) => { d.experience[idx].company = val; })
                                 )}
                               </span>
@@ -477,7 +485,7 @@ export function ResumeSheet({
                           <div className="text-right text-[8.2pt] font-normal shrink-0 ml-auto whitespace-nowrap">
                             {exp.location && <span>{exp.location} | </span>}
                             <span>
-                              {renderEditable(exp.duration, (val) =>
+                              {renderProtected(exp.duration, (val) =>
                                 handleFieldChange((d) => { d.experience[idx].duration = val; })
                               )}
                             </span>
@@ -525,7 +533,7 @@ export function ResumeSheet({
                           </div>
                           {proj.duration && (
                             <div className="text-right text-[8.2pt] font-normal shrink-0 ml-auto whitespace-nowrap">
-                              {renderEditable(proj.duration, (val) =>
+                              {renderProtected(proj.duration, (val) =>
                                 handleFieldChange((d) => { d.projects[idx].duration = val; })
                               )}
                             </div>
@@ -559,7 +567,7 @@ export function ResumeSheet({
                       <div key={idx} className="leading-snug resume-section-item">
                         <div className="flex justify-between items-baseline font-bold flex-wrap gap-x-2">
                           <span className="min-w-0 break-words">
-                            {renderEditable(edu.institution, (val) =>
+                            {renderProtected(edu.institution, (val) =>
                               handleFieldChange((d) => { d.education[idx].institution = val; })
                             )}
                           </span>
@@ -570,7 +578,7 @@ export function ResumeSheet({
                         {(edu.degree || edu.duration) && (
                           <div className="flex justify-between items-baseline text-[8.2pt] italic flex-wrap gap-x-2">
                             <span className="min-w-0 break-words">
-                              {renderEditable(edu.degree, (val) =>
+                              {renderProtected(edu.degree, (val) =>
                                 handleFieldChange((d) => { d.education[idx].degree = val; })
                               )}
                             </span>
@@ -581,7 +589,7 @@ export function ResumeSheet({
                         )}
                         {edu.details && (
                           <div className="text-[8pt] text-[#222222] mt-0.5 break-words">
-                            {renderEditable(edu.details, (val) =>
+                            {renderProtected(edu.details, (val) =>
                               handleFieldChange((d) => { d.education[idx].details = val; })
                             )}
                           </div>

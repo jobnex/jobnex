@@ -142,8 +142,15 @@ def validate_pdf(contents: bytes, filename: str):
         if not markdown.strip():
             return rejected("AMBIGUOUS_STRUCTURE", "The extracted resume is incomplete.")
         from scripts.resume_json_to_preferences import build_preferences
+        from service.resume_document import source_document
+        try:
+            canonical = source_document(details, hashlib.sha256(contents).hexdigest(), "pending", details.get('pages'))
+        except (ValueError, TypeError, KeyError):
+            return rejected("AMBIGUOUS_STRUCTURE", "Source fields, roles or PDF evidence could not be associated reliably.")
+        details['originalText'] = text
+        details['resumeDocument'] = canonical
         return {"accepted": True, "reasonCode": "ACCEPTED", "message": "Supported PDF. Review the extracted details before confirming.",
                 "validatorVersion": VERSION, "fileSha256": hashlib.sha256(contents).hexdigest(),
-                "resume_details": details, "markdown": markdown, "preferences": build_preferences(markdown)}
+                "resume_details": details, "resumeDocument": canonical, "markdown": markdown, "preferences": build_preferences(markdown)}
     except Exception:
         return rejected("UNREADABLE_PDF", "The PDF could not be read safely. Export a new text-based PDF.")

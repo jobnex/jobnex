@@ -6,16 +6,18 @@ import { createServer } from "node:http";
 import { Pool } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { dispatchRequest } from "./dispatch";
+import { canonicalJson, validateResumeDocument } from "../../lib/resume-document";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
 export const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false }, max: 3, idleTimeoutMillis: 30000 });
+const publicationContract=process.env.RESUME_CERTIFIED_PUBLICATION==='true'?'certified-v1':'legacy';
 
-type RequestRow = { id: string; user_id: string; job_id: string; base_resume_id: string; source_text: string; job_description: string; include_summary: boolean; lease_token: string };
+type RequestRow = { id: string; user_id: string; job_id: string; base_resume_id: string; source_import_id?: string; source_text: string; job_description: string; include_summary: boolean; lease_token: string };
 type Usage = { stage: string; model: string; input_tokens: number; output_tokens: number; cache_read_tokens?: number; cache_write_tokens?: number; estimated_cost_usd: number; provider_cost_usd?: number | null; request_id?: string };
 function run(command: string, args: string[], cwd: string) {
   return new Promise<number>((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd, env: {...process.env,PYTHONUTF8:"1",PYTHONIOENCODING:"utf-8"}, stdio: ["ignore", "pipe", "pipe"] });
     // Drain output, but never expose agent stderr containing candidate data or secrets.
     child.stdout.resume(); child.stderr.resume();
     let timedOut = false;
@@ -44,14 +46,26 @@ async function release(request: RequestRow, status: "failed" | "needs_review", e
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
 
-async function complete(request: RequestRow, status: "completed" | "needs_review", errorCode: string | null) {
+async function complete(request: RequestRow, status: "completed" | "needs_review", errorCode: string | null, document?: Record<string, unknown>, audit?: Record<string, unknown>) {
   const client = await pool.connect();
   try { await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${request.user_id}:${request.job_id}`]);
+    if(document && audit && request.source_import_id) {
+      await client.query(`INSERT INTO resume_document_versions(user_id,job_id,generation_id,revision,source_import_id,document_json,document_hash,source_hash,audit_json)
+        VALUES($1,$2,$3,1,$4,$5,$6,$7,$8) ON CONFLICT(generation_id,revision) DO NOTHING`,
+        [request.user_id,request.job_id,request.id,request.source_import_id,JSON.stringify(document),documentDigest(document),documentDigest(audit.source_document),JSON.stringify(audit)]);
+    }
     const completed = await client.query(`UPDATE resume_generation_requests SET status=$1,running_slot=NULL,credit_state='consumed',error_code=$2,finished_at=now()
       WHERE id=$3 AND lease_token=$4 AND status='running' AND credit_state='held' RETURNING id`, [status, errorCode, request.id, request.lease_token]);
     if (completed.rows[0]) await client.query(`UPDATE credit_transactions SET status='completed' WHERE user_id=$1 AND reference_id=$2 AND status='pending'`, [request.user_id, request.id]);
     await client.query("COMMIT");
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}
+
+function documentDigest(value:unknown) { return createHash("sha256").update(canonicalJson(value)).digest("hex"); }
+function requiredChecksPass(audit:Record<string,unknown>) {
+  return Array.isArray(audit.compliance_ledger) && audit.compliance_ledger.length>0 && audit.compliance_ledger.every(c=>c && typeof c.code==="string" && c.code.length>0
+    && typeof c.passed==="boolean" && ["error","warning","info"].includes(c.severity) && (c.passed || c.severity!=="error"));
 }
 
 async function recordUsage(request: RequestRow, usageRecords: Usage[]) {
@@ -96,10 +110,23 @@ async function recoverOutput(request: RequestRow) {
       || generation.source_hash !== createHash("sha256").update(request.source_text.replace(/\r\n?/g, "\n")).digest("hex")
       || generation.job_hash !== createHash("sha256").update(request.job_description.normalize("NFC").replace(/\s+/gu, " ").trim()).digest("hex")) return false;
   if (!usableAudit(audit, generation.status)) return false;
+  let document:Record<string,unknown>|undefined;
+  let certifiedAudit:Record<string,unknown>|undefined;
+  if(audit.resume_document && audit.source_document && request.source_import_id) {
+    const candidate=structuredClone(audit.resume_document);
+    candidate.id=request.id;candidate.revision=1;
+    validateResumeDocument(candidate);validateResumeDocument(audit.source_document);
+    const imported=await pool.query(`SELECT parsed_data,file_sha256 FROM resume_imports WHERE id=$1 AND user_id=$2 AND status='confirmed'`,[request.source_import_id,request.user_id]);
+    const source=imported.rows[0]?.parsed_data?.resumeDocument;
+    if(!source || documentDigest(source)!==documentDigest(audit.source_document) || candidate.source.revision!==request.source_import_id
+      || candidate.source.fileSha256!==imported.rows[0].file_sha256) return false;
+    document=candidate;
+    certifiedAudit={...audit,resume_document:candidate,certificationChecks:{schema:true,source:true,factual:['completed','completed_with_estimates'].includes(audit.status)&&requiredChecksPass(audit)}};
+  } else if(process.env.RESUME_CERTIFIED_PUBLICATION==="true") return false;
   // The persisted agent audit is authoritative; retries never invoke AI again.
   await recordUsage(request, audit.usage);
   const status = generation.status === "needs_review" ? "needs_review" : "completed";
-  await complete(request, status, status === "needs_review" ? String(audit.error || "needs_review").slice(0, 120) : null);
+  await complete(request, status, status === "needs_review" ? String(audit.error || "needs_review").slice(0, 120) : null,document,certifiedAudit);
   return true;
 }
 
@@ -114,10 +141,10 @@ async function claim(requestId: string): Promise<RequestRow | null> {
       running_slot=(SELECT slot FROM generate_series(1,2) slot WHERE NOT EXISTS
         (SELECT 1 FROM resume_generation_requests busy WHERE busy.user_id=resume_generation_requests.user_id
           AND busy.status='running' AND busy.running_slot=slot) ORDER BY slot LIMIT 1)
-      WHERE id=$2 AND status='queued' AND credit_state='held' AND EXISTS
+      WHERE id=$2 AND publication_contract=$3 AND status='queued' AND credit_state='held' AND EXISTS
         (SELECT 1 FROM generate_series(1,2) slot WHERE NOT EXISTS
           (SELECT 1 FROM resume_generation_requests busy WHERE busy.user_id=resume_generation_requests.user_id
-            AND busy.status='running' AND busy.running_slot=slot)) RETURNING *`, [lease, requestId]);
+            AND busy.status='running' AND busy.running_slot=slot)) RETURNING *`, [lease, requestId,publicationContract]);
     await client.query("COMMIT"); return result.rows[0] || null;
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }
@@ -140,9 +167,21 @@ export async function processRequest(requestId: string, agent = run) {
   try {
     const resume = join(folder, "resume.md"), jd = join(folder, "job.txt"), output = join(folder, "tailored.md");
     await Promise.all([writeFile(resume, request.source_text), writeFile(jd, request.job_description)]);
+    const sourceArgs:string[]=[];
+    if(request.source_import_id){
+      const imported=await pool.query(`SELECT parsed_data FROM resume_imports WHERE id=$1 AND user_id=$2 AND status='confirmed'`,[request.source_import_id,request.user_id]);
+      const details=imported.rows[0]?.parsed_data;
+      if(details?.resumeDocument){
+        validateResumeDocument(details.resumeDocument);
+        const sourceFile=join(folder,"source.json"),textFile=join(folder,"source.txt");
+        await Promise.all([writeFile(sourceFile,JSON.stringify(details.resumeDocument)),writeFile(textFile,String(details.originalText||details.text||""))]);
+        sourceArgs.push("--source-document",sourceFile,"--source-text",textFile);
+      }
+    }
+    if(process.env.RESUME_CERTIFIED_PUBLICATION==="true" && !sourceArgs.length) throw new Error("source_revalidation_required");
     const code = await agent(process.env.RESUME_PYTHON || "python", ["-m", "low_risk_agent", "--resume", resume, "--jd", jd,
       "--tenant-id", request.user_id, "--job-id", request.job_id, "--base-resume-id", request.base_resume_id,
-      "--generation-id", request.id, "--summary", request.include_summary ? "yes" : "no", "--out", output], folder);
+      "--generation-id", request.id, "--summary", request.include_summary ? "yes" : "no", "--out", output,...sourceArgs], folder);
     if (code === 3) {
       // Keep the held credit while the durable provider batch is processing.
       // A queued delivery replays cached stages and polls the same batch ID.
@@ -183,9 +222,9 @@ async function resumeBatch(request: RequestRow) {
 export async function recover() {
   // Fence expired leases before settlement. Never reclaim them for another AI run.
   const expired = await pool.query(`UPDATE resume_generation_requests SET lease_token=gen_random_uuid()
-    WHERE id IN (SELECT id FROM resume_generation_requests WHERE status='running'
+    WHERE id IN (SELECT id FROM resume_generation_requests WHERE status='running' AND publication_contract=$1
       AND lease_expires_at<now() ORDER BY lease_expires_at LIMIT 20 FOR UPDATE SKIP LOCKED)
-    RETURNING *`);
+    RETURNING *`,[publicationContract]);
   for (const request of expired.rows) {
     if (await recoverOutput(request)) continue;
     // Cached synchronous stages are not pending batches. Replaying a crashed
@@ -200,14 +239,48 @@ export async function recover() {
   // The queued-state/lease guard prevents refunding a concurrently claimed run.
   const exhausted = await pool.query(`SELECT r.* FROM resume_generation_requests r
     JOIN resume_dispatch_outbox o ON o.request_id=r.id
-    WHERE r.status='queued' AND r.credit_state='held' AND o.attempts>=10`);
+    WHERE r.status='queued' AND r.publication_contract=$1 AND r.credit_state='held' AND o.attempts>=10`,[publicationContract]);
   for (const request of exhausted.rows) await release(request, "failed", "dispatch_exhausted", "queued");
   const due = await pool.query(`SELECT o.request_id FROM resume_dispatch_outbox o
     JOIN resume_generation_requests r ON r.id=o.request_id
-    WHERE r.status='queued' AND o.next_attempt_at<=now() AND o.attempts<10
-    ORDER BY o.next_attempt_at LIMIT 10`);
+    WHERE r.status='queued' AND r.publication_contract=$1 AND o.next_attempt_at<=now() AND o.attempts<10
+    ORDER BY o.next_attempt_at LIMIT 10`,[publicationContract]);
   for (const row of due.rows) await dispatchRequest(pool, row.request_id);
   return { recovered: expired.rowCount, checked: due.rowCount, exhausted: exhausted.rowCount };
+}
+
+// Called only by the IAM-authenticated web service. It accepts a stored row ID,
+// never caller assertions, and does not reserve or settle credits.
+export async function validateDocumentVersion(versionId:string) {
+  const result=await pool.query(`SELECT d.*,i.parsed_data,i.file_sha256 FROM resume_document_versions d JOIN resume_imports i
+    ON i.id=d.source_import_id AND i.user_id=d.user_id WHERE d.id=$1 AND i.status='confirmed'`,[versionId]);
+  const row=result.rows[0];if(!row)throw new Error("document_missing");
+  const folder=await mkdtemp(join(tmpdir(),"resume-validate-"));
+  let issues:{code:string;message:string;fieldId:string|null}[]=[];
+  try {
+    validateResumeDocument(row.document_json);validateResumeDocument(row.audit_json.source_document);
+    if(documentDigest(row.document_json)!==row.document_hash || documentDigest(row.audit_json.source_document)!==row.source_hash
+      || documentDigest(row.parsed_data.resumeDocument)!==row.source_hash || row.document_json.source.fileSha256!==row.file_sha256) throw new Error("source_proof_invalid");
+    const edited=join(folder,"edit.json"),source=join(folder,"source.json"),audit=join(folder,"audit.json");
+    await Promise.all([writeFile(edited,JSON.stringify(row.document_json)),writeFile(source,JSON.stringify(row.audit_json.source_document)),writeFile(audit,JSON.stringify(row.audit_json))]);
+    const checked=await new Promise<{valid:boolean;issues:typeof issues}>((resolve,reject)=>{
+      const child=spawn(process.env.RESUME_PYTHON||"python",["-m","low_risk_agent.document","--validate-document-file",edited,"--source-document",source,"--audit",audit],{cwd:folder,env:{...process.env,PYTHONUTF8:"1",PYTHONIOENCODING:"utf-8"},stdio:["ignore","pipe","pipe"]});
+      let output="";child.stdout.on("data",chunk=>{output+=chunk;if(output.length>100_000)child.kill("SIGKILL");});child.stderr.resume();
+      const timeout=setTimeout(()=>child.kill("SIGKILL"),20_000);
+      child.on("error",error=>{clearTimeout(timeout);reject(error);});
+      child.on("close",code=>{clearTimeout(timeout);try{const parsed=JSON.parse(output);if(![0,1].includes(code??-1)||typeof parsed.valid!=="boolean"||!Array.isArray(parsed.issues))throw new Error();resolve(parsed);}catch{reject(new Error("validation_unavailable"));}});
+    });
+    issues=checked.issues;
+    if(!checked.valid&&!issues.length)issues=[{code:"FACTUAL_VALIDATION_FAILED",message:"The saved draft could not be verified against its source.",fieldId:null}];
+  }catch{issues=[{code:"VALIDATION_UNAVAILABLE",message:"Required document checks could not finish. Retry this revision.",fieldId:null}];}
+  finally{await rm(folder,{recursive:true,force:true});}
+  const originalRequired=requiredChecksPass(row.audit_json);
+  if(!originalRequired)issues.push({code:"REQUIRED_CHECK_FAILED",message:"This draft has unresolved required generation checks. Generate a corrected draft.",fieldId:null});
+  const passed=issues.length===0;
+  const audit={...row.audit_json,issues,certificationChecks:{schema:true,source:passed,factual:passed},editValidation:{status:passed?"passed":"blocked",documentHash:row.document_hash}};
+  // Immutable document bytes; updating only their derived validation result is safe on retries.
+  await pool.query("UPDATE resume_document_versions SET audit_json=$2 WHERE id=$1 AND document_hash=$3",[versionId,JSON.stringify(audit),row.document_hash]);
+  return {documentRevision:row.revision,publicationStatus:"blocked",issues,validated:passed};
 }
 
 async function main() {
@@ -215,13 +288,17 @@ async function main() {
   const server = createServer(async (request, response) => {
     const reply = (status: number, body: object) => { response.writeHead(status, { "content-type": "application/json" }); response.end(JSON.stringify(body)); };
     if (request.method === "GET" && request.url === "/health") return reply(200, { status: "ok", enabled, mode: "tasks" });
-    if (request.method !== "POST" || !["/internal/process", "/internal/recover"].includes(request.url || "")) return reply(404, { error: "Not found" });
+    if (request.method !== "POST" || !["/internal/process", "/internal/recover", "/internal/validate-document"].includes(request.url || "")) return reply(404, { error: "Not found" });
     if (!enabled) return reply(503, { error: "Generation disabled" });
     try {
       if (request.url === "/internal/recover") return reply(200, await recover());
       let data = "";
       for await (const chunk of request) { data += chunk; if (data.length > 1024) return reply(413, { error: "Payload too large" }); }
       const body = JSON.parse(data);
+      if(request.url==="/internal/validate-document"){
+        if(Object.keys(body).length!==1||typeof body.versionId!=="string"||!/^[0-9a-f-]{36}$/i.test(body.versionId))return reply(400,{error:"Invalid document version"});
+        return reply(200,await validateDocumentVersion(body.versionId));
+      }
       if (Object.keys(body).length !== 1 || typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId)) return reply(400, { error: "Invalid request ID" });
       await processRequest(body.requestId);
       return reply(200, { status: "settled" });

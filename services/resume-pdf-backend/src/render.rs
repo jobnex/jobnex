@@ -372,7 +372,11 @@ pub fn compile(root: &Path, markdown: &str, theme: u64) -> Result<(Vec<u8>, Valu
     Ok((pdf, data))
 }
 
-fn run(command: &mut Command, started: Instant, timeout: Duration) -> Result<Output, String> {
+pub(crate) fn run(
+    command: &mut Command,
+    started: Instant,
+    timeout: Duration,
+) -> Result<Output, String> {
     // Files avoid pipe deadlocks when compiler diagnostics exceed an OS pipe buffer.
     let stdout = tempfile::tempfile().map_err(|e| e.to_string())?;
     let stderr = tempfile::tempfile().map_err(|e| e.to_string())?;

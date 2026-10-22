@@ -10,7 +10,7 @@ declare global {
 
 const rawConnectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
 const connectionString = rawConnectionString
-  ? rawConnectionString.replace(/[?&]channel_binding=[^&]+/g, "")
+  ? (()=>{const url=new URL(rawConnectionString);url.searchParams.delete("channel_binding");return url.toString();})()
   : undefined;
 
 function createPool(): Pool {

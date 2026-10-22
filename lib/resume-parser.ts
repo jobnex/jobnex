@@ -6,6 +6,7 @@ export interface PersonalInfo {
   linkedin: string;
   github: string;
   location: string;
+  extraContacts?: string[];
 }
 
 export interface SkillCategory {
@@ -45,6 +46,51 @@ export interface ParsedResume {
   education: EducationItem[];
   sectionOrder: string[];
   rawMarkdown: string;
+  additionalSections?: Record<string, { title: string; lines: string[] }>;
+}
+
+/**
+ * Helper to strip outer and inline markdown bold/italic markers from heading metadata
+ */
+function cleanHeadingText(text: string): string {
+  return text
+    .replace(/^(?:#{1,6}\s+)+/, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/^\*+|\*+$/g, "")
+    .trim();
+}
+
+export function resumePlainText(text: string): string {
+  return cleanHeadingText(text).replace(/^[-*•]\s+/, "• ");
+}
+
+/**
+ * Robust bullet extraction supporting Unicode bullets (with or without glued whitespace)
+ * and markdown hyphens/asterisks (strictly requiring whitespace).
+ */
+function extractBulletText(line: string): string | null {
+  // Unicode bullets: • or \u2022 (supports glued text like •Designed)
+  const unicodeMatch = line.match(/^[•\u2022]\s*(.*)$/);
+  if (unicodeMatch) {
+    return unicodeMatch[1].trim();
+  }
+  // Markdown bullets: - or * (requires space)
+  const mdMatch = line.match(/^[-*]\s+(.*)$/);
+  if (mdMatch) {
+    return mdMatch[1].trim();
+  }
+  return null;
+}
+
+/**
+ * Checks whether a line contains obvious contact tokens (email, phone, URLs).
+ */
+function hasContactTokens(line: string): boolean {
+  const emailRegex = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+  const phoneRegex = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+  const urlRegex = /(?:https?:\/\/|www\.|\b[\w-]+\.[a-z]{2,}(?:\/|\b))/i;
+  return emailRegex.test(line) || phoneRegex.test(line) || urlRegex.test(line);
 }
 
 /**
@@ -69,6 +115,10 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
   const projects: ProjectItem[] = [];
   const education: EducationItem[] = [];
   const sectionOrder: string[] = [];
+  const additionalSections: Record<string, { title: string; lines: string[] }> = {};
+  const extraContacts: string[] = [];
+  const projectSourceLines: string[] = [];
+  let unstructuredProjects = false;
 
   let currentSection = "header";
   let currentExpItem: ExperienceItem | null = null;
@@ -78,9 +128,10 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
     const line = rawLine.trim();
+    if (/^(?:[-*_]\s*){3,}$/.test(line)) continue;
     if (!line && currentSection === "header") continue;
 
-    // Check for Section Headers: ## ... or **Heading**
+    // Check for Section Headers: ## ...
     const headerMatch = line.match(/^##\s+(.+)$/);
     if (headerMatch) {
       // Commit pending sub-items
@@ -107,6 +158,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
       } else {
         currentSection = title;
         if (!sectionOrder.includes(title)) sectionOrder.push(title);
+        additionalSections[title] ??= { title: headerMatch[1].trim(), lines: [] };
       }
       continue;
     }
@@ -115,12 +167,10 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
     if (currentSection === "header") {
       // Line with # Name
       if (line.startsWith("# ") && !personalInfo.name) {
-        personalInfo.name = line.replace(/^#\s+/, "").trim();
-      } else if (line.startsWith("**") && line.endsWith("**") && !line.includes("|") && !line.includes("@") && !personalInfo.title) {
-        // Line with **Title**
-        personalInfo.title = line.replace(/^\*\*|\*\*$/g, "").trim();
-      } else if (!personalInfo.title && (line.startsWith("*") && line.endsWith("*") && !line.includes("|"))) {
-        personalInfo.title = line.replace(/^\*|\*$/g, "").trim();
+        personalInfo.name = cleanHeadingText(line);
+      } else if (!personalInfo.title && !hasContactTokens(line) && (line.startsWith("**") || line.startsWith("*") || personalInfo.name)) {
+        // Line with Title (allows pipe-delimited title like **Backend Developer | AI Infrastructure | Python**)
+        personalInfo.title = cleanHeadingText(line);
       } else {
         // Extract contacts from contact line
         // Email
@@ -133,137 +183,185 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
         if (phoneMatch && !personalInfo.phone) {
           personalInfo.phone = phoneMatch[0].trim();
         }
-        // LinkedIn
+        // LinkedIn (strip protocol and trailing slash)
         const linkedinMatch = line.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+(?:\/)?/);
         if (linkedinMatch && !personalInfo.linkedin) {
-          personalInfo.linkedin = linkedinMatch[0].replace(/^https?:\/\/(?:www\.)?/, "");
+          personalInfo.linkedin = linkedinMatch[0].replace(/^https?:\/\/(?:www\.)?/, "").replace(/\/$/, "");
         }
-        // GitHub
+        // GitHub (strip protocol and trailing slash)
         const githubMatch = line.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+(?:\/)?/);
         if (githubMatch && !personalInfo.github) {
-          personalInfo.github = githubMatch[0].replace(/^https?:\/\/(?:www\.)?/, "");
+          personalInfo.github = githubMatch[0].replace(/^https?:\/\/(?:www\.)?/, "").replace(/\/$/, "");
         }
         // Location (e.g. San Francisco, CA or Bellevue, WA or City, Country)
         const parts = line.split("|").map((p) => p.trim());
         for (const p of parts) {
           if (!p.includes("@") && !p.includes("http") && !p.includes("linkedin") && !p.includes("github") && !p.match(/\d{3}/)) {
             const cleanLoc = p.replace(/[^\w\s,.-]/g, "").trim();
-            if (cleanLoc.length > 2 && cleanLoc.includes(",")) {
+            if (cleanLoc.length > 2 && (cleanLoc.includes(",") || cleanLoc.includes(" "))) {
               personalInfo.location = cleanLoc;
             }
           }
         }
+        for (const part of parts) {
+          const value = cleanHeadingText(part);
+          const known = [personalInfo.phone, personalInfo.email, personalInfo.linkedin, personalInfo.github, personalInfo.location];
+          const key = (s: string) => s.replace(/^https?:\/\/(?:www\.)?/, "").replace(/\/$/, "");
+          if (value && !known.some(item => item && key(item) === key(value))) extraContacts.push(value);
+        }
       }
     } else if (currentSection === "summary") {
-      if (line.startsWith("- ") || line.startsWith("* ") || line.startsWith("• ")) {
-        summary.push(line.replace(/^[-*•]\s+/, "").trim());
+      const bulletText = extractBulletText(line);
+      if (bulletText !== null) {
+        summary.push(bulletText);
       } else if (line.length > 0) {
         summary.push(line);
       }
     } else if (currentSection === "skills") {
-      // Formats: - **Category:** Items  OR  Category : Items
-      const boldCatMatch = line.match(/^[-*•]?\s*\*\*([^*]+)\*\*:?\s*(.*)$/);
+      // Formats: - **Category:** Items OR Category : Items
+      const boldCatMatch = line.match(/^[-*•\u2022]?\s*\*\*([^*]+)\*\*:?\s*(.*)$/);
       if (boldCatMatch) {
         skills.push({
-          category: boldCatMatch[1].replace(/:$/, "").trim(),
+          category: cleanHeadingText(boldCatMatch[1]).replace(/:$/, "").trim(),
           items: boldCatMatch[2].trim(),
         });
       } else {
-        const colonParts = line.replace(/^[-*•]\s+/, "").split(":");
+        const colonParts = line.replace(/^[-*•\u2022]\s*/, "").split(":");
         if (colonParts.length >= 2) {
           skills.push({
-            category: colonParts[0].trim(),
+            category: cleanHeadingText(colonParts[0]).trim(),
             items: colonParts.slice(1).join(":").trim(),
           });
         } else if (line) {
-          skills.push({
-            category: "General",
-            items: line,
-          });
+          // Wrapped skill continuation: append to previous category if one exists
+          if (skills.length > 0) {
+            const lastSkill = skills[skills.length - 1];
+            const cleanAdd = line.replace(/^[-*•\u2022]\s*/, "").trim();
+            lastSkill.items = lastSkill.items ? `${lastSkill.items}, ${cleanAdd}` : cleanAdd;
+          } else {
+            skills.push({
+              category: "General",
+              items: line,
+            });
+          }
         }
       }
     } else if (currentSection === "experience") {
-      if (line.startsWith("### ") || (line.startsWith("**") && line.includes("|"))) {
-        if (currentExpItem) experience.push(currentExpItem);
-        const entryText = line.replace(/^###\s+/, "").replace(/^\*\*|\*\*$/g, "");
-        const parts = entryText.split("|").map((p) => p.trim());
-        
-        const role = parts[0] || "";
-        const company = parts[1] || "";
-        let location = parts[2] || "";
-        let duration = parts[3] || "";
+      const isHeaderOrMeta = /^#{3,6}\s+/.test(line) || (line.startsWith("**") && line.includes("|"));
+      if (isHeaderOrMeta) {
+        const entryText = cleanHeadingText(line);
+        const parts = entryText.split("|").map((p) => cleanHeadingText(p));
 
-        if (parts.length === 3) {
-          // Check if part 2 is date or location
-          if (parts[2].match(/\d{4}|Present/i)) {
-            duration = parts[2];
-            location = "";
+        // Check for bodyless role merge: previous item has role but no company/date and no bullets
+        if (currentExpItem && !currentExpItem.company && currentExpItem.bullets.length === 0 && parts.length >= 2) {
+          currentExpItem.company = parts[0] || "";
+          if (parts.length >= 3) {
+            currentExpItem.location = parts[1] || "";
+            currentExpItem.duration = parts[2] || "";
+          } else {
+            currentExpItem.duration = parts[1] || "";
+          }
+        } else {
+          if (currentExpItem) experience.push(currentExpItem);
+          const role = parts[0] || "";
+          const company = parts[1] || "";
+          let location = parts[2] || "";
+          let duration = parts[3] || "";
+
+          if (parts.length === 3) {
+            if (parts[2].match(/\d{4}|Present/i)) {
+              duration = parts[2];
+              location = "";
+            }
+          }
+
+          currentExpItem = {
+            role,
+            company,
+            location,
+            duration,
+            bullets: [],
+          };
+        }
+      } else {
+        const bulletText = extractBulletText(line);
+        if (bulletText !== null) {
+          if (currentExpItem) {
+            currentExpItem.bullets.push(bulletText);
+          }
+        } else if (line && currentExpItem) {
+          // Append continuation to previous bullet if present
+          if (currentExpItem.bullets.length > 0) {
+            const lastIdx = currentExpItem.bullets.length - 1;
+            currentExpItem.bullets[lastIdx] = `${currentExpItem.bullets[lastIdx]} ${line}`;
+          } else {
+            currentExpItem.bullets.push(line);
           }
         }
-
-        currentExpItem = {
-          role,
-          company,
-          location,
-          duration,
-          bullets: [],
-        };
-      } else if (line.startsWith("- ") || line.startsWith("* ") || line.startsWith("• ")) {
-        if (currentExpItem) {
-          currentExpItem.bullets.push(line.replace(/^[-*•]\s+/, "").trim());
-        }
-      } else if (line && currentExpItem) {
-        currentExpItem.bullets.push(line);
       }
     } else if (currentSection === "projects") {
-      if (line.startsWith("### ") || (line.startsWith("**") && line.includes("|"))) {
+      if (line) projectSourceLines.push(rawLine);
+      const isHeaderOrMeta = /^#{3,6}\s+/.test(line) || (line.startsWith("**") && line.includes("|"));
+      if (line && !isHeaderOrMeta && !currentProjectItem) unstructuredProjects = true;
+      if (isHeaderOrMeta) {
         if (currentProjectItem) projects.push(currentProjectItem);
-        const entryText = line.replace(/^###\s+/, "").replace(/^\*\*|\*\*$/g, "");
-        const parts = entryText.split("|").map((p) => p.trim());
+        const entryText = cleanHeadingText(line);
+        const parts = entryText.split("|").map((p) => cleanHeadingText(p));
         currentProjectItem = {
           title: parts[0] || "",
           technologies: parts[1] || "",
           duration: parts[2] || "",
           bullets: [],
         };
-      } else if (line.startsWith("- ") || line.startsWith("* ") || line.startsWith("• ")) {
-        if (currentProjectItem) {
-          currentProjectItem.bullets.push(line.replace(/^[-*•]\s+/, "").trim());
+      } else {
+        const bulletText = extractBulletText(line);
+        if (bulletText !== null) {
+          if (currentProjectItem) {
+            currentProjectItem.bullets.push(bulletText);
+          }
+        } else if (line && currentProjectItem) {
+          if (currentProjectItem.bullets.length > 0) {
+            const lastIdx = currentProjectItem.bullets.length - 1;
+            currentProjectItem.bullets[lastIdx] = `${currentProjectItem.bullets[lastIdx]} ${line}`;
+          } else {
+            currentProjectItem.bullets.push(line);
+          }
         }
-      } else if (line && currentProjectItem) {
-        currentProjectItem.bullets.push(line);
       }
     } else if (currentSection === "education") {
-      // Lines: **School** — Location OR School | Location
-      if (line.startsWith("**") && (line.includes("—") || line.includes("-") || line.includes("|"))) {
+      const plain = cleanHeadingText(line);
+      const columns = plain.split(/\s{2,}/);
+      const date = /(?:19|20)\d{2}|Present/i;
+      const degreeLine = /^\*(?!\*)/.test(line) && line.includes("|");
+      const schoolLine = /^#{3,6}\s+/.test(line) ||
+        (line.startsWith("**") && !/coursework|gpa/i.test(plain) && !date.test(plain)) ||
+        (!currentEduItem && !!line) ||
+        (columns.length > 1 && date.test(columns[columns.length - 1]) && !!currentEduItem?.degree && !degreeLine) ||
+        (/\b(university|college|institute)\b/i.test(plain) && !date.test(plain) && !degreeLine);
+      if (!line) continue;
+      if (schoolLine) {
         if (currentEduItem) education.push(currentEduItem);
-        const cleaned = line.replace(/\*\*/g, "");
-        const parts = cleaned.split(/—|-|\|/).map((p) => p.trim());
-        currentEduItem = {
-          institution: parts[0] || "",
-          location: parts[1] || "",
-          degree: "",
-          duration: "",
-        };
-      } else if (line.startsWith("*") && line.includes("|")) {
-        const cleaned = line.replace(/\*/g, "");
-        const parts = cleaned.split("|").map((p) => p.trim());
-        if (currentEduItem) {
-          currentEduItem.degree = parts[0] || "";
-          currentEduItem.duration = parts[1] || "";
+        const parts = plain.split(/\s+—\s*|\s+\|\s+|\s{2,}/);
+        currentEduItem = { institution: parts[0] || "", location: "", degree: "", duration: "" };
+        for (const part of parts.slice(1)) {
+          if (date.test(part)) currentEduItem.duration = part;
+          else currentEduItem.location = [currentEduItem.location, part].filter(Boolean).join(" | ");
         }
-      } else if (line.toLowerCase().includes("coursework") || line.toLowerCase().includes("gpa")) {
-        if (currentEduItem) {
-          currentEduItem.details = line.replace(/\*\*/g, "").trim();
+      } else if (currentEduItem) {
+        const parts = plain.split(/\s*\|\s*|\s{2,}/);
+        if (/coursework|gpa/i.test(plain) || (currentEduItem.degree && !degreeLine)) {
+          currentEduItem.details = [currentEduItem.details, plain].filter(Boolean).join(" ");
+        } else {
+          const firstIsDate = date.test(parts[0]) && !/[A-Za-z]\./.test(parts[0]);
+          if (degreeLine || !firstIsDate) currentEduItem.degree = parts[0] || "";
+          for (const part of parts.slice(degreeLine || !firstIsDate ? 1 : 0)) {
+            if (date.test(part)) currentEduItem.duration = part;
+            else currentEduItem.location = part;
+          }
         }
-      } else if (line && !currentEduItem) {
-        currentEduItem = {
-          institution: line,
-          location: "",
-          degree: "",
-          duration: "",
-        };
       }
+    } else if (additionalSections[currentSection] && line) {
+      additionalSections[currentSection].lines.push(rawLine);
     }
   }
 
@@ -271,7 +369,14 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
   if (currentExpItem) experience.push(currentExpItem);
   if (currentProjectItem) projects.push(currentProjectItem);
   if (currentEduItem) education.push(currentEduItem);
+  if (unstructuredProjects) {
+    // PDF project descriptions may have no Markdown subheadings. Preserve them
+    // verbatim through preview/edit/export rather than dropping unparsed text.
+    projects.splice(0);
+    additionalSections.projects = {title:"Projects",lines:projectSourceLines};
+  }
 
+  personalInfo.extraContacts = [...new Set(extraContacts)];
   return {
     personalInfo,
     summary,
@@ -281,6 +386,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
     education,
     sectionOrder: sectionOrder.length > 0 ? sectionOrder : ["summary", "skills", "experience", "projects", "education"],
     rawMarkdown: markdown,
+    additionalSections,
   };
 }
 
@@ -305,6 +411,7 @@ export function serializeResumeToMarkdown(data: ParsedResume): string {
   if (data.personalInfo.github) contacts.push(data.personalInfo.github);
   if (data.personalInfo.location) contacts.push(data.personalInfo.location);
 
+  contacts.push(...(data.personalInfo.extraContacts || []));
   if (contacts.length > 0) {
     parts.push(contacts.join(" | "));
   }
@@ -358,10 +465,13 @@ export function serializeResumeToMarkdown(data: ParsedResume): string {
           parts.push(`*${edu.degree}* | ${edu.duration}`);
         }
         if (edu.details) {
-          parts.push(`**${edu.details.startsWith("**") ? edu.details : `Relevant Coursework: ${edu.details}`}**`);
+          parts.push(edu.details);
         }
         parts.push("");
       }
+    } else if (data.additionalSections?.[section]) {
+      const extra = data.additionalSections[section];
+      parts.push(`## ${extra.title}`, ...extra.lines, "");
     }
   }
 

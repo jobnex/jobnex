@@ -15,8 +15,9 @@ import { markTailoredResumeReady } from "@/app/actions/tailored-resume";
 import { toast } from "sonner";
 import { resumeContentError } from "@/lib/resume-validation";
 import { lockBodyScroll, unlockBodyScroll } from "@/lib/utils/scrollLock";
+import { CertifiedResumeModal } from "./CertifiedResumeModal";
 
-interface ResumeModalProps {
+export interface ResumeModalProps {
   isOpen: boolean;
   onClose: () => void;
   jobId?: string;
@@ -35,7 +36,11 @@ interface ResumeModalProps {
   onMarkReady?: () => Promise<void> | void;
 }
 
-export function ResumeModal({
+export function ResumeModal(props:ResumeModalProps){
+  return process.env.NEXT_PUBLIC_RESUME_CERTIFIED_PUBLICATION === "true" ? (props.isOpen?<CertifiedResumeModal key={`${props.jobId}-${props.expectedGenerationId}-${props.templateId}`} {...props}/>:null) : <LegacyResumeModal {...props}/>;
+}
+
+function LegacyResumeModal({
   isOpen,
   onClose,
   jobId,

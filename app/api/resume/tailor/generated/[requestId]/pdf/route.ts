@@ -10,6 +10,7 @@ const noStore = { "Cache-Control": "no-store" };
 type Context = { params: Promise<{ requestId: string }> };
 
 export async function POST(request: Request, { params }: Context) {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401, headers: noStore });
   const { requestId } = await params;
@@ -33,6 +34,7 @@ export async function POST(request: Request, { params }: Context) {
 }
 
 export async function GET(request: Request, { params }: Context) {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401, headers: noStore });
   const { requestId } = await params;

@@ -1,0 +1,1863 @@
+{
+  "generation": "9645adef-a281-4ac1-bcd2-14159c4a1256",
+  "document": {
+    "schemaVersion": "ResumeDocumentV1",
+    "id": "9645adef-a281-4ac1-bcd2-14159c4a1256",
+    "revision": 1,
+    "source": {
+      "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
+      "validatorVersion": "source-v1"
+    },
+    "personalInfo": {
+      "id": "personal",
+      "name": "Café Candidate",
+      "title": "Software Engineer",
+      "email": "candidate@example.com",
+      "phone": "+1 (212) 555-0123",
+      "linkedin": "https://linkedin.com/in/candidate",
+      "github": "https://github.com/candidate",
+      "location": "New York, NY",
+      "extraContacts": []
+    },
+    "summary": [
+      {
+        "id": "summary-1",
+        "text": "Builds reliable software and communicates clearly with engineering teams.",
+        "evidenceIds": [
+          "e-summary-1-0"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "id": "skills-1",
+        "category": "Engineering",
+        "items": [
+          {
+            "id": "skills-1-1",
+            "text": "Rust, Python, and PostgreSQL",
+            "evidenceIds": [
+              "e-skills-1-1-0"
+            ]
+          },
+          {
+            "id": "skills-1-2",
+            "text": "Observability (Prometheus, Grafana)",
+            "evidenceIds": [
+              "e-skills-1-2-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "experience": [
+      {
+        "id": "role-1",
+        "role": "Software Engineer",
+        "company": "Acme Systems",
+        "location": "New York, NY",
+        "duration": "January 2022 – December 2025",
+        "bullets": [
+          {
+            "id": "role-1-bullet-1",
+            "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+            "evidenceIds": [
+              "e-role-1-bullet-1-0"
+            ]
+          },
+          {
+            "id": "role-1-bullet-2",
+            "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+            "evidenceIds": [
+              "e-role-1-bullet-2-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-1",
+        "title": "Service Inspector",
+        "technologies": [
+          "Rust",
+          "PostgreSQL"
+        ],
+        "duration": "2024",
+        "bullets": [
+          {
+            "id": "project-1-bullet-1",
+            "text": "Built a tool that inspects service health and displays actionable diagnostics.",
+            "evidenceIds": [
+              "e-project-1-bullet-1-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "education": [
+      {
+        "id": "education-1",
+        "institution": "Example University",
+        "location": "Boston, MA",
+        "degree": "Bachelor of Science in Computer Science",
+        "duration": "2018 – 2022",
+        "details": [
+          {
+            "id": "education-1-detail-1",
+            "text": "Completed a capstone project on dependable distributed systems.",
+            "evidenceIds": [
+              "e-education-1-detail-1-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "additionalSections": [
+      {
+        "id": "additional-1",
+        "title": "Community",
+        "items": [
+          {
+            "id": "additional-1-item-1",
+            "text": "Mentored engineers in a local software community.",
+            "evidenceIds": [
+              "e-additional-1-item-1-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "sectionOrder": [
+      "summary",
+      "skills",
+      "experience",
+      "projects",
+      "education",
+      "additional-1"
+    ],
+    "evidence": [
+      {
+        "id": "e-personal.name-0",
+        "fieldId": "personal.name",
+        "sourceSpan": "Café Candidate",
+        "spanStart": 0,
+        "spanEnd": 14,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.title-0",
+        "fieldId": "personal.title",
+        "sourceSpan": "Software Engineer",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.email-0",
+        "fieldId": "personal.email",
+        "sourceSpan": "candidate@example.com",
+        "spanStart": 0,
+        "spanEnd": 21,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.phone-0",
+        "fieldId": "personal.phone",
+        "sourceSpan": "+1 (212) 555-0123",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.linkedin-0",
+        "fieldId": "personal.linkedin",
+        "sourceSpan": "https://linkedin.com/in/candidate",
+        "spanStart": 0,
+        "spanEnd": 33,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.github-0",
+        "fieldId": "personal.github",
+        "sourceSpan": "https://github.com/candidate",
+        "spanStart": 0,
+        "spanEnd": 28,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.location-0",
+        "fieldId": "personal.location",
+        "sourceSpan": "New York, NY",
+        "spanStart": 0,
+        "spanEnd": 12,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.role-0",
+        "fieldId": "role-1.role",
+        "sourceSpan": "Software Engineer",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.company-0",
+        "fieldId": "role-1.company",
+        "sourceSpan": "Acme Systems",
+        "spanStart": 0,
+        "spanEnd": 12,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.location-0",
+        "fieldId": "role-1.location",
+        "sourceSpan": "New York, NY",
+        "spanStart": 0,
+        "spanEnd": 12,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.duration-0",
+        "fieldId": "role-1.duration",
+        "sourceSpan": "January 2022 – December 2025",
+        "spanStart": 0,
+        "spanEnd": 28,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.title-0",
+        "fieldId": "project-1.title",
+        "sourceSpan": "Service Inspector",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.duration-0",
+        "fieldId": "project-1.duration",
+        "sourceSpan": "2024",
+        "spanStart": 0,
+        "spanEnd": 4,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.institution-0",
+        "fieldId": "education-1.institution",
+        "sourceSpan": "Example University",
+        "spanStart": 0,
+        "spanEnd": 18,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.location-0",
+        "fieldId": "education-1.location",
+        "sourceSpan": "Boston, MA",
+        "spanStart": 0,
+        "spanEnd": 10,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.degree-0",
+        "fieldId": "education-1.degree",
+        "sourceSpan": "Bachelor of Science in Computer Science",
+        "spanStart": 0,
+        "spanEnd": 39,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.duration-0",
+        "fieldId": "education-1.duration",
+        "sourceSpan": "2018 – 2022",
+        "spanStart": 0,
+        "spanEnd": 11,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-skills-1.category-0",
+        "fieldId": "skills-1.category",
+        "sourceSpan": "Engineering",
+        "spanStart": 0,
+        "spanEnd": 11,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.technologies-0",
+        "fieldId": "project-1.technologies",
+        "sourceSpan": "Rust",
+        "spanStart": 0,
+        "spanEnd": 4,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.technologies-1",
+        "fieldId": "project-1.technologies",
+        "sourceSpan": "PostgreSQL",
+        "spanStart": 0,
+        "spanEnd": 10,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-additional-1.title-0",
+        "fieldId": "additional-1.title",
+        "sourceSpan": "Community",
+        "spanStart": 0,
+        "spanEnd": 9,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-summary-1-0",
+        "fieldId": "summary-1",
+        "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
+        "spanStart": 0,
+        "spanEnd": 73,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-skills-1-1-0",
+        "fieldId": "skills-1-1",
+        "sourceSpan": "Rust, Python, and PostgreSQL",
+        "spanStart": 0,
+        "spanEnd": 28,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-skills-1-2-0",
+        "fieldId": "skills-1-2",
+        "sourceSpan": "Observability (Prometheus, Grafana)",
+        "spanStart": 0,
+        "spanEnd": 35,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1-bullet-1-0",
+        "fieldId": "role-1-bullet-1",
+        "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+        "spanStart": 0,
+        "spanEnd": 136,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1-bullet-2-0",
+        "fieldId": "role-1-bullet-2",
+        "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+        "spanStart": 0,
+        "spanEnd": 136,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1-bullet-1-0",
+        "fieldId": "project-1-bullet-1",
+        "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
+        "spanStart": 0,
+        "spanEnd": 78,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1-detail-1-0",
+        "fieldId": "education-1-detail-1",
+        "sourceSpan": "Completed a capstone project on dependable distributed systems.",
+        "spanStart": 0,
+        "spanEnd": 63,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-additional-1-item-1-0",
+        "fieldId": "additional-1-item-1",
+        "sourceSpan": "Mentored engineers in a local software community.",
+        "spanStart": 0,
+        "spanEnd": 49,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      }
+    ]
+  },
+  "source": {
+    "schemaVersion": "ResumeDocumentV1",
+    "id": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
+    "revision": 1,
+    "source": {
+      "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
+      "validatorVersion": "source-v1"
+    },
+    "personalInfo": {
+      "id": "personal",
+      "name": "Café Candidate",
+      "title": "Software Engineer",
+      "email": "candidate@example.com",
+      "phone": "+1 (212) 555-0123",
+      "linkedin": "https://linkedin.com/in/candidate",
+      "github": "https://github.com/candidate",
+      "location": "New York, NY",
+      "extraContacts": []
+    },
+    "summary": [
+      {
+        "id": "summary-1",
+        "text": "Builds reliable software and communicates clearly with engineering teams.",
+        "evidenceIds": [
+          "e-summary-1-0"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "id": "skills-1",
+        "category": "Engineering",
+        "items": [
+          {
+            "id": "skills-1-1",
+            "text": "Rust, Python, and PostgreSQL",
+            "evidenceIds": [
+              "e-skills-1-1-0"
+            ]
+          },
+          {
+            "id": "skills-1-2",
+            "text": "Observability (Prometheus, Grafana)",
+            "evidenceIds": [
+              "e-skills-1-2-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "experience": [
+      {
+        "id": "role-1",
+        "role": "Software Engineer",
+        "company": "Acme Systems",
+        "location": "New York, NY",
+        "duration": "January 2022 – December 2025",
+        "bullets": [
+          {
+            "id": "role-1-bullet-1",
+            "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+            "evidenceIds": [
+              "e-role-1-bullet-1-0"
+            ]
+          },
+          {
+            "id": "role-1-bullet-2",
+            "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+            "evidenceIds": [
+              "e-role-1-bullet-2-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-1",
+        "title": "Service Inspector",
+        "technologies": [
+          "Rust",
+          "PostgreSQL"
+        ],
+        "duration": "2024",
+        "bullets": [
+          {
+            "id": "project-1-bullet-1",
+            "text": "Built a tool that inspects service health and displays actionable diagnostics.",
+            "evidenceIds": [
+              "e-project-1-bullet-1-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "education": [
+      {
+        "id": "education-1",
+        "institution": "Example University",
+        "location": "Boston, MA",
+        "degree": "Bachelor of Science in Computer Science",
+        "duration": "2018 – 2022",
+        "details": [
+          {
+            "id": "education-1-detail-1",
+            "text": "Completed a capstone project on dependable distributed systems.",
+            "evidenceIds": [
+              "e-education-1-detail-1-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "additionalSections": [
+      {
+        "id": "additional-1",
+        "title": "Community",
+        "items": [
+          {
+            "id": "additional-1-item-1",
+            "text": "Mentored engineers in a local software community.",
+            "evidenceIds": [
+              "e-additional-1-item-1-0"
+            ]
+          }
+        ]
+      }
+    ],
+    "sectionOrder": [
+      "summary",
+      "skills",
+      "experience",
+      "projects",
+      "education",
+      "additional-1"
+    ],
+    "evidence": [
+      {
+        "id": "e-personal.name-0",
+        "fieldId": "personal.name",
+        "sourceSpan": "Café Candidate",
+        "spanStart": 0,
+        "spanEnd": 14,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.title-0",
+        "fieldId": "personal.title",
+        "sourceSpan": "Software Engineer",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.email-0",
+        "fieldId": "personal.email",
+        "sourceSpan": "candidate@example.com",
+        "spanStart": 0,
+        "spanEnd": 21,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.phone-0",
+        "fieldId": "personal.phone",
+        "sourceSpan": "+1 (212) 555-0123",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.linkedin-0",
+        "fieldId": "personal.linkedin",
+        "sourceSpan": "https://linkedin.com/in/candidate",
+        "spanStart": 0,
+        "spanEnd": 33,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.github-0",
+        "fieldId": "personal.github",
+        "sourceSpan": "https://github.com/candidate",
+        "spanStart": 0,
+        "spanEnd": 28,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-personal.location-0",
+        "fieldId": "personal.location",
+        "sourceSpan": "New York, NY",
+        "spanStart": 0,
+        "spanEnd": 12,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.role-0",
+        "fieldId": "role-1.role",
+        "sourceSpan": "Software Engineer",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.company-0",
+        "fieldId": "role-1.company",
+        "sourceSpan": "Acme Systems",
+        "spanStart": 0,
+        "spanEnd": 12,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.location-0",
+        "fieldId": "role-1.location",
+        "sourceSpan": "New York, NY",
+        "spanStart": 0,
+        "spanEnd": 12,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1.duration-0",
+        "fieldId": "role-1.duration",
+        "sourceSpan": "January 2022 – December 2025",
+        "spanStart": 0,
+        "spanEnd": 28,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.title-0",
+        "fieldId": "project-1.title",
+        "sourceSpan": "Service Inspector",
+        "spanStart": 0,
+        "spanEnd": 17,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.duration-0",
+        "fieldId": "project-1.duration",
+        "sourceSpan": "2024",
+        "spanStart": 0,
+        "spanEnd": 4,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.institution-0",
+        "fieldId": "education-1.institution",
+        "sourceSpan": "Example University",
+        "spanStart": 0,
+        "spanEnd": 18,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.location-0",
+        "fieldId": "education-1.location",
+        "sourceSpan": "Boston, MA",
+        "spanStart": 0,
+        "spanEnd": 10,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.degree-0",
+        "fieldId": "education-1.degree",
+        "sourceSpan": "Bachelor of Science in Computer Science",
+        "spanStart": 0,
+        "spanEnd": 39,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1.duration-0",
+        "fieldId": "education-1.duration",
+        "sourceSpan": "2018 – 2022",
+        "spanStart": 0,
+        "spanEnd": 11,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-skills-1.category-0",
+        "fieldId": "skills-1.category",
+        "sourceSpan": "Engineering",
+        "spanStart": 0,
+        "spanEnd": 11,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.technologies-0",
+        "fieldId": "project-1.technologies",
+        "sourceSpan": "Rust",
+        "spanStart": 0,
+        "spanEnd": 4,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1.technologies-1",
+        "fieldId": "project-1.technologies",
+        "sourceSpan": "PostgreSQL",
+        "spanStart": 0,
+        "spanEnd": 10,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-additional-1.title-0",
+        "fieldId": "additional-1.title",
+        "sourceSpan": "Community",
+        "spanStart": 0,
+        "spanEnd": 9,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-summary-1-0",
+        "fieldId": "summary-1",
+        "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
+        "spanStart": 0,
+        "spanEnd": 73,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-skills-1-1-0",
+        "fieldId": "skills-1-1",
+        "sourceSpan": "Rust, Python, and PostgreSQL",
+        "spanStart": 0,
+        "spanEnd": 28,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-skills-1-2-0",
+        "fieldId": "skills-1-2",
+        "sourceSpan": "Observability (Prometheus, Grafana)",
+        "spanStart": 0,
+        "spanEnd": 35,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1-bullet-1-0",
+        "fieldId": "role-1-bullet-1",
+        "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+        "spanStart": 0,
+        "spanEnd": 136,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-role-1-bullet-2-0",
+        "fieldId": "role-1-bullet-2",
+        "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+        "spanStart": 0,
+        "spanEnd": 136,
+        "page": null,
+        "box": null,
+        "roleId": "role-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-project-1-bullet-1-0",
+        "fieldId": "project-1-bullet-1",
+        "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
+        "spanStart": 0,
+        "spanEnd": 78,
+        "page": null,
+        "box": null,
+        "roleId": "project-1",
+        "origin": "user"
+      },
+      {
+        "id": "e-education-1-detail-1-0",
+        "fieldId": "education-1-detail-1",
+        "sourceSpan": "Completed a capstone project on dependable distributed systems.",
+        "spanStart": 0,
+        "spanEnd": 63,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      },
+      {
+        "id": "e-additional-1-item-1-0",
+        "fieldId": "additional-1-item-1",
+        "sourceSpan": "Mentored engineers in a local software community.",
+        "spanStart": 0,
+        "spanEnd": 49,
+        "page": null,
+        "box": null,
+        "roleId": null,
+        "origin": "user"
+      }
+    ]
+  },
+  "audit": {
+    "status": "completed",
+    "resume_document": {
+      "schemaVersion": "ResumeDocumentV1",
+      "id": "9645adef-a281-4ac1-bcd2-14159c4a1256",
+      "revision": 1,
+      "source": {
+        "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
+        "validatorVersion": "source-v1"
+      },
+      "personalInfo": {
+        "id": "personal",
+        "name": "Café Candidate",
+        "title": "Software Engineer",
+        "email": "candidate@example.com",
+        "phone": "+1 (212) 555-0123",
+        "linkedin": "https://linkedin.com/in/candidate",
+        "github": "https://github.com/candidate",
+        "location": "New York, NY",
+        "extraContacts": []
+      },
+      "summary": [
+        {
+          "id": "summary-1",
+          "text": "Builds reliable software and communicates clearly with engineering teams.",
+          "evidenceIds": [
+            "e-summary-1-0"
+          ]
+        }
+      ],
+      "skills": [
+        {
+          "id": "skills-1",
+          "category": "Engineering",
+          "items": [
+            {
+              "id": "skills-1-1",
+              "text": "Rust, Python, and PostgreSQL",
+              "evidenceIds": [
+                "e-skills-1-1-0"
+              ]
+            },
+            {
+              "id": "skills-1-2",
+              "text": "Observability (Prometheus, Grafana)",
+              "evidenceIds": [
+                "e-skills-1-2-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "experience": [
+        {
+          "id": "role-1",
+          "role": "Software Engineer",
+          "company": "Acme Systems",
+          "location": "New York, NY",
+          "duration": "January 2022 – December 2025",
+          "bullets": [
+            {
+              "id": "role-1-bullet-1",
+              "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+              "evidenceIds": [
+                "e-role-1-bullet-1-0"
+              ]
+            },
+            {
+              "id": "role-1-bullet-2",
+              "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+              "evidenceIds": [
+                "e-role-1-bullet-2-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "id": "project-1",
+          "title": "Service Inspector",
+          "technologies": [
+            "Rust",
+            "PostgreSQL"
+          ],
+          "duration": "2024",
+          "bullets": [
+            {
+              "id": "project-1-bullet-1",
+              "text": "Built a tool that inspects service health and displays actionable diagnostics.",
+              "evidenceIds": [
+                "e-project-1-bullet-1-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "education": [
+        {
+          "id": "education-1",
+          "institution": "Example University",
+          "location": "Boston, MA",
+          "degree": "Bachelor of Science in Computer Science",
+          "duration": "2018 – 2022",
+          "details": [
+            {
+              "id": "education-1-detail-1",
+              "text": "Completed a capstone project on dependable distributed systems.",
+              "evidenceIds": [
+                "e-education-1-detail-1-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "additionalSections": [
+        {
+          "id": "additional-1",
+          "title": "Community",
+          "items": [
+            {
+              "id": "additional-1-item-1",
+              "text": "Mentored engineers in a local software community.",
+              "evidenceIds": [
+                "e-additional-1-item-1-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "sectionOrder": [
+        "summary",
+        "skills",
+        "experience",
+        "projects",
+        "education",
+        "additional-1"
+      ],
+      "evidence": [
+        {
+          "id": "e-personal.name-0",
+          "fieldId": "personal.name",
+          "sourceSpan": "Café Candidate",
+          "spanStart": 0,
+          "spanEnd": 14,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.title-0",
+          "fieldId": "personal.title",
+          "sourceSpan": "Software Engineer",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.email-0",
+          "fieldId": "personal.email",
+          "sourceSpan": "candidate@example.com",
+          "spanStart": 0,
+          "spanEnd": 21,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.phone-0",
+          "fieldId": "personal.phone",
+          "sourceSpan": "+1 (212) 555-0123",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.linkedin-0",
+          "fieldId": "personal.linkedin",
+          "sourceSpan": "https://linkedin.com/in/candidate",
+          "spanStart": 0,
+          "spanEnd": 33,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.github-0",
+          "fieldId": "personal.github",
+          "sourceSpan": "https://github.com/candidate",
+          "spanStart": 0,
+          "spanEnd": 28,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.location-0",
+          "fieldId": "personal.location",
+          "sourceSpan": "New York, NY",
+          "spanStart": 0,
+          "spanEnd": 12,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.role-0",
+          "fieldId": "role-1.role",
+          "sourceSpan": "Software Engineer",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.company-0",
+          "fieldId": "role-1.company",
+          "sourceSpan": "Acme Systems",
+          "spanStart": 0,
+          "spanEnd": 12,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.location-0",
+          "fieldId": "role-1.location",
+          "sourceSpan": "New York, NY",
+          "spanStart": 0,
+          "spanEnd": 12,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.duration-0",
+          "fieldId": "role-1.duration",
+          "sourceSpan": "January 2022 – December 2025",
+          "spanStart": 0,
+          "spanEnd": 28,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.title-0",
+          "fieldId": "project-1.title",
+          "sourceSpan": "Service Inspector",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.duration-0",
+          "fieldId": "project-1.duration",
+          "sourceSpan": "2024",
+          "spanStart": 0,
+          "spanEnd": 4,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.institution-0",
+          "fieldId": "education-1.institution",
+          "sourceSpan": "Example University",
+          "spanStart": 0,
+          "spanEnd": 18,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.location-0",
+          "fieldId": "education-1.location",
+          "sourceSpan": "Boston, MA",
+          "spanStart": 0,
+          "spanEnd": 10,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.degree-0",
+          "fieldId": "education-1.degree",
+          "sourceSpan": "Bachelor of Science in Computer Science",
+          "spanStart": 0,
+          "spanEnd": 39,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.duration-0",
+          "fieldId": "education-1.duration",
+          "sourceSpan": "2018 – 2022",
+          "spanStart": 0,
+          "spanEnd": 11,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-skills-1.category-0",
+          "fieldId": "skills-1.category",
+          "sourceSpan": "Engineering",
+          "spanStart": 0,
+          "spanEnd": 11,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.technologies-0",
+          "fieldId": "project-1.technologies",
+          "sourceSpan": "Rust",
+          "spanStart": 0,
+          "spanEnd": 4,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.technologies-1",
+          "fieldId": "project-1.technologies",
+          "sourceSpan": "PostgreSQL",
+          "spanStart": 0,
+          "spanEnd": 10,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-additional-1.title-0",
+          "fieldId": "additional-1.title",
+          "sourceSpan": "Community",
+          "spanStart": 0,
+          "spanEnd": 9,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-summary-1-0",
+          "fieldId": "summary-1",
+          "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
+          "spanStart": 0,
+          "spanEnd": 73,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-skills-1-1-0",
+          "fieldId": "skills-1-1",
+          "sourceSpan": "Rust, Python, and PostgreSQL",
+          "spanStart": 0,
+          "spanEnd": 28,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-skills-1-2-0",
+          "fieldId": "skills-1-2",
+          "sourceSpan": "Observability (Prometheus, Grafana)",
+          "spanStart": 0,
+          "spanEnd": 35,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1-bullet-1-0",
+          "fieldId": "role-1-bullet-1",
+          "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+          "spanStart": 0,
+          "spanEnd": 136,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1-bullet-2-0",
+          "fieldId": "role-1-bullet-2",
+          "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+          "spanStart": 0,
+          "spanEnd": 136,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1-bullet-1-0",
+          "fieldId": "project-1-bullet-1",
+          "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
+          "spanStart": 0,
+          "spanEnd": 78,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1-detail-1-0",
+          "fieldId": "education-1-detail-1",
+          "sourceSpan": "Completed a capstone project on dependable distributed systems.",
+          "spanStart": 0,
+          "spanEnd": 63,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-additional-1-item-1-0",
+          "fieldId": "additional-1-item-1",
+          "sourceSpan": "Mentored engineers in a local software community.",
+          "spanStart": 0,
+          "spanEnd": 49,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        }
+      ]
+    },
+    "certificationChecks": {
+      "schema": true,
+      "source": true,
+      "factual": true
+    },
+    "source_document": {
+      "schemaVersion": "ResumeDocumentV1",
+      "id": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
+      "revision": 1,
+      "source": {
+        "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
+        "validatorVersion": "source-v1"
+      },
+      "personalInfo": {
+        "id": "personal",
+        "name": "Café Candidate",
+        "title": "Software Engineer",
+        "email": "candidate@example.com",
+        "phone": "+1 (212) 555-0123",
+        "linkedin": "https://linkedin.com/in/candidate",
+        "github": "https://github.com/candidate",
+        "location": "New York, NY",
+        "extraContacts": []
+      },
+      "summary": [
+        {
+          "id": "summary-1",
+          "text": "Builds reliable software and communicates clearly with engineering teams.",
+          "evidenceIds": [
+            "e-summary-1-0"
+          ]
+        }
+      ],
+      "skills": [
+        {
+          "id": "skills-1",
+          "category": "Engineering",
+          "items": [
+            {
+              "id": "skills-1-1",
+              "text": "Rust, Python, and PostgreSQL",
+              "evidenceIds": [
+                "e-skills-1-1-0"
+              ]
+            },
+            {
+              "id": "skills-1-2",
+              "text": "Observability (Prometheus, Grafana)",
+              "evidenceIds": [
+                "e-skills-1-2-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "experience": [
+        {
+          "id": "role-1",
+          "role": "Software Engineer",
+          "company": "Acme Systems",
+          "location": "New York, NY",
+          "duration": "January 2022 – December 2025",
+          "bullets": [
+            {
+              "id": "role-1-bullet-1",
+              "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+              "evidenceIds": [
+                "e-role-1-bullet-1-0"
+              ]
+            },
+            {
+              "id": "role-1-bullet-2",
+              "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+              "evidenceIds": [
+                "e-role-1-bullet-2-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "id": "project-1",
+          "title": "Service Inspector",
+          "technologies": [
+            "Rust",
+            "PostgreSQL"
+          ],
+          "duration": "2024",
+          "bullets": [
+            {
+              "id": "project-1-bullet-1",
+              "text": "Built a tool that inspects service health and displays actionable diagnostics.",
+              "evidenceIds": [
+                "e-project-1-bullet-1-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "education": [
+        {
+          "id": "education-1",
+          "institution": "Example University",
+          "location": "Boston, MA",
+          "degree": "Bachelor of Science in Computer Science",
+          "duration": "2018 – 2022",
+          "details": [
+            {
+              "id": "education-1-detail-1",
+              "text": "Completed a capstone project on dependable distributed systems.",
+              "evidenceIds": [
+                "e-education-1-detail-1-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "additionalSections": [
+        {
+          "id": "additional-1",
+          "title": "Community",
+          "items": [
+            {
+              "id": "additional-1-item-1",
+              "text": "Mentored engineers in a local software community.",
+              "evidenceIds": [
+                "e-additional-1-item-1-0"
+              ]
+            }
+          ]
+        }
+      ],
+      "sectionOrder": [
+        "summary",
+        "skills",
+        "experience",
+        "projects",
+        "education",
+        "additional-1"
+      ],
+      "evidence": [
+        {
+          "id": "e-personal.name-0",
+          "fieldId": "personal.name",
+          "sourceSpan": "Café Candidate",
+          "spanStart": 0,
+          "spanEnd": 14,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.title-0",
+          "fieldId": "personal.title",
+          "sourceSpan": "Software Engineer",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.email-0",
+          "fieldId": "personal.email",
+          "sourceSpan": "candidate@example.com",
+          "spanStart": 0,
+          "spanEnd": 21,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.phone-0",
+          "fieldId": "personal.phone",
+          "sourceSpan": "+1 (212) 555-0123",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.linkedin-0",
+          "fieldId": "personal.linkedin",
+          "sourceSpan": "https://linkedin.com/in/candidate",
+          "spanStart": 0,
+          "spanEnd": 33,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.github-0",
+          "fieldId": "personal.github",
+          "sourceSpan": "https://github.com/candidate",
+          "spanStart": 0,
+          "spanEnd": 28,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-personal.location-0",
+          "fieldId": "personal.location",
+          "sourceSpan": "New York, NY",
+          "spanStart": 0,
+          "spanEnd": 12,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.role-0",
+          "fieldId": "role-1.role",
+          "sourceSpan": "Software Engineer",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.company-0",
+          "fieldId": "role-1.company",
+          "sourceSpan": "Acme Systems",
+          "spanStart": 0,
+          "spanEnd": 12,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.location-0",
+          "fieldId": "role-1.location",
+          "sourceSpan": "New York, NY",
+          "spanStart": 0,
+          "spanEnd": 12,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1.duration-0",
+          "fieldId": "role-1.duration",
+          "sourceSpan": "January 2022 – December 2025",
+          "spanStart": 0,
+          "spanEnd": 28,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.title-0",
+          "fieldId": "project-1.title",
+          "sourceSpan": "Service Inspector",
+          "spanStart": 0,
+          "spanEnd": 17,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.duration-0",
+          "fieldId": "project-1.duration",
+          "sourceSpan": "2024",
+          "spanStart": 0,
+          "spanEnd": 4,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.institution-0",
+          "fieldId": "education-1.institution",
+          "sourceSpan": "Example University",
+          "spanStart": 0,
+          "spanEnd": 18,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.location-0",
+          "fieldId": "education-1.location",
+          "sourceSpan": "Boston, MA",
+          "spanStart": 0,
+          "spanEnd": 10,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.degree-0",
+          "fieldId": "education-1.degree",
+          "sourceSpan": "Bachelor of Science in Computer Science",
+          "spanStart": 0,
+          "spanEnd": 39,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1.duration-0",
+          "fieldId": "education-1.duration",
+          "sourceSpan": "2018 – 2022",
+          "spanStart": 0,
+          "spanEnd": 11,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-skills-1.category-0",
+          "fieldId": "skills-1.category",
+          "sourceSpan": "Engineering",
+          "spanStart": 0,
+          "spanEnd": 11,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.technologies-0",
+          "fieldId": "project-1.technologies",
+          "sourceSpan": "Rust",
+          "spanStart": 0,
+          "spanEnd": 4,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1.technologies-1",
+          "fieldId": "project-1.technologies",
+          "sourceSpan": "PostgreSQL",
+          "spanStart": 0,
+          "spanEnd": 10,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-additional-1.title-0",
+          "fieldId": "additional-1.title",
+          "sourceSpan": "Community",
+          "spanStart": 0,
+          "spanEnd": 9,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-summary-1-0",
+          "fieldId": "summary-1",
+          "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
+          "spanStart": 0,
+          "spanEnd": 73,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-skills-1-1-0",
+          "fieldId": "skills-1-1",
+          "sourceSpan": "Rust, Python, and PostgreSQL",
+          "spanStart": 0,
+          "spanEnd": 28,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-skills-1-2-0",
+          "fieldId": "skills-1-2",
+          "sourceSpan": "Observability (Prometheus, Grafana)",
+          "spanStart": 0,
+          "spanEnd": 35,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1-bullet-1-0",
+          "fieldId": "role-1-bullet-1",
+          "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+          "spanStart": 0,
+          "spanEnd": 136,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-role-1-bullet-2-0",
+          "fieldId": "role-1-bullet-2",
+          "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
+          "spanStart": 0,
+          "spanEnd": 136,
+          "page": null,
+          "box": null,
+          "roleId": "role-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-project-1-bullet-1-0",
+          "fieldId": "project-1-bullet-1",
+          "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
+          "spanStart": 0,
+          "spanEnd": 78,
+          "page": null,
+          "box": null,
+          "roleId": "project-1",
+          "origin": "user"
+        },
+        {
+          "id": "e-education-1-detail-1-0",
+          "fieldId": "education-1-detail-1",
+          "sourceSpan": "Completed a capstone project on dependable distributed systems.",
+          "spanStart": 0,
+          "spanEnd": 63,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        },
+        {
+          "id": "e-additional-1-item-1-0",
+          "fieldId": "additional-1-item-1",
+          "sourceSpan": "Mentored engineers in a local software community.",
+          "spanStart": 0,
+          "spanEnd": 49,
+          "page": null,
+          "box": null,
+          "roleId": null,
+          "origin": "user"
+        }
+      ]
+    },
+    "compliance_ledger": [
+      {
+        "code": "source.factual",
+        "passed": true,
+        "severity": "error",
+        "field_path": "document",
+        "evidence_ids": [],
+        "repair_message": "",
+        "waiver": null
+      }
+    ]
+  },
+  "sourceRevision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6"
+}

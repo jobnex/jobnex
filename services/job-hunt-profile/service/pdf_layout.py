@@ -31,7 +31,9 @@ def page_text(page,headings):
     def heading(row):
         for n in range(min(5,len(row)),0,-1):
             key=re.sub(r'[^A-Z]','',' '.join(w['text'] for w in row[:n]).upper())
-            if key in labels:return labels[key],n
+            if key in labels:
+                if n<len(row) and row[n-1]['text'].rstrip().endswith(':'):continue
+                return labels[key],n
         return None
     hits=[(row,heading(row)) for row in groups if heading(row)]
     starts=[]

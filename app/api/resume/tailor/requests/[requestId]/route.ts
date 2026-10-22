@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth/server";
 import { pool } from "@/lib/db";
 import { isUuid } from "@/lib/resume-tailoring";
+import { publicationMetadata } from "@/lib/resume-publication-server";
 
 export async function GET(_: Request, { params }: { params: Promise<{ requestId: string }> }) {
   const user = await getCurrentUser();
@@ -11,5 +12,5 @@ export async function GET(_: Request, { params }: { params: Promise<{ requestId:
       g.resume_markdown IS NOT NULL AS ready
     FROM resume_generation_requests r LEFT JOIN resume_generations g ON g.id=r.id
     WHERE r.id=$1 AND r.user_id=$2`, [requestId, user.id]);
-  return result.rows[0] ? Response.json({ request: result.rows[0] }, { headers: { "Cache-Control": "no-store" } }) : Response.json({ error: "Request not found" }, { status: 404 });
+  return result.rows[0] ? Response.json({ request:{...result.rows[0],...await publicationMetadata(user.id,requestId)} }, { headers: { "Cache-Control": "no-store" } }) : Response.json({ error: "Request not found" }, { status: 404 });
 }

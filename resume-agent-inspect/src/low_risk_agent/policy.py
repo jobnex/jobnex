@@ -17,7 +17,7 @@ from .models import (
     ResumeSource,
     SemanticReview,
 )
-from .source import METRIC, fact_map
+from .source import METRIC, ParsedLine, _skill_spans, fact_map
 
 WEAK_VERB = re.compile(
     r"^(?:assisted|helped|participated|responsible\s+for|supported|tasked\s+with|worked(?:\s+on|\s+with)?)\b",
@@ -565,7 +565,8 @@ def lint_draft(
         for item_index, item in enumerate(category.items):
             key = item.casefold().strip()
             item_ok = (
-                item in allowlist and key not in seen_items and "," not in item and ":" not in item
+                item in allowlist and key not in seen_items and ":" not in item
+                and len(_skill_spans(ParsedLine(item, 0, len(item), False))) == 1
             )
             seen_items.add(key)
             rendered_fact_ids.update(
@@ -578,7 +579,7 @@ def lint_draft(
                     "skills.item",
                     item_ok,
                     f"skills.{index}.items.{item_index}",
-                    "Use a unique verified skill without comma or colon characters.",
+                    "Use a unique verified atomic skill block; commas inside parentheses are preserved.",
                 )
             )
     expected_layout = [(group.category, group.items) for group in strategy.skill_categories]

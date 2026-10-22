@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getPresignedDownloadUrl } from "@/app/actions/storage";
 
 export async function GET(request: Request) {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
   const input = z.string().uuid().safeParse(new URL(request.url).searchParams.get("jobId"));
@@ -20,6 +21,7 @@ export async function GET(request: Request) {
   return Response.json({ markdown: profile.rows[0]?.markdown ?? "", template_id: profile.rows[0]?.template_id ?? "mit-capd" });
 }
 export async function POST(request: Request) {
+  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
   const input = z.object({ jobId: z.string().uuid(), markdown: z.string().min(1).max(200_000), templateId: z.string() }).strict().safeParse(await request.json().catch(() => null));

@@ -49,6 +49,8 @@ class RunRequest(FrozenModel):
     allow_synthetic_metrics: bool = False
     project_library: str = ""
     project_library_name: str = ""
+    source_document: dict[str, Any] | None = None
+    source_text: str | None = None
 
 
 class SourceFact(FrozenModel):
@@ -289,9 +291,14 @@ class PipelineResult(FrozenModel):
     cache_hit: bool
     error: str
     project_selection: dict[str, Any] = Field(default_factory=dict)
+    # Omit absent additive fields so legacy audit serialization and persistence
+    # retries remain byte-for-byte compatible with earlier generation results.
+    resume_document: dict[str, Any] | None = Field(default=None, exclude_if=lambda value: value is None)
+    source_document: dict[str, Any] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class GraphState(TypedDict, total=False):
+    resume_document: dict[str, Any]
     request: RunRequest
     source: ResumeSource
     resume_hash: str

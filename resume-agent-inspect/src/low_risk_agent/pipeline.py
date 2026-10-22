@@ -72,6 +72,7 @@ from .render import (
     render_resume,
 )
 from .source import extract_source, merge_fallback_facts, normalize_document, sha256_text, validate_source_groups
+from .document import document_markdown, generated_document, source_from_document, validate_document, validate_edited_document
 
 
 class PipelineFailure(RuntimeError):
@@ -209,7 +210,20 @@ class ResumeTailoringPipeline:
 
     def prepare_source(self, state: GraphState) -> dict[str, Any]:
         request = state["request"]
-        source = extract_source(request.original_resume)
+        if request.source_document is not None:
+            if request.allow_synthetic_metrics:
+                raise PipelineFailure("Certified generation requires source-backed metrics")
+            if request.project_library:
+                raise PipelineFailure("Certified generation requires project evidence in the validated source document")
+            canonical = validate_document(request.source_document)
+            if canonical["source"]["revision"] == "pending":
+                raise PipelineFailure("Canonical source import must be confirmed before generation")
+            uuid.UUID(canonical["source"]["revision"])
+            if canonical["id"] != "source-" + canonical["source"]["revision"]:
+                raise PipelineFailure("Canonical source identity must match its confirmed import UUID")
+            source = source_from_document(canonical, request.source_text if request.source_text is not None else request.original_resume)
+        else:
+            source = extract_source(request.original_resume)
         usage = state.get("usage", [])
         if source.ambiguous_blocks:
             fallback, record = self.llm.complete(
@@ -226,8 +240,12 @@ class ResumeTailoringPipeline:
             usage = [*usage, record]
         validate_source_groups(source)
         normalized_job = normalize_document(request.job_description)
-        source_word_count = count_resume_words(request.original_resume)
+        source_word_count = count_resume_words(request.source_text if request.source_document is not None and request.source_text is not None else request.original_resume)
         length_mode, min_words, max_words = estimate_word_budget(source_word_count, self.config)
+        if request.source_document is not None:
+            # Canonical length is governed by factual content retention and PDF
+            # geometry. A short source never needs prose to reach a word floor.
+            min_words, max_words = 0, max(1, source_word_count * 2)
         effective_include_summary = (
             request.include_summary
             if request.include_summary is not None
@@ -235,7 +253,7 @@ class ResumeTailoringPipeline:
         )
         return {
             "source": source,
-            "resume_hash": source.original_hash,
+            "resume_hash": sha256_text(request.original_resume),
             "job_hash": sha256_text(normalized_job),
             "revision_count": 0,
             "violation_history": [],
@@ -436,7 +454,7 @@ class ResumeTailoringPipeline:
         # does, when the model's own selected_projects choice is invalid or
         # absent. Either way the candidates are the user's own projects,
         # never invented.
-        auto_source_library = len(source.projects) > 3
+        auto_source_library = len(source.projects) > 3 and request.source_document is None
         project_library = request.project_library or (
             project_library_from_source(source) if auto_source_library else ""
         )
@@ -574,6 +592,12 @@ class ResumeTailoringPipeline:
                     "minimum": state.get("min_resume_words", self.config.min_resume_words),
                     "maximum": state.get("max_resume_words", self.config.max_resume_words),
                 },
+                "canonical_content_policy": (
+                    "Retain every supplied role/project and cite every original factual bullet. "
+                    "Preserve source skills. Keep naturally short resumes short. "
+                    "Never add filler, metrics, responsibilities or projects to meet a word or bullet count."
+                    if request.source_document is not None else None
+                ),
                 "previous_draft": state["draft"].model_dump(mode="json")
                 if "draft" in state
                 else None,
@@ -619,8 +643,25 @@ class ResumeTailoringPipeline:
         words = count_resume_words(render_resume(state["draft"], state["source"]))
         min_words = state.get("min_resume_words", self.config.min_resume_words)
         max_words = state.get("max_resume_words", self.config.max_resume_words)
-        checks.append(
-            check(
+        if state["request"].source_document is not None:
+            style_counts = {"experience.bullet_count", "project.bullet_count", "projects.bullet_count",
+                            "experience.metric_count", "projects.metric_count", "claim.weak_verb"}
+            checks = [c.model_copy(update={"severity": "info"}) if c.code in style_counts else c for c in checks]
+            if not state["source"].roles and not state["draft"].experience:
+                checks = [c.model_copy(update={"passed": True}) if c.code == "experience.roles" else c for c in checks]
+            expected_roles = [g.group_id for g in state["source"].roles]
+            expected_projects = [g.group_id for g in state["source"].projects]
+            original_claims = {fid for g in [*state["source"].roles, *state["source"].projects] for fid in g.body_fact_ids}
+            cited_claims = {fid for g in [*state["draft"].experience, *state["draft"].projects] for b in g.bullets for fid in b.fact_ids}
+            retained = ([g.role_id for g in state["draft"].experience] == expected_roles
+                        and [g.project_id for g in state["draft"].projects] == expected_projects
+                        and original_claims <= cited_claims)
+            checks.append(check("length.word_count", retained, "resume_length",
+                f"Canonical resume has {words} words from {state.get('source_word_count', '?')} source words. "
+                "Retain every source role/project in order and cite every original factual bullet. "
+                "No minimum word count or filler is required."))
+        else:
+            checks.append(check(
                 "length.word_count",
                 min_words - WORD_COUNT_TOLERANCE <= words <= max_words + WORD_COUNT_TOLERANCE,
                 "resume_length",
@@ -629,8 +670,7 @@ class ResumeTailoringPipeline:
                 "length). Prioritize relevant experience, use 2-3 project bullets; preserve company "
                 "names, dates, coursework, skills and summary choice. Expand with supplied evidence "
                 "only; never pad or invent content.",
-            )
-        )
+            ))
         if state.get("fit_length_failure"):
             checks.append(check("length.fit_unavailable", False, "resume_length",
                 "Length fitting failed; the earlier draft was retained and requires review."))
@@ -707,12 +747,13 @@ class ResumeTailoringPipeline:
             return "needs_review"
         history = state["violation_history"]
         if state["revision_count"] >= self.config.max_repairs:
-            # Reserve one targeted correction for the first semantic review after
-            # deterministic repairs/length fitting. Never extend a stalled phase.
+            # Preserve the legacy reserved semantic retry. Certified generation
+            # has the contract's absolute two-repair bound across all phases.
             first_semantic = (history[-1].phase == "semantic"
                               and sum(s.phase == "semantic" for s in history) == 1)
-            if not (self.config.max_repairs > 0 and first_semantic
-                    and state["revision_count"] == self.config.max_repairs):
+            canonical = state.get("request") and state["request"].source_document is not None
+            if canonical or not (self.config.max_repairs > 0 and first_semantic
+                                 and state["revision_count"] == self.config.max_repairs):
                 return "needs_review"
         if all(
             c.code == "length.word_count"
@@ -776,10 +817,17 @@ class ResumeTailoringPipeline:
         if has_errors(protection):
             raise PipelineFailure("deterministic renderer lost a protected source value")
         status = "completed_with_estimates" if draft_uses_estimates(state["draft"]) else "completed"
+        canonical = None
+        if state.get("request") and state["request"].source_document is not None:
+            if any(not c.passed and c.severity == "error" for c in state["compliance_ledger"]):
+                raise PipelineFailure("Certified generation cannot waive required failures")
+            canonical = generated_document(state["draft"], state["source"], state["request"].source_document)
+            markdown = document_markdown(canonical)
         return {
             "resume_markdown": markdown,
             "compliance_ledger": [*state["compliance_ledger"], *protection],
             "terminal_status": status,
+            **({"resume_document": canonical} if canonical is not None else {}),
         }
 
     def needs_review(self, state: GraphState) -> dict[str, Any]:
@@ -790,12 +838,21 @@ class ResumeTailoringPipeline:
         reviewable = {"length.word_count", "length.fit_unavailable", "experience.bullet_count", "project.bullet_count", "projects.bullet_count",
                       "projects.purpose_order", "skills.category_count", "experience.metric_count",
                       "projects.metric_count"}
+        if state.get("request") and state["request"].source_document is not None:
+            # In the canonical path this check measures source claim retention,
+            # so failure is factual rather than a reviewable density preference.
+            reviewable.discard("length.word_count")
         unsafe = any(not item.passed and item.severity == "error" and not item.waiver
                      and item.code not in reviewable for item in ledger)
+        canonical = None
+        if not unsafe and state.get("request") and state["request"].source_document is not None:
+            canonical = generated_document(state["draft"], state["source"], state["request"].source_document)
+            markdown = document_markdown(canonical)
         return {
             "resume_markdown": "" if unsafe else markdown,
             "compliance_ledger": ledger,
             "terminal_status": "failed" if unsafe else "needs_review",
+            **({"resume_document": canonical} if canonical is not None else {}),
         }
 
     def _build_graph(self, checkpointer: Any):
@@ -835,7 +892,7 @@ class ResumeTailoringPipeline:
                 for item in state.get("compliance_ledger", [])
                 if not item.passed and item.severity == "error" and not item.waiver
             ]
-            return PipelineResult(
+            result = PipelineResult(
                 word_count=count_resume_words(state["resume_markdown"]),
                 source_word_count=state.get("source_word_count", 0),
                 length_mode=state.get("length_mode", "single_page"),
@@ -850,10 +907,17 @@ class ResumeTailoringPipeline:
                 revision_count=state.get("revision_count", 0),
                 cache_hit=state.get("cache_hit", False),
                 project_selection=state.get("project_selection", {}),
+                resume_document=state.get("resume_document"),
+                source_document=request.source_document,
                 error=", ".join(sorted(set(failures)))
                 if state["terminal_status"] in {"needs_review", "failed"}
                 else "",
             )
+            if result.resume_document is not None and result.status in {"completed", "completed_with_estimates"}:
+                issues = validate_edited_document(result.resume_document, request.source_document, result.model_dump(mode="json"))
+                if issues:
+                    raise PipelineFailure("Canonical generation validation failed: " + ", ".join(item["code"] for item in issues))
+            return result
         except BatchPending:
             raise
         except Exception as error:
@@ -869,4 +933,5 @@ class ResumeTailoringPipeline:
                 revision_count=0,
                 cache_hit=False,
                 error=f"{error.__class__.__name__}: {error}",
+                source_document=request.source_document,
             )

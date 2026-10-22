@@ -14,7 +14,7 @@ const store=path.join(root,'storage');mkdirSync(store);
 const user=randomUUID(), other=randomUUID(), job=randomUUID(), deniedJob=randomUUID();
 for(const id of [user,other])writeFileSync(path.join(store,`allow-${id}-${job}`),'');
 const secret='local-check-only-'+randomUUID();
-const exe=path.resolve('target/debug/resume-cloud-backend'+(process.platform==='win32'?'.exe':''));
+const exe=process.env.PDF_TEST_BINARY||path.resolve('target/debug/resume-cloud-backend'+(process.platform==='win32'?'.exe':''));
 const processes=[];
 function start(port){const p=spawn(exe,[],{env:{...process.env,PORT:String(port),HOST:'127.0.0.1',APP_ROOT:process.cwd(),BACKEND_SERVICE_TOKEN:secret,TEST_STORE_ROOT:store},stdio:['ignore','pipe','pipe']});processes.push(p);p.stdout.on('data',()=>{});p.stderr.on('data',()=>{});return p;}
 async function ready(port){for(let i=0;i<100;i++){try {const r=await fetch(`http://127.0.0.1:${port}/health`);if(r.ok)return;}catch{}await pause(100);}throw Error('Server failed to start');}

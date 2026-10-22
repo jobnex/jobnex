@@ -7,6 +7,7 @@ import { resumeContentError } from "@/lib/resume-validation";
 import { RESUME_VALIDATOR_VERSION, sourceDigest, UNSUPPORTED_LAYOUT } from "@/lib/resume-admission";
 import { createHash, randomUUID } from "node:crypto";
 import { parseResumeMarkdown } from "@/lib/resume-parser";
+import { documentToEditor, validateResumeDocument, type ResumeDocumentV1 } from "@/lib/resume-document";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 type ImportRow = { id: string; user_id: string; object_key: string; file_name: string; file_size: number; baseline_key: string | null;
@@ -34,7 +35,7 @@ export async function previewResumeImport(userId: string, objectKey: string, fil
     if (!result.markdown || !result.fileSha256 || !result.resume_details) throw new Error("Incomplete validation response.");
     const changed = await pool.query(`UPDATE resume_imports SET status='accepted',validator_version=$3,file_sha256=$4,
       markdown=$5,parsed_data=$6,reason_code='ACCEPTED' WHERE id=$1 AND revision=$2 AND status='parsing' RETURNING id`,
-      [id,revision,result.validatorVersion,result.fileSha256,result.markdown,JSON.stringify({...result.resume_details,inferredPreferences:result.preferences||{}})]);
+      [id,revision,result.validatorVersion,result.fileSha256,result.markdown,JSON.stringify({...result.resume_details,resumeDocument:result.resumeDocument,inferredPreferences:result.preferences||{}})]);
     if (!changed.rows.length) throw new Error("This upload changed. Please retry the latest PDF.");
     return {success:true,accepted:true,importId:id,revision,markdown:result.markdown,resume_details:result.resume_details,
       message:result.message,previewUrl:signed.downloadUrl};
@@ -76,14 +77,24 @@ export async function confirmResumeImport(userId: string, importId: string, revi
     permanentKey=`user_pref_resumes/${userId}/${randomUUID()}.pdf`;
     await r2Client.send(new PutObjectCommand({Bucket:R2_BUCKET_NAME,Key:permanentKey,Body:bytes,ContentType:'application/pdf'}));
     const digest = sourceDigest(markdown);
-    const model=parseResumeMarkdown(markdown);
+    let canonical:ResumeDocumentV1|undefined;
+    const candidateDocument=candidate.parsed_data.resumeDocument;
+    if (candidateDocument) {
+      validateResumeDocument(candidateDocument);
+      canonical=candidateDocument;
+      if (markdown !== candidate.markdown.replace(/\r\n?/g,"\n").trim()) throw new Error("Source corrections require a new validated PDF upload.");
+      canonical.source.revision = importId;
+      canonical.id = `source-${importId}`;
+      if (canonical.source.fileSha256 !== candidate.file_sha256) throw new Error("Source file proof changed. Validate the PDF again.");
+    } else if (process.env.RESUME_CERTIFIED_PUBLICATION === "true") throw new Error("Validate the PDF with the current profile service before continuing.");
+    const model=canonical ? documentToEditor(canonical) : parseResumeMarkdown(markdown);
     const dateFields=(duration:string)=>{
       const parts=duration.split(/\s+[–—-]\s+/,2);
       return {dates:duration,startDate:parts.length===2?parts[0]:'',endDate:parts.length===2?parts[1]:duration};
     };
     // Keep legacy editable fields consistent with reviewed Markdown. Raw PDF
     // extraction is provenance only and must not override the confirmed source.
-    const details = {...candidate.parsed_data, originalText:candidate.parsed_data.text, text:markdown,
+    const details = {...candidate.parsed_data, resumeDocument:canonical, originalText:candidate.parsed_data.originalText||candidate.parsed_data.text, text:markdown,
       header:{name:model.personalInfo.name,title:model.personalInfo.title,email:model.personalInfo.email,phone:model.personalInfo.phone,
         location:model.personalInfo.location,links:[model.personalInfo.linkedin,model.personalInfo.github,...(model.personalInfo.extraContacts||[])].filter(Boolean)},
       personalDetails:{fullName:model.personalInfo.name,email:model.personalInfo.email,phoneNumber:model.personalInfo.phone,location:model.personalInfo.location},

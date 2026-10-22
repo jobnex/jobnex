@@ -36,3 +36,55 @@ There is no `resume_markdown` or full `audit_json` column in `generated_resumes`
 7. Verify live/simulated payloads, same-role repeated generation, distinct-role isolation, retries, selected submission stability, and transaction failure behavior before rollout.
 
 The earlier unfinished `trail_dev` storage prototype targets a different schema. It must not be deployed to this portal. Neon branch creation previously returned HTTP 401; no database migration has been applied. Project confirmation and the actual portal backend checkout are required for end-to-end implementation.
+# Canonical publication documents
+
+`low_risk_agent.document` implements `ResumeDocumentV1` using the bundled
+`resume-document-v1.schema.json`. The release contract and both Python bundles
+must remain byte-identical; `tests/test_document.py` checks their parity and
+validates a complete document with the shared JSON Schema.
+
+Certified generation accepts `RunRequest.source_document` and `source_text`.
+The CLI accepts `--source-document confirmed-source.json --source-text original.txt`.
+`--resume` remains the compatibility Markdown input used by existing generation
+hashing. `original.txt` is the exact original PDF extraction with universal newline
+handling; its hash and all evidence offsets must match the canonical import.
+The source import revision must be confirmed, and external project libraries need
+their own validated import evidence before certified generation can use them.
+
+The pipeline writes `resume_document` and `source_document` in its JSON audit.
+Protected personal, employer, role, date and education values come directly from
+the canonical source. The worker binds the generated document ID to the generation
+UUID and persists canonical document versions. Python does not write that table or
+alter credit settlement. Legacy requests without a canonical source retain their
+existing behavior; the certified path permits at most two repairs in total.
+Canonical word-count validation measures ordered source role/project retention
+and citation coverage of every supplied factual bullet. It imposes no minimum
+word count. Density and metric-count targets are informational, while claim,
+ownership and metric provenance checks remain required. A naturally short source
+can complete without filler or a length-repair call.
+
+To revalidate a saved edit without provider calls, source changes or charges:
+
+```text
+python -m low_risk_agent.document --validate-document-file edit.json --source-document source.json --audit generation.audit.json
+```
+
+The audit and source must come from trusted storage. Output is one JSON object:
+`{"valid":true,"issues":[]}` on exit zero, or `{"valid":false,"issues":[{"code":"claim.uncertain","message":"...","fieldId":"..."}]}`
+on exit one. Protected changes, altered evidence, missing or failed factual audits
+and unsupported edits block. Previously reviewed claims, whitespace-only wording
+changes and exact replacements from the block's cited source evidence pass.
+Unknown wording requires factual review and remains blocked. Personal titles,
+role titles and project titles may use contiguous text explicitly supported by
+the same original title field. Unsupported title edits return `claim.uncertain`;
+identity, contact, employer, date and education edits remain protected.
+
+Profile admission returns `resumeDocument` and also stores it inside
+`resume_details.resumeDocument`. Both `resume_details.text` and `originalText`
+contain the original extracted text. Admission uses revision `pending`; the
+confirmed-import transaction binds the canonical source ID and revision to the
+import UUID without reparsing Markdown. Every accepted PDF field/block has exact
+source spans and integer PDF geometry. Original extraction includes header link
+URI strings read from PDF annotations, with the actual annotation rectangle and
+explicit offsets. Body citation URLs stay with the body. Ambiguous associations
+and unsupported source evidence are rejected.

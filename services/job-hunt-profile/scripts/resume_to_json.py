@@ -24,6 +24,7 @@ HEADINGS = {
     "OBJECTIVE": "summary", "CAREER OBJECTIVE": "summary",
     "SKILLS": "skills", "TECHNICAL SKILLS": "skills", "CORE COMPETENCIES": "skills",
     "SKILLS & TECHNOLOGIES": "skills", "SKILLS AND TECHNOLOGIES": "skills",
+    "SKILLS SUMMARY": "skills",
     "EXPERIENCE": "experience", "WORK EXPERIENCE": "experience",
     "PROFESSIONAL EXPERIENCE": "experience", "EMPLOYMENT HISTORY": "experience",
     "PROJECTS": "projects", "TECHNICAL PROJECTS": "projects",
@@ -37,6 +38,7 @@ HEADINGS = {
     "ACHIEVEMENTS": "achievements", "HONORS": "awards",
     "TRAINING": "training", "RESEARCH": "research",
     "LEADERSHIP": "leadership", "ADDITIONAL INFORMATION": "additional_information",
+    "COMMUNITY": "community",
     "SKILLS & TOOLS": "skills", "MENTORING": "mentoring",
     "WORK EXPERIENCE (CONTINUED)": "experience",
 }
@@ -142,7 +144,7 @@ def resume_details(text: str, targets=()) -> dict:
         if header.get('name'): break
     if match := EMAIL.search(header_text):
         header["email"] = match.group()
-    contacts = extract_contacts(text, targets)
+    contacts = extract_contacts(header_text, targets)
     if contacts['emails']:
         header['email'] = header.get('email') or contacts['emails'][0]
         header['emails'] = contacts['emails']
@@ -151,7 +153,8 @@ def resume_details(text: str, targets=()) -> dict:
         header['phones'] = contacts['phones']
     if contacts['links']:
         header['links'] = contacts['links']
-    for line in [part.strip() for candidate in candidates[1:] for part in re.split(r'\s{2,}',candidate)]:
+    for line in [part.strip() for candidate in candidates for part in re.split(r'\s{2,}',candidate)]:
+        line=EMAIL.split(line,maxsplit=1)[0].strip()
         if re.search(r"\b(?:engineer|scientist|developer|architect|analyst|designer|manager|consultant)\b", line, re.I) and len(line) <= 80:
             header["title"] = line.strip("*_ ")
             break
@@ -231,18 +234,91 @@ def convert(input_path: Path, output_dir: Path) -> Path:
             raise ValueError(f"Encrypted PDF: {input_path}")
         import pdfplumber
         from service.pdf_layout import page_text
+        page_data = []
+        offset = 0
         with pdfplumber.open(input_path) as document:
-            pages = [page_text(page, HEADINGS).replace("\uf0b7", "•") for page in document.pages]
+            for number, page in enumerate(document.pages, 1):
+                rendered = page_text(page, HEADINGS).replace("\uf0b7", "•")
+                # Map original extraction offsets to visible PDF word boxes.
+                # Canonical import rejects a span if this exact map is absent.
+                positioned = []
+                from service.pdf_layout import rows, line
+                occurrences = {}
+                for row in rows(page.extract_words(x_tolerance=2, y_tolerance=3)):
+                    row_text = line(row).replace("\uf0b7", "•")
+                    matches = list(re.finditer(r'(?m)^'+re.escape(row_text)+r'$', rendered))
+                    ordinal = occurrences.get(row_text, 0)
+                    occurrences[row_text] = ordinal + 1
+                    row_start = matches[ordinal].start() if ordinal < len(matches) else None
+                    cursor = 0
+                    for word in row:
+                        visible = re.sub(r'\s+', ' ', word['text']).strip().replace("\uf0b7", "•")
+                        if row_start is not None:
+                            local = row_text.find(visible, cursor)
+                            start = row_start + local if local >= 0 else -1
+                            cursor = local + len(visible)
+                        else:
+                            candidates = list(re.finditer(re.escape(visible), rendered))
+                            start = candidates[0].start() if len(candidates) == 1 else -1
+                            if start<0 and visible.upper().rstrip(':') in HEADINGS:
+                                candidates=list(re.finditer(r'(?im)^'+re.escape(visible.rstrip(':'))+r'$',rendered))
+                                if len(candidates)==1:start=candidates[0].start()
+                        if start < 0:
+                            continue
+                        finish = start + len(visible)
+                        positioned.append({"start": start, "end": finish,
+                            "box": [max(0, round(word['x0']*1000)), max(0, round(word['top']*1000)),
+                                    max(0, round(word['x1']*1000)), max(0, round(word['bottom']*1000))]})
+                page_data.append({"number": number, "text": rendered, "start": offset, "words": positioned})
+                offset += len(rendered) + 2
+        pages = [page['text'] for page in page_data]
+        # Extract actual header hyperlink URIs with their annotation rectangle.
+        # These PDF metadata strings become part of the original extraction,
+        # with explicit offsets rather than fabricated visible-glyph positions.
+        header_boundary = next((m.start() for m in re.finditer(r'(?m)^.*$',page_data[0]['text'])
+            if m.group().strip().upper().rstrip(':') in HEADINGS),len(page_data[0]['text']))
+        header_targets=[]; injected=[]
+        from service.contacts import contact_key
+        from urllib.parse import unquote
+        visible_contacts=extract_contacts(page_data[0]['text'][:header_boundary])
+        visible_keys={contact_key(value) for values in visible_contacts.values() for value in values}
+        first_page=reader.pages[0]
+        for reference in first_page.get('/Annots',[]):
+            annotation=reference.get_object(); action=annotation.get('/A')
+            target=str(action.get_object().get('/URI','')) if action else ''
+            rect=annotation.get('/Rect')
+            if not rect or not re.match(r'^(?:https?://|mailto:|tel:)',target,re.I):continue
+            height=float(first_page.mediabox.height)
+            box=[round(float(rect[0])*1000),round((height-float(rect[3]))*1000),
+                 round(float(rect[2])*1000),round((height-float(rect[1]))*1000)]
+            matching=[w for w in page_data[0]['words'] if w['start']<header_boundary
+                and w['box'][0]<box[2] and box[0]<w['box'][2]
+                and w['box'][1]<box[3] and box[1]<w['box'][3]]
+            if not matching:continue
+            header_targets.append(target)
+            contact=unquote(target.split(':',1)[1].split('?',1)[0]) if target.lower().startswith(('mailto:','tel:')) else target
+            if contact_key(contact) not in visible_keys and target not in page_data[0]['text'][:header_boundary] and target not in [t for t,_ in injected]:
+                injected.append((target,box))
+        if injected:
+            separator='\n' if header_boundary and page_data[0]['text'][header_boundary-1]!='\n' else ''
+            insertion=separator+''.join(target+'\n' for target,_ in injected)
+            page_data[0]['text']=page_data[0]['text'][:header_boundary]+insertion+page_data[0]['text'][header_boundary:]
+            for word in page_data[0]['words']:
+                if word['start']>=header_boundary:
+                    word['start']+=len(insertion);word['end']+=len(insertion)
+            position=header_boundary+len(separator)
+            for target,box in injected:
+                page_data[0]['words'].append({'start':position,'end':position+len(target),'box':box})
+                position+=len(target)+1
+        offset=0
+        for page in page_data:
+            page['start']=offset;offset+=len(page['text'])+2
+        pages=[page['text'] for page in page_data]
         text = "\n\n".join(page for page in pages if page)
         if not text:
             raise ValueError(f"No extractable text in {input_path}; scanned PDFs need OCR")
         page_count = len(pages)
-        page_data = [{"number": number, "text": page} for number, page in enumerate(pages, 1)]
-        for page in reader.pages:
-            for reference in page.get('/Annots', []):
-                action = reference.get_object().get('/A')
-                if action:
-                    targets.append(action.get_object().get('/URI', ''))
+        targets=header_targets
     else:
         document = Document(input_path)
         for part in [document.part, *(section.header.part for section in document.sections),

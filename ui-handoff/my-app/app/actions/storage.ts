@@ -126,6 +126,10 @@ export async function getPresignedDownloadUrl(objectKey: string): Promise<Presig
       }
     }
 
+    if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true" && !["templates/","resume_imports/","user_pref_resumes/","avatars/"].some(prefix=>objectKey.startsWith(prefix))) {
+      return {success:false,error:"Open the certified resume preview to download this file."};
+    }
+
     // Verify physical object existence in Cloudflare R2 before generating presigned URL
     try {
       await r2Client.send(

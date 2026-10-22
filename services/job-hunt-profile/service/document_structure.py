@@ -7,6 +7,26 @@ DATE_RANGE = re.compile(rf'(?<!\w){DATE_VALUE}(?:\s*[-–—]\s*{DATE_VALUE})?',
 INSTITUTION = re.compile(r'\b(?:universit\w*|college|school|institute|academy|IIT|NIT|IGNOU)\b',re.I)
 DEGREE = re.compile(r'\b(?:Bachelor|Master|Doctor|Honours|Associate|B\.?\s*(?:S|A|Tech|Des|Arch)|M\.?\s*(?:S|A|Tech|Des)|Ph\.?D|MBA)\b',re.I)
 
+ROLE_TITLE = re.compile(r'\b(?:designer|engineer|intern|manager|analyst|developer|architect|lead|consultant|researcher|scientist|caller|instructor|director|officer)\b',re.I)
+
+def stacked_employment_header(lines,date_index):
+    """Require two distinct metadata rows and an optional explicit location."""
+    metadata=[]
+    for index in range(date_index-1,max(-1,date_index-4),-1):
+        value=lines[index].strip()
+        if not value or re.match(r'^[•●◦\uf0b7*\-]\s*',value) or DATE_RANGE.search(value):break
+        if len(value)>100 or re.search(r'\s[|/@]\s|\s{2,}',value):break
+        metadata.insert(0,(index,value))
+    location=''
+    if metadata and re.fullmatch(r'(?:Remote|Hybrid|On[- ]?site|[^,]{1,60},\s*[A-Z]{2}(?:\s+\d{5})?)',metadata[-1][1],re.I):
+        _,location=metadata.pop()
+    if len(metadata)!=2:return None
+    roles=[position for position,(_,value) in enumerate(metadata) if ROLE_TITLE.search(value)]
+    if len(roles)>1:return False
+    if len(roles)!=1:return None
+    role=metadata[roles[0]][1];company=metadata[1-roles[0]][1]
+    return metadata[0][0],role+' @ '+company,location
+
 def dates(value):
     match=DATE_RANGE.search(value or '')
     raw=match.group() if match else ''
@@ -29,17 +49,22 @@ def experience_entries(raw):
         previous=[j for j in range(i) if lines[j].strip() and not re.fullmatch(r'[•●◦*\-]+',lines[j].strip())]
         start=i
         header=before
-        if before and len(before)<90 and re.search(r'\b(?:designer|engineer|intern|manager|analyst|developer|architect|lead|consultant|researcher|caller|instructor)\b',before,re.I) and previous:
+        if before and len(before)<90 and not re.search(r'\s[|/@]\s',before) and re.search(r'\b(?:designer|engineer|intern|manager|analyst|developer|architect|lead|consultant|researcher|caller|instructor)\b',before,re.I) and previous:
             prior=lines[previous[-1]].strip()
             cells=re.split(r'\s{2,}',prior)
-            if len(cells)>1 and len(cells[0])<100:
+            if len(cells)>1 and len(cells[0])<100 and not re.match(r'^[•●◦\uf0b7*\-]\s*',prior):
                 header=cells[0].lstrip('•●◦* -')+' | '+before
                 start=previous[-1]
                 if not after:after=' | '.join(cells[1:])
         if not header and previous:
             start=previous[-1];header=lines[start].strip()
+            stacked=stacked_employment_header(lines,i)
+            if stacked is False:raise ValueError('Stacked employment role/company association is ambiguous')
+            if stacked:
+                start,header,stacked_location=stacked
+                if not after:after=stacked_location
             # Stacked employer, title, date.
-            if not re.search(r'\s[|/@]\s|\s{2,}',header) and re.search(r'\b(?:designer|engineer|intern|manager|analyst|developer|architect|lead|consultant|chair)\b',header,re.I) and len(previous)>1:
+            if not stacked and not re.search(r'\s[|/@]\s|\s{2,}',header) and re.search(r'\b(?:designer|engineer|intern|manager|analyst|developer|architect|lead|consultant|chair)\b',header,re.I) and len(previous)>1:
                 p=previous[-2]
                 if not anchors or p>anchors[-1][1]:
                     header=lines[p].strip()+' | '+header;start=p
@@ -89,7 +114,9 @@ def education_entries(raw):
             continue
         cells=re.split(r'\s{2,}',line)
         notes=''
-        if len(cells)>1 and INSTITUTION.search(cells[0]):line=cells[0];notes=' '.join(cells[1:])
+        if len(cells)>1 and (INSTITUTION.search(cells[0]) or DEGREE.search(cells[0])):line=cells[0];notes=' '.join(cells[1:])
+        notes_date=DATE_RANGE.search(notes)
+        if notes_date:notes=(notes[:notes_date.start()]+notes[notes_date.end():]).strip(' |,–—-')
         match=DATE_RANGE.search(line)
         clean=(line[:match.start()]+line[match.end():]).strip(' |,–—-') if match else line
         institution=bool(INSTITUTION.search(clean)) and not DEGREE.search(clean)
@@ -109,16 +136,17 @@ def education_entries(raw):
         elif DEGREE.search(clean) and not current['degree']:current['degree']=clean
         elif clean and not (match and original[match.end():].strip().startswith('|')):
             current['details']=(current.get('details','')+' '+clean).strip()
-        if match:current.update(dates(match.group()))
+        if match or notes_date:current.update(dates(match.group() if match else notes_date.group()))
         if notes:
             if DATE_RANGE.fullmatch(notes):current.update(dates(notes))
+            elif ',' in notes and not re.search(r'\b(?:Bachelor|Master|Doctor|Honours|Associate|Science|Engineering|Technology)\b',notes,re.I):current['location']=notes
             elif DEGREE.search(notes) and not current['degree']:current['degree']=notes
             else:current['details']=(current.get('details','')+' '+notes).strip()
     if current:entries.append(current)
     for entry in entries:
         grade=re.search(r'\s*[|,;]?\s*(CPI|CGPA|GPA)\s*:\s*(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)',entry['degree'],re.I)
         if grade:
-            entry['degree']=entry['degree'][:grade.start()].rstrip(' |,;')
+            entry['degree']=entry['degree'][:grade.start()].rstrip(' |,;(')
             entry.update(grade=grade[2],maxGrade=grade[3],gradeType='CGPA')
             entry['details']=(entry.get('details','')+' '+grade.group().strip(' |,;')).strip()
     return entries

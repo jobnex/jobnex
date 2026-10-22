@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.12,<1", "pytest>=8.0.0"]
+dev = ["ruff>=0.12,<1", "pytest>=8.0.0", "jsonschema>=4,<5"]
 
 [project.scripts]
 low-risk-resume = "low_risk_agent.cli:main"
@@ -26,6 +26,9 @@ low-risk-resume-save = "low_risk_agent.save_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+low_risk_agent = ["*.schema.json"]
 
 [tool.ruff]
 line-length = 100

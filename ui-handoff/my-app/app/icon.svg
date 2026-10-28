@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Foundation Block - Step 1 (Pure White Square as used in dark mode) -->
+  <path
+    fill="#FFFFFF"
+    stroke="rgba(0, 0, 0, 0.12)"
+    stroke-width="0.75"
+    d="M10,22 H26 V38 A4,4 0 0 1 22,42 H10 A4,4 0 0 1 6,38 V26 A4,4 0 0 1 10,22 Z"
+  />
+  <!-- Elevated Step Block - Step 2 (Electric Lime Green Accent Square) -->
+  <path
+    fill="#B9FF66"
+    d="M26,10 A4,4 0 0 1 30,6 H38 A4,4 0 0 1 42,10 V18 A4,4 0 0 1 38,22 H26 Z"
+  />
+</svg>

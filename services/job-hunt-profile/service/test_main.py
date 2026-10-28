@@ -17,54 +17,66 @@ from service import main
 
 
 class AuthenticationTest(unittest.TestCase):
-    def test_resume_content_mirrors_details_and_rejects_stale_upload(self):
-        details = {"text": "Python engineer", "header": {"name": "Test é"}}
-        current = {"preferences": {}, "resume_details": {}}
+    def test_imports_are_validation_only_and_never_replace_active_profile(self):
+        data = {"downloadUrl": "https://example.invalid", "fileName": "resume.docx", "objectKey": "resume_imports/test/resume.docx"}
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value.read.return_value = b"not-pdf"
+        with patch.object(main.psycopg, "connect") as connect, patch.object(main, "read_profile") as read, patch.object(main.urllib.request, "build_opener", return_value=opener):
+            result = main.import_r2_resume("test", data)
+            self.assertFalse(result['accepted'])
+            self.assertEqual(result['reasonCode'], 'PDF_REQUIRED')
+            connect.assert_not_called()
+            read.assert_not_called()
+
+    def test_multipart_uses_same_validator_without_profile_mutation(self):
+        upload = MagicMock()
+        upload.filename = 'resume.pdf'
+        upload.file.read.return_value = b'%PDF-test'
+        result = {'accepted': True, 'validatorVersion': 'single-column-v1'}
+        with patch.object(main, 'authenticated_user', return_value='test'), patch('service.layout_policy.validate_pdf', return_value=result) as validate, patch.object(main.psycopg, 'connect') as connect:
+            self.assertEqual(main.upload_resume(upload), result)
+            validate.assert_called_once_with(b'%PDF-test', 'resume.pdf')
+            connect.assert_not_called()
+
+    def test_deleted_base_and_active_generation_block_source_edits_but_allow_preferences(self):
+        current = {"preferences": {}, "resume_details": {"text": "Existing base"}}
         conn = MagicMock()
-        conn.execute.return_value.fetchone.return_value = ("user_pref_resumes/test/current.docx",)
-        data = {"downloadUrl": "https://example.invalid", "fileName": "resume.docx",
-                "objectKey": "user_pref_resumes/test/current.docx"}
-        with tempfile.TemporaryDirectory() as directory:
-            parsed = Path(directory) / "parsed.json"
-            parsed.write_text(json.dumps(details), encoding="utf-8")
-            opener = MagicMock()
-            opener.open.return_value.__enter__.return_value.read.return_value = b"test resume"
-            with patch.object(main.psycopg, "connect") as connect, \
-                 patch.object(main, "read_profile", return_value=current), \
-                 patch.object(main, "convert", return_value=parsed), \
-                 patch.object(main, "build_preferences", return_value={}), \
-                 patch.object(main, "apply_overrides", return_value={}), \
-                 patch.object(main.urllib.request, "build_opener", return_value=opener), \
-                 patch.dict(os.environ, {"DATABASE_URL": "test-only"}):
-                connect.return_value.__enter__.return_value = conn
-                main.import_r2_resume("test", data)
-                calls = conn.execute.call_args_list
-                saved_details = calls[-3].args[1][2].obj
-                self.assertEqual(calls[-2].args[1][0], saved_details["compiler_payload"]["markdown"])
-                self.assertEqual(calls[-2].args[1][1].obj, saved_details)
-                self.assertEqual(calls[-2].args[1][2], "test")
+        state = {"active": False, "pending": False}
+        def execute(query, params=None):
+            result = MagicMock()
+            row = None
+            if "SELECT preferences,resume_details" in query:
+                row = (current["preferences"], current["resume_details"])
+            elif "SELECT r.id FROM user_pref_resumes" in query and state["active"]:
+                row = ("active-base",)
+            elif "SELECT id FROM resume_generation_requests" in query and state["pending"]:
+                row = ("running-request",)
+            result.fetchone.return_value = row
+            return result
+        conn.execute.side_effect = execute
+        with patch.object(main.psycopg, "connect") as connect, patch.object(main, "authenticated_user", return_value="test"), \
+             patch.object(main, "read_profile", return_value=current), patch.object(main, "build_preferences", return_value={}), \
+             patch.object(main, "apply_overrides", return_value={}), patch.dict(os.environ, {"DATABASE_URL": "test-only"}):
+            connect.return_value.__enter__.return_value = conn
+            for active, pending in ((False, False), (True, True)):
+                state.update(active=active, pending=pending)
                 conn.reset_mock()
-                conn.execute.return_value.fetchone.return_value = ("newer.docx",)
                 with self.assertRaises(HTTPException) as error:
-                    main.import_r2_resume("test", data)
+                    main.save_profile(main.ProfileUpdate(resume_details={"text": "Delayed old form"}))
                 self.assertEqual(error.exception.status_code, 409)
-                self.assertEqual(conn.execute.call_count, 1)
-                with patch.object(main, "authenticated_user", return_value="test"):
-                    conn.reset_mock()
-                    main.save_profile(main.ProfileUpdate(resume_details=details))
-                    mirror = conn.execute.call_args_list[-2].args[1]
-                    self.assertEqual(mirror[0], mirror[1].obj["compiler_payload"]["markdown"])
-                    self.assertEqual(mirror[2], "test")
-                    conn.reset_mock()
-                    main.save_profile(main.ProfileUpdate(preferences={}))
-                    self.assertEqual(conn.execute.call_count, 1)
-                    conn.reset_mock()
-                    upload = MagicMock()
-                    upload.filename = "resume.docx"
-                    upload.file.read.return_value = b"test resume"
-                    main.upload_resume(upload)
-                    self.assertEqual(conn.execute.call_args_list[-2].args[1][1].obj,
-                                     conn.execute.call_args_list[-3].args[1][2].obj)
+                calls = conn.execute.call_args_list
+                self.assertIn("pg_advisory_xact_lock", calls[0].args[0])
+                self.assertFalse(any(call.args[0].lstrip().startswith(("INSERT", "UPDATE")) for call in calls))
+                conn.reset_mock()
+                self.assertEqual(main.save_profile(main.ProfileUpdate(preferences={})), current)
+                self.assertFalse(any("UPDATE user_pref_resumes" in call.args[0] for call in conn.execute.call_args_list))
+            conn.reset_mock()
+            self.assertIsNone(main.save_resume_content(conn, "test", {"text": "Delayed old form"}))
+            query = conn.execute.call_args.args[0]
+            self.assertIn("p.active_resume_id=r.id", query)
+            self.assertIn("r.is_primary=true", query)
+            self.assertIn("r.file_key IS NOT NULL", query)
+            self.assertEqual(conn.execute.call_count, 1)
 
     def test_confirmation_baseline_and_timestamp_survive_automated_updates(self):
         baseline = {"skills": ["SQL"]}
@@ -105,7 +117,7 @@ class AuthenticationTest(unittest.TestCase):
             self.assertEqual(apply_overrides(preferences, {"jobTypes": ["Full-time"]})["jobTypes"], ["Full-time"])
             with self.assertRaises(ValueError):
                 apply_overrides(preferences, {"experienceYears": -1})
-        self.assertEqual(health(), {"status": "ok"})
+        self.assertEqual(health(), {"status": "ok", "resumeLayoutContractVersion": 1})
 
 
 if __name__ == "__main__":

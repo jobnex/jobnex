@@ -77,7 +77,9 @@ class LlmTests(unittest.TestCase):
         self.assertEqual(value.requirements[0].requirement_id, "R1")
         self.assertEqual(endpoint, "https://openrouter.example/api/v1/chat/completions")
         self.assertEqual(key, "openrouter-test-key")
-        self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertEqual(body["response_format"]["type"], "json_schema")
+        self.assertTrue(body["response_format"]["json_schema"]["strict"])
+        self.assertEqual(body["provider"], {"require_parameters": True})
         self.assertEqual(body["temperature"], 0)
         self.assertNotIn("reasoning", body)
         self.assertEqual(body["max_tokens"], 1000)
@@ -128,8 +130,8 @@ class LlmTests(unittest.TestCase):
         ):
             client.trace_enabled = True
             _value, usage = client.complete(
-                stage="analyze_jd",
-                model="google/gemini-3.8-flash",
+                stage="craft",
+                model=PipelineConfig().writer_model,
                 output_type=JobAnalysis,
                 system="Return JSON.",
                 payload={"job_description": "Python"},
@@ -138,6 +140,8 @@ class LlmTests(unittest.TestCase):
 
         self.assertEqual("llm", traced.call_args.kwargs["run_type"])
         self.assertEqual("openrouter", traced.call_args.kwargs["metadata"]["ls_provider"])
+        self.assertEqual("google/gemini-3.8-flash", traced.call_args.kwargs["metadata"]["ls_model_name"])
+        self.assertEqual("craft", traced.call_args.kwargs["metadata"]["resume_stage"])
         self.assertEqual(usage.input_tokens, run.usage["input_tokens"])
         self.assertEqual(usage.output_tokens, run.usage["output_tokens"])
         self.assertGreater(run.usage["input_cost"] + run.usage["output_cost"], 0)
@@ -369,9 +373,82 @@ class LlmTests(unittest.TestCase):
                     max_tokens=1000,
                 )
 
+    def test_invalid_schema_retries_with_new_body_and_counts_usage(self):
+        responses = Responses()
+        bodies = []
+        def transport(*args):
+            bodies.append(json.loads(json.dumps(args[2])))
+            response = responses(*args)
+            if len(bodies) == 1:
+                response["choices"][0]["message"]["content"] = '{"requirements": "wrong type"}'
+            return response
+        client = OpenAICompatibleClient(PipelineConfig(), transport=transport)
+        value, usage = client.complete(stage="analyze_jd", model="google/gemini-3.8-flash",
+            output_type=JobAnalysis, system="Return JSON.", payload={}, max_tokens=1000)
+        self.assertEqual(value.requirements[0].requirement_id, "R1")
+        self.assertNotEqual(bodies[0], bodies[1])
+        self.assertEqual(usage.input_tokens, 200)
+
+    def test_persistent_invalid_schema_stops_after_one_retry(self):
+        from low_risk_agent.llm import StructuredOutputError
+        responses = Responses()
+        def transport(*args):
+            response = responses(*args)
+            response["choices"][0]["message"]["content"] = '{}'
+            return response
+        with self.assertRaises(StructuredOutputError):
+            OpenAICompatibleClient(PipelineConfig(), transport=transport).complete(
+                stage="craft", model="google/gemini-3.8-flash", output_type=JobAnalysis,
+                system="Return JSON.", payload={}, max_tokens=1000)
+        self.assertEqual(len(responses.calls), 2)
+
+    def test_timeout_recovers_and_persistent_timeout_is_bounded(self):
+        responses = Responses()
+        attempts = []
+        def transport(*args):
+            attempts.append(args[3])
+            if len(attempts) == 1:
+                raise TimeoutError()
+            return responses(*args)
+        client = OpenAICompatibleClient(PipelineConfig(), transport=transport)
+        with patch("low_risk_agent.llm.time.sleep"):
+            value, _ = client.complete(stage="analyze_jd", model="google/gemini-3.8-flash",
+                output_type=JobAnalysis, system="Return JSON.", payload={}, max_tokens=1000)
+        self.assertEqual(value.requirements[0].requirement_id, "R1")
+        self.assertEqual(attempts, [90.0, 90.0])
+        calls = []
+        def always_timeout(*args):
+            calls.append(1)
+            raise TimeoutError()
+        with patch("low_risk_agent.llm.time.sleep"), self.assertRaisesRegex(RuntimeError, "timed out"):
+            OpenAICompatibleClient(PipelineConfig(), transport=always_timeout).complete(
+                stage="craft", model="google/gemini-3.8-flash", output_type=JobAnalysis,
+                system="Return JSON.", payload={}, max_tokens=1000)
+        self.assertEqual(len(calls), 2)
+
+    def test_gemini_writing_uses_low_reasoning_and_larger_bounded_ceiling(self):
+        responses = Responses(["length", "stop"])
+        value, usage = OpenAICompatibleClient(PipelineConfig(), transport=responses).complete(
+            stage="fit_length", model="google/gemini-3.8-flash", output_type=JobAnalysis,
+            system="Return JSON.", payload={}, max_tokens=16000, effort="medium")
+        self.assertEqual("R1", value.requirements[0].requirement_id)
+        self.assertEqual([16000, 32000], [call[2]["max_tokens"] for call in responses.calls])
+        self.assertTrue(all(call[2]["reasoning"]["effort"] == "low" for call in responses.calls))
+        self.assertEqual(usage.output_tokens, 40)
+
+    def test_final_gemini_truncation_reports_all_paid_attempts(self):
+        responses = Responses(["length"] * 3)
+        with self.assertRaises(OutputTokenLimitError) as error:
+            OpenAICompatibleClient(PipelineConfig(), transport=responses).complete(
+                stage="fit_length", model="google/gemini-3.8-flash", output_type=JobAnalysis,
+                system="Return JSON.", payload={}, max_tokens=9000, effort="medium")
+        self.assertEqual([9000, 18000, 32000], [call[2]["max_tokens"] for call in responses.calls])
+        self.assertEqual(error.exception.usage.output_tokens, 60)
+        self.assertEqual(error.exception.usage.input_tokens, 300)
+
     def test_config_limits_wait_time(self) -> None:
         self.assertEqual(PipelineConfig().transient_retries, 1)
-        self.assertEqual(PipelineConfig().timeout_seconds, 45.0)
+        self.assertEqual(PipelineConfig().timeout_seconds, 90.0)
 
 
 if __name__ == "__main__":

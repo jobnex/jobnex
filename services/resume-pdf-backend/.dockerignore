@@ -4,10 +4,10 @@ target
 .env
 .env.*
 !env.example
-tests
 *.exe
-*.log
 *.zip
+*.log
+test-evidence
 terraform/.terraform
 terraform/*.tfstate*
 terraform/*.tfvars

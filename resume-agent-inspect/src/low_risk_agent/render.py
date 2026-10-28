@@ -14,6 +14,16 @@ def _display(value: str) -> str:
     return re.sub(r"\s*\[cite:\s*\d+\]", "", value, flags=re.IGNORECASE).strip()
 
 
+def _header(value: str) -> str:
+    return re.sub(r"^(?:#{1,6}\s+)+", "", _display(value)).strip()
+
+
+def _display_skill(value: str) -> str:
+    # Repair physical PDF word wraps only; fact spans remain verbatim.
+    value = re.sub(r"(?<=\w)-[ \t]*\n\s*(?=\w)", "", _display(value))
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def count_resume_words(markdown: str) -> int:
     """Count visible whitespace-separated words, excluding Markdown and link destinations."""
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", markdown)
@@ -58,7 +68,9 @@ def estimate_word_budget(source_word_count: int, config: PipelineConfig) -> tupl
         minimum = round(source_word_count * (1 - _MULTI_PAGE_BAND))
         maximum = round(source_word_count * (1 + _MULTI_PAGE_BAND))
         return "single_page", minimum, maximum
-    minimum = max(config.min_resume_words, round(source_word_count * (1 - _MULTI_PAGE_BAND)))
+    # Long sources can be condensed by removing repetition (especially skills).
+    # Keep a bounded 75% floor; entity, role and claim checks remain mandatory.
+    minimum = max(config.min_resume_words, round(source_word_count * 0.75))
     maximum = round(source_word_count * (1 + _MULTI_PAGE_BAND))
     return "multi_page", minimum, maximum
 
@@ -101,7 +113,7 @@ def render_resume(draft: ResumeDraft, source: ResumeSource) -> str:
             "## Skills",
             "",
             *(
-                f"{category.category} : {', '.join(category.items)}"
+                f"{category.category} : {', '.join(_display_skill(item) for item in category.items)}"
                 for category in draft.skills
             ),
         ]
@@ -123,11 +135,11 @@ def render_resume(draft: ResumeDraft, source: ResumeSource) -> str:
                 else:
                     # Preserve all original header text when employer extraction is uncertain.
                     header = " | ".join(
-                        _display(facts[fact_id].source_span) for fact_id in group.header_fact_ids
+                        dict.fromkeys(_header(facts[fact_id].source_span) for fact_id in group.header_fact_ids)
                     )
             else:
                 header = " | ".join(
-                    _display(facts[fact_id].source_span) for fact_id in group.header_fact_ids
+                    dict.fromkeys(_header(facts[fact_id].source_span) for fact_id in group.header_fact_ids)
                 )
             block.append(f"### {header or f'Experience {index}'}")
             block.extend(f"- {bullet.text}" for bullet in role.bullets)

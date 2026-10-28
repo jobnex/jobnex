@@ -6,23 +6,25 @@ export async function dispatchRequest(pool: Pool, requestId: string) {
     SET attempts=attempts+1,next_attempt_at=now()+interval '1 minute'
     FROM resume_generation_requests r WHERE o.request_id=$1 AND r.id=o.request_id
       AND r.status='queued' AND o.next_attempt_at<=now() AND o.attempts<10
-    RETURNING o.attempts`, [requestId]);
+    RETURNING o.attempts,o.batch_poll_count,r.publication_contract`, [requestId]);
   if (!claimed.rows[0]) return;
   try {
     const queue = process.env.RESUME_TASK_QUEUE;
-    const worker = process.env.RESUME_WORKER_URL;
+    const certified=claimed.rows[0].publication_contract==='certified-v1';
+    const worker = certified ? process.env.RESUME_CERTIFIED_WORKER_URL || process.env.RESUME_WORKER_URL : process.env.RESUME_WORKER_URL;
+    const audience=certified ? process.env.RESUME_CERTIFIED_WORKER_AUDIENCE || process.env.RESUME_WORKER_AUDIENCE || worker : process.env.RESUME_WORKER_AUDIENCE || worker;
     const invoker = process.env.RESUME_TASK_INVOKER;
     if (!queue || !worker || !invoker) throw new Error("dispatch_configuration_missing");
     const tokenResponse = await fetch(metadata, { headers: { "Metadata-Flavor": "Google" }, signal: AbortSignal.timeout(5000) });
     if (!tokenResponse.ok) throw new Error("dispatch_identity_unavailable");
     const token = await tokenResponse.json() as { access_token: string };
-    const taskName = `${queue}/tasks/resume-${requestId}-${claimed.rows[0].attempts}`;
+    const taskName = `${queue}/tasks/resume-${requestId}-batch${claimed.rows[0].batch_poll_count}-${claimed.rows[0].attempts}`;
     const response = await fetch(`https://cloudtasks.googleapis.com/v2/${queue}/tasks`, {
       method: "POST", headers: { Authorization: `Bearer ${token.access_token}`, "content-type": "application/json" },
       body: JSON.stringify({ task: { name: taskName, dispatchDeadline: "720s", httpRequest: {
         httpMethod: "POST", url: `${worker}/internal/process`, headers: { "Content-Type": "application/json" },
         body: Buffer.from(JSON.stringify({ requestId })).toString("base64"),
-        oidcToken: { serviceAccountEmail: invoker, audience: worker }
+        oidcToken: { serviceAccountEmail: invoker, audience }
       } } }), signal: AbortSignal.timeout(10000)
     });
     if (!response.ok && response.status !== 409) throw new Error(`dispatch_http_${response.status}`);

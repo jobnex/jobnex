@@ -31,9 +31,9 @@ class PreferenceTests(unittest.TestCase):
             source,
         )
         self.assertEqual([p.category for p in plan], list(source.skill_categories))
-        self.assertEqual(plan[0].items, ["Python", "Azure Databricks"])
+        self.assertEqual(plan[0].items, ["Python", "SQL", "Azure Databricks"])
         self.assertEqual(plan[1].items, ["Tableau", "Power BI"])
-        self.assertEqual(plan[2].items, ["Docker"])
+        self.assertEqual(plan[2].items, ["Docker", "Git"])
 
     def test_summary_choice_reaches_writer_and_output(self):
         for include in (True, False):

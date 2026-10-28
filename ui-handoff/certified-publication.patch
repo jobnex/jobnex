@@ -1,0 +1,3085 @@
+diff --git a/.env.example b/.env.example
+--- a/.env.example
++++ b/.env.example
+@@ -15,3 +15,12 @@
+ JWT_SECRET=
+ RESUME_COMPILER_URL=
+ RESUME_COMPILER_SECRET=
++RESUME_PUBLICATION_SERVICE_URL=
++NEXT_PUBLIC_RESUME_CERTIFIED_PUBLICATION=false
++RESUME_CERTIFIED_PUBLICATION=false
++RESUME_CERTIFIED_PUBLICATION_STRICT=false
++RESUME_PDF_BACKEND_URL=
++RESUME_PDF_BACKEND_AUDIENCE=
++RESUME_PDF_BACKEND_TOKEN=
++RESUME_WORKER_URL=
++RESUME_WORKER_AUDIENCE=
+diff --git a/components/ResumeModal.tsx b/components/ResumeModal.tsx
+--- a/components/ResumeModal.tsx
++++ b/components/ResumeModal.tsx
+@@ -15,8 +15,9 @@
+ import { toast } from "sonner";
+ import { resumeContentError } from "@/lib/resume-validation";
+ import { lockBodyScroll, unlockBodyScroll } from "@/lib/utils/scrollLock";
+-
+-interface ResumeModalProps {
++import { CertifiedResumeModal } from "./CertifiedResumeModal";
++
++export interface ResumeModalProps {
+   isOpen: boolean;
+   onClose: () => void;
+   jobId?: string;
+@@ -35,7 +36,11 @@
+   onMarkReady?: () => Promise<void> | void;
+ }
+ 
+-export function ResumeModal({
++export function ResumeModal(props:ResumeModalProps){
++  return process.env.NEXT_PUBLIC_RESUME_CERTIFIED_PUBLICATION === "true" ? (props.isOpen?<CertifiedResumeModal key={`${props.jobId}-${props.expectedGenerationId}-${props.templateId}`} {...props}/>:null) : <LegacyResumeModal {...props}/>;
++}
++
++function LegacyResumeModal({
+   isOpen,
+   onClose,
+   jobId,
+diff --git a/components/ResumeSheet.tsx b/components/ResumeSheet.tsx
+--- a/components/ResumeSheet.tsx
++++ b/components/ResumeSheet.tsx
+@@ -12,6 +12,8 @@
+   onMarkdownChange?: (newMarkdown: string) => void;
+   onOverflowChange?: (isOverflow: boolean) => void;
+   onPageCountChange?: (pageCount: number) => void;
++  structuredData?: ParsedResume;
++  onStructuredChange?: (data: ParsedResume) => void;
+ }
+ 
+ export function ResumeSheet({
+@@ -22,6 +24,8 @@
+   onMarkdownChange,
+   onOverflowChange,
+   onPageCountChange,
++  structuredData,
++  onStructuredChange,
+ }: ResumeSheetProps) {
+   const sheetRef = useRef<HTMLDivElement>(null);
+   const contentRef = useRef<HTMLDivElement>(null);
+@@ -30,8 +34,8 @@
+ 
+   // Parse markdown into structured model
+   const parsedData = useMemo(() => {
+-    return parseResumeMarkdown(markdown);
+-  }, [markdown]);
++    return structuredData || parseResumeMarkdown(markdown);
++  }, [markdown,structuredData]);
+ 
+   // A4 Page measurement & overflow checking
+   const checkA4Pages = useCallback(() => {
+@@ -90,11 +94,11 @@
+   const handleFieldChange = (
+     updater: (data: ParsedResume) => void
+   ) => {
+-    if (!onMarkdownChange) return;
++    if (!onMarkdownChange && !onStructuredChange) return;
+     const clone: ParsedResume = structuredClone(parsedData);
+     updater(clone);
+-    const newMd = serializeResumeToMarkdown(clone);
+-    onMarkdownChange(newMd);
++    if(onStructuredChange)onStructuredChange(clone);
++    else onMarkdownChange?.(serializeResumeToMarkdown(clone));
+   };
+ 
+   // Get theme-specific root styles
+@@ -139,10 +143,11 @@
+     value: string,
+     onSave: (val: string) => void,
+     className = "",
+-    tag: "div" | "span" | "p" | "h1" | "h2" | "h3" = "span"
++    tag: "div" | "span" | "p" | "h1" | "h2" | "h3" = "span",
++    editable = true
+   ) => {
+     const Tag = tag;
+-    if (!isEditable) {
++    if (!isEditable || !editable) {
+       return <Tag className={className}>{value}</Tag>;
+     }
+ 
+@@ -163,6 +168,9 @@
+     );
+   };
+ 
++  const renderProtected = (value: string, onSave: (value:string)=>void, className = "", tag: "div"|"span"|"p"|"h1"|"h2"|"h3" = "span") =>
++    renderEditable(value,onSave,className,tag,!structuredData);
++
+   // Header Rendering based on Theme
+   const renderHeader = () => {
+     const info = parsedData.personalInfo;
+@@ -182,7 +190,7 @@
+           {/* Left Column: Name & Title & Profiles */}
+           <div className="flex flex-col max-w-[55%] break-words">
+             <h1 className="text-[19pt] font-bold leading-tight tracking-tight">
+-              {renderEditable(info.name || "Full Name", (val) =>
++              {renderProtected(info.name || "Full Name", (val) =>
+                 handleFieldChange((d) => { d.personalInfo.name = val; })
+               )}
+             </h1>
+@@ -196,14 +204,14 @@
+             <div className="text-[8.5pt] text-black mt-1 flex flex-wrap gap-x-3 gap-y-0.5 break-words">
+               {info.linkedin && (
+                 <span className="break-all">
+-                  {renderEditable(info.linkedin, (val) =>
++                  {renderProtected(info.linkedin, (val) =>
+                     handleFieldChange((d) => { d.personalInfo.linkedin = val; })
+                   )}
+                 </span>
+               )}
+               {info.github && (
+                 <span className="break-all">
+-                  {renderEditable(info.github, (val) =>
++                  {renderProtected(info.github, (val) =>
+                     handleFieldChange((d) => { d.personalInfo.github = val; })
+                   )}
+                 </span>
+@@ -216,21 +224,21 @@
+           <div className="flex flex-col items-end text-[8.5pt] text-black leading-snug max-w-[45%] break-words text-right">
+             {info.email && (
+               <div className="break-all">
+-                {renderEditable(info.email, (val) =>
++                {renderProtected(info.email, (val) =>
+                   handleFieldChange((d) => { d.personalInfo.email = val; })
+                 )}
+               </div>
+             )}
+             {info.phone && (
+               <div className="whitespace-nowrap">
+-                {renderEditable(info.phone, (val) =>
++                {renderProtected(info.phone, (val) =>
+                   handleFieldChange((d) => { d.personalInfo.phone = val; })
+                 )}
+               </div>
+             )}
+             {info.location && (
+               <div className="break-words">
+-                {renderEditable(info.location, (val) =>
++                {renderProtected(info.location, (val) =>
+                   handleFieldChange((d) => { d.personalInfo.location = val; })
+                 )}
+               </div>
+@@ -245,7 +253,7 @@
+       return (
+         <div className="mb-[0.45em] text-left resume-section-header">
+           <h1 className="text-[21pt] font-normal leading-tight tracking-tight break-words">
+-            {renderEditable(info.name || "Full Name", (val) =>
++            {renderProtected(info.name || "Full Name", (val) =>
+               handleFieldChange((d) => { d.personalInfo.name = val; })
+             )}
+           </h1>
+@@ -275,7 +283,7 @@
+       return (
+         <div className="text-center mb-[0.4em] resume-section-header">
+           <h1 className="text-[20pt] font-normal text-[#111111] leading-tight tracking-tight break-words">
+-            {renderEditable(info.name || "Full Name", (val) =>
++            {renderProtected(info.name || "Full Name", (val) =>
+               handleFieldChange((d) => { d.personalInfo.name = val; })
+             )}
+           </h1>
+@@ -304,7 +312,7 @@
+     return (
+       <div className="text-center mb-[0.4em] resume-section-header">
+         <h1 className="text-[19pt] font-bold text-black leading-tight tracking-tight break-words">
+-          {renderEditable(info.name || "Full Name", (val) =>
++          {renderProtected(info.name || "Full Name", (val) =>
+             handleFieldChange((d) => { d.personalInfo.name = val; })
+           )}
+         </h1>
+@@ -433,13 +441,13 @@
+                     {parsedData.skills.map((skill, idx) => (
+                       <div key={idx} className="leading-snug break-words">
+                         <span className="font-bold">
+-                          {renderEditable(skill.category, (val) =>
++                          {renderProtected(skill.category, (val) =>
+                             handleFieldChange((d) => { d.skills[idx].category = val; })
+                           )}
+                           :{" "}
+                         </span>
+                         <span>
+-                          {renderEditable(skill.items, (val) =>
++                          {renderProtected(skill.items, (val) =>
+                             handleFieldChange((d) => { d.skills[idx].items = val; })
+                           )}
+                         </span>
+@@ -468,7 +476,7 @@
+                               <span className="italic font-normal">
+                                 {" "}
+                                 |{" "}
+-                                {renderEditable(exp.company, (val) =>
++                                {renderProtected(exp.company, (val) =>
+                                   handleFieldChange((d) => { d.experience[idx].company = val; })
+                                 )}
+                               </span>
+@@ -477,7 +485,7 @@
+                           <div className="text-right text-[8.2pt] font-normal shrink-0 ml-auto whitespace-nowrap">
+                             {exp.location && <span>{exp.location} | </span>}
+                             <span>
+-                              {renderEditable(exp.duration, (val) =>
++                              {renderProtected(exp.duration, (val) =>
+                                 handleFieldChange((d) => { d.experience[idx].duration = val; })
+                               )}
+                             </span>
+@@ -525,7 +533,7 @@
+                           </div>
+                           {proj.duration && (
+                             <div className="text-right text-[8.2pt] font-normal shrink-0 ml-auto whitespace-nowrap">
+-                              {renderEditable(proj.duration, (val) =>
++                              {renderProtected(proj.duration, (val) =>
+                                 handleFieldChange((d) => { d.projects[idx].duration = val; })
+                               )}
+                             </div>
+@@ -559,7 +567,7 @@
+                       <div key={idx} className="leading-snug resume-section-item">
+                         <div className="flex justify-between items-baseline font-bold flex-wrap gap-x-2">
+                           <span className="min-w-0 break-words">
+-                            {renderEditable(edu.institution, (val) =>
++                            {renderProtected(edu.institution, (val) =>
+                               handleFieldChange((d) => { d.education[idx].institution = val; })
+                             )}
+                           </span>
+@@ -570,7 +578,7 @@
+                         {(edu.degree || edu.duration) && (
+                           <div className="flex justify-between items-baseline text-[8.2pt] italic flex-wrap gap-x-2">
+                             <span className="min-w-0 break-words">
+-                              {renderEditable(edu.degree, (val) =>
++                              {renderProtected(edu.degree, (val) =>
+                                 handleFieldChange((d) => { d.education[idx].degree = val; })
+                               )}
+                             </span>
+@@ -581,7 +589,7 @@
+                         )}
+                         {edu.details && (
+                           <div className="text-[8pt] text-[#222222] mt-0.5 break-words">
+-                            {renderEditable(edu.details, (val) =>
++                            {renderProtected(edu.details, (val) =>
+                               handleFieldChange((d) => { d.education[idx].details = val; })
+                             )}
+                           </div>
+diff --git a/components/CertifiedResumeModal.tsx b/components/CertifiedResumeModal.tsx
+new file mode 100644
+--- /dev/null
++++ b/components/CertifiedResumeModal.tsx
+@@ -0,0 +1,112 @@
++"use client";
++import { useEffect,useRef,useState } from "react";
++import { ResumeSheet } from "./ResumeSheet";
++import { RESUME_TEMPLATES,getTemplateById } from "@/data/resume-templates";
++import { applyEditorText,documentToEditor,validateResumeDocument,type ResumeDocumentV1,type PublicationIssue } from "@/lib/resume-document";
++import { lockBodyScroll,unlockBodyScroll } from "@/lib/utils/scrollLock";
++import type { ResumeModalProps } from "./ResumeModal";
++
++type Publication={documentRevision:number;documentHash:string;publicationStatus:"ready"|"blocked";artifactId:string|null;pdfSha256:string|null;issues:PublicationIssue[]};
++export function CertifiedResumeModal({isOpen,onClose,jobId,expectedGenerationId,templateId,readOnly=false}:ResumeModalProps){
++  const [document,setDocument]=useState<ResumeDocumentV1|null>(null);
++  const [publication,setPublication]=useState<Publication|null>(null);
++  const [template,setTemplate]=useState(templateId||"mit-capd");
++  const [mode,setMode]=useState<"view"|"edit">("view");
++  const [pdf,setPdf]=useState<string|null>(null);
++  const [busy,setBusy]=useState(true);
++  const [dirty,setDirty]=useState(false);
++  const [issues,setIssues]=useState<PublicationIssue[]>([]);
++  const sequence=useRef(0);
++  const blobUrl=useRef<string|null>(null);
++  const clearPdf=()=>{if(blobUrl.current)URL.revokeObjectURL(blobUrl.current);blobUrl.current=null;setPdf(null);setPublication(null);};
++  const errorIssue=(message:string):PublicationIssue=>({code:"PUBLICATION_BLOCKED",message,fieldId:null});
++  const urlFor=(artifactId:string,download=false)=>`/api/resume/publication/${artifactId}/pdf?jobId=${jobId}${download?"&download=1":""}`;
++  async function checkedBytes(p:Publication,download=false){
++    if(!p.artifactId||!p.pdfSha256)throw new Error("Required PDF checks have not passed.");
++    const response=await fetch(urlFor(p.artifactId,download),{cache:"no-store"});
++    if(!response.ok)throw new Error("This PDF is no longer current. Update preview and retry.");
++    const bytes=await response.arrayBuffer();
++    const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),b=>b.toString(16).padStart(2,"0")).join("");
++    if(digest!==p.pdfSha256)throw new Error("PDF verification failed. Retry preview.");
++    return new Blob([bytes],{type:"application/pdf"});
++  }
++  async function preview(d:ResumeDocumentV1,hash:string,selected:string,token:number){
++    const response=await fetch("/api/resume/publication",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"preview",jobId,generationId:d.id,documentRevision:d.revision,documentHash:hash,templateId:selected})});
++    const p=await response.json() as Publication;
++    if(token!==sequence.current)return;
++    setIssues(p.issues||[]);setPublication(p);
++    if(!response.ok||p.publicationStatus!=="ready")return;
++    const bytes=await checkedBytes(p);
++    if(token!==sequence.current)return;
++    if(blobUrl.current)URL.revokeObjectURL(blobUrl.current);
++    blobUrl.current=URL.createObjectURL(bytes);setPdf(blobUrl.current);
++  }
++  useEffect(()=>{
++    if(!isOpen)return;
++    lockBodyScroll();const operations=sequence;const token=++operations.current;
++    const selected=templateId||"mit-capd";
++    void(async()=>{
++      try{
++        if(!jobId)throw new Error("Select a generated job resume first.");
++        const query=new URLSearchParams({jobId,templateId:selected,...expectedGenerationId?{generationId:expectedGenerationId}:{}});
++        const response=await fetch(`/api/resume/publication?${query}`,{cache:"no-store"});const result=await response.json();
++        if(token!==sequence.current)return;
++        if(!result.document){setIssues(result.issues||[errorIssue("Validate your source PDF and generate a new draft.")]);return;}
++        validateResumeDocument(result.document);setDocument(result.document);
++        await preview(result.document,result.documentHash,selected,token);
++      }catch(error){if(token===sequence.current)setIssues([errorIssue(error instanceof Error?error.message:"Preview unavailable. Retry shortly.")]);}
++      finally{if(token===sequence.current)setBusy(false);}
++    })();
++    return()=>{++operations.current;if(blobUrl.current)URL.revokeObjectURL(blobUrl.current);blobUrl.current=null;unlockBodyScroll();};
++    // The session resets only when its requested generation changes.
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  },[isOpen,jobId,expectedGenerationId,templateId]);
++
++  async function saveAndPreview(selected=template){
++    if(!document)return;const token=++sequence.current;setBusy(true);setIssues([]);clearPdf();
++    try{
++      const response=await fetch("/api/resume/publication",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"save",jobId,generationId:document.id,documentRevision:document.revision,document,templateId:selected})});
++      const result=await response.json();if(token!==sequence.current)return;
++      if(!response.ok||!result.document){setIssues(result.issues||[errorIssue("Save failed. Reload the latest draft.")]);return;}
++      validateResumeDocument(result.document);setDocument(result.document);setDirty(false);setMode("view");
++      await preview(result.document,result.documentHash,selected,token);
++    }catch(error){if(token===sequence.current)setIssues([errorIssue(error instanceof Error?error.message:"Checks could not finish. Retry preview.")]);}
++    finally{if(token===sequence.current)setBusy(false);}
++  }
++  async function retry(){
++    if(!document)return;if(dirty)return saveAndPreview();
++    const token=++sequence.current;setBusy(true);clearPdf();
++    try{
++      const response=await fetch(`/api/resume/publication?${new URLSearchParams({jobId:jobId!,generationId:document.id,templateId:template})}`,{cache:"no-store"});
++      const result=await response.json();if(token!==sequence.current)return;if(!result.document)throw new Error(result.issues?.[0]?.message||"Reload the latest draft.");
++      setDocument(result.document);await preview(result.document,result.documentHash,template,token);
++    }catch(error){if(token===sequence.current)setIssues([errorIssue(error instanceof Error?error.message:"Preview unavailable")]);}
++    finally{if(token===sequence.current)setBusy(false);}
++  }
++  async function download(){
++    if(!publication||dirty||busy)return;setBusy(true);
++    try{const bytes=await checkedBytes(publication,true);const url=URL.createObjectURL(bytes);const a=window.document.createElement("a");a.href=url;a.download="resume.pdf";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
++    catch(error){clearPdf();setIssues([errorIssue(error instanceof Error?error.message:"Download unavailable")]);}
++    finally{setBusy(false);}
++  }
++  if(!isOpen)return null;
++  return <div className="fixed inset-0 z-[100] bg-black/75 flex flex-col" role="dialog" aria-modal="true" aria-label="Resume preview">
++    <div className="flex flex-wrap items-center gap-3 p-3 bg-bg-card text-text-primary border-b border-border">
++      <strong className="mr-auto">Resume</strong>
++      <select aria-label="Resume template" value={template} disabled={busy||readOnly||!document} onChange={event=>{const value=event.target.value;setTemplate(value);clearPdf();void saveAndPreview(value);}} className="bg-bg-card border rounded p-2">
++        {RESUME_TEMPLATES.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
++      </select>
++      {!readOnly&&<button disabled={busy||!document} onClick={()=>setMode(mode==="edit"?"view":"edit")} className="border rounded px-3 py-2">{mode==="edit"?"View PDF":"Edit"}</button>}
++      {dirty?<button disabled={busy} onClick={()=>void saveAndPreview()} className="border rounded px-3 py-2">Save &amp; check</button>:<button disabled={busy||!document} onClick={()=>void retry()} className="border rounded px-3 py-2">Update preview</button>}
++      <button disabled={busy||dirty||!pdf||publication?.publicationStatus!=="ready"} onClick={()=>void download()} className="border rounded px-3 py-2 disabled:opacity-40">Download PDF</button>
++      <button aria-label="Close resume" onClick={onClose} className="px-3 py-2">✕</button>
++    </div>
++    {(busy||dirty)&&<p className="bg-bg-card text-text-primary px-4 py-2" role="status">Preview updating{dirty?" — save edits to check the new version.":"…"}</p>}
++    {issues.length>0&&<div role="alert" className="bg-amber-50 text-amber-950 px-4 py-3"><p>Download blocked until required checks pass.</p><ul>{issues.map((issue,i)=><li key={`${issue.code}-${i}`}>{issue.message}{issue.fieldId?` (${issue.fieldId})`:""}</li>)}</ul></div>}
++    <div className="flex-1 overflow-auto p-3 flex justify-center">
++      {mode==="edit"&&document?<div className="text-black"><p className="bg-white px-4 py-2">Edit titles, summary, and bullets. Source corrections require a new validated PDF upload.</p><ResumeSheet markdown="" structuredData={documentToEditor(document)} themeId={getTemplateById(template).themeId} isEditable onStructuredChange={edited=>{try{setDocument(applyEditorText(document,edited));setDirty(true);++sequence.current;clearPdf();}catch(error){setIssues([errorIssue(error instanceof Error?error.message:"Edit rejected")]);}}}/></div>
++        :pdf?<object data={pdf} type="application/pdf" className="w-full h-full min-h-[70vh]" aria-label="Exact certified resume PDF"><p className="text-white">PDF preview is unavailable in this browser. Use Download PDF to view the certified file.</p></object>
++        :!busy&&<p className="text-white p-6">No certified PDF is available for this revision. You can edit the draft and retry checks.</p>}
++    </div>
++  </div>;
++}
+diff --git a/lib/db.ts b/lib/db.ts
+--- a/lib/db.ts
++++ b/lib/db.ts
+@@ -10,7 +10,7 @@
+ 
+ const rawConnectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
+ const connectionString = rawConnectionString
+-  ? rawConnectionString.replace(/[?&]channel_binding=[^&]+/g, "")
++  ? (()=>{const url=new URL(rawConnectionString);url.searchParams.delete("channel_binding");return url.toString();})()
+   : undefined;
+ 
+ function createPool(): Pool {
+diff --git a/lib/resume-document.ts b/lib/resume-document.ts
+new file mode 100644
+--- /dev/null
++++ b/lib/resume-document.ts
+@@ -0,0 +1,107 @@
++import schema from "./contracts/resume-document-v1.schema.json";
++import type { ParsedResume } from "./resume-parser";
++
++export type ResumeBlock = { id: string; text: string; evidenceIds: string[] };
++export type ResumeDocumentV1 = {
++  schemaVersion: "ResumeDocumentV1"; id: string; revision: number;
++  source: { fileSha256: string; textSha256: string; revision: string; validatorVersion: string };
++  personalInfo: { id: string; name: string; title: string; email: string; phone: string; linkedin: string; github: string; location: string; extraContacts: string[] };
++  summary: ResumeBlock[];
++  skills: { id: string; category: string; items: ResumeBlock[] }[];
++  experience: { id: string; role: string; company: string; location: string; duration: string; bullets: ResumeBlock[] }[];
++  projects: { id: string; title: string; technologies: string[]; duration: string; bullets: ResumeBlock[] }[];
++  education: { id: string; institution: string; location: string; degree: string; duration: string; details: ResumeBlock[] }[];
++  additionalSections: { id: string; title: string; items: ResumeBlock[] }[];
++  sectionOrder: string[];
++  evidence: { id: string; fieldId: string; sourceSpan: string; spanStart: number; spanEnd: number; page: number | null; box: number[] | null; roleId: string | null; origin: "pdf" | "user" }[];
++};
++export type PublicationIssue = { code: string; message: string; fieldId: string | null };
++type Schema = { $ref?: string; const?: unknown; enum?: unknown[]; type?: string | string[]; anyOf?: Schema[]; required?: string[]; properties?: Record<string, Schema>; additionalProperties?: boolean; items?: Schema; minLength?: number; minimum?: number; minItems?: number; maxItems?: number; pattern?: string };
++
++// Executes the shared schema subset; no parallel hand-maintained validation model.
++export function validateResumeDocument(value: unknown): asserts value is ResumeDocumentV1 {
++  const check = (v: unknown, rule: Schema, path: string): void => {
++    if (rule.$ref) { check(v, schema.$defs.block as Schema, path); return; }
++    if (rule.anyOf) { for (const option of rule.anyOf) { try { check(v, option, path); return; } catch {} } throw new Error(`Invalid ${path}`); }
++    const kind = v === null ? "null" : Array.isArray(v) ? "array" : typeof v === "number" && Number.isInteger(v) ? "integer" : typeof v;
++    if (rule.type && !(Array.isArray(rule.type) ? rule.type : [rule.type]).includes(kind)) throw new Error(`Invalid ${path}`);
++    if (("const" in rule && v !== rule.const) || (rule.enum && !rule.enum.includes(v))) throw new Error(`Invalid ${path}`);
++    if (typeof v === "number" && (!Number.isFinite(v) || (rule.minimum !== undefined && v < rule.minimum))) throw new Error(`Invalid ${path}`);
++    if (typeof v === "string" && ((rule.minLength !== undefined && v.length < rule.minLength) || (rule.pattern && !new RegExp(rule.pattern).test(v)))) throw new Error(`Invalid ${path}`);
++    if (Array.isArray(v)) {
++      if ((rule.minItems !== undefined && v.length < rule.minItems) || (rule.maxItems !== undefined && v.length > rule.maxItems)) throw new Error(`Invalid ${path}`);
++      if (rule.items) v.forEach((item, i) => check(item, rule.items!, `${path}[${i}]`));
++    } else if (v && typeof v === "object") {
++      const o = v as Record<string, unknown>;
++      if (rule.required?.some(k => !(k in o)) || (rule.additionalProperties === false && Object.keys(o).some(k => !rule.properties?.[k]))) throw new Error(`Invalid ${path}`);
++      for (const [key, r] of Object.entries(rule.properties || {})) if (key in o) check(o[key], r, `${path}.${key}`);
++    }
++  };
++  check(value, schema as Schema, "document");
++  const document=value as ResumeDocumentV1;
++  const ids = new Set<string>();
++  const visit = (v: unknown) => {
++    if (Array.isArray(v)) v.forEach(visit);
++    else if (v && typeof v === "object") { const o = v as Record<string, unknown>;
++      if (typeof o.id === "string") { if (ids.has(o.id)) throw new Error("Duplicate field ID"); ids.add(o.id); }
++      Object.values(o).forEach(visit);
++    }
++  };
++  visit(value);
++  const evidence = new Set(document.evidence.map(e => e.id));
++  const blocks = [...document.summary, ...document.skills.flatMap(s => s.items), ...document.experience.flatMap(e => e.bullets), ...document.projects.flatMap(p => p.bullets), ...document.education.flatMap(e => e.details), ...document.additionalSections.flatMap(s => s.items)];
++  if (blocks.some(b => b.evidenceIds.some(id => !evidence.has(id)))) throw new Error("Unknown source evidence");
++  const fields=new Map<string,{owner:string|null;value:unknown;scalar:boolean}>();
++  for(const [key,value]of Object.entries(document.personalInfo))if(key!=="id")fields.set(`${document.personalInfo.id}.${key}`,{owner:null,value,scalar:true});
++  for(const [section,content]of [["skills","items"],["experience","bullets"],["projects","bullets"],["education","details"],["additionalSections","items"]] as const){
++    for(const group of document[section]){
++      const owner=section==="experience"||section==="projects"?group.id:null;
++      for(const [key,value]of Object.entries(group))if(key!=="id"&&key!==content)fields.set(`${group.id}.${key}`,{owner,value,scalar:true});
++      for(const block of (group as unknown as Record<string,ResumeBlock[]>)[content])fields.set(block.id,{owner,value:block.text,scalar:false});
++    }
++  }
++  document.summary.forEach(b=>fields.set(b.id,{owner:null,value:b.text,scalar:false}));
++  for(const item of document.evidence){
++    const field=fields.get(item.fieldId);
++    if(!field||(field.owner!==null&&item.roleId!==field.owner)||(field.scalar&&field.owner===null&&item.roleId!==null))throw new Error("Evidence references a different field or role");
++    if(!item.sourceSpan||item.spanEnd-item.spanStart!==[...item.sourceSpan].length)throw new Error("Invalid source span");
++    if((item.page===null)!==(item.box===null)||(item.box&&(item.box[0]>=item.box[2]||item.box[1]>=item.box[3])))throw new Error("Invalid source geometry");
++  }
++  for(const block of blocks)if(!block.evidenceIds.length||new Set(block.evidenceIds).size!==block.evidenceIds.length||block.evidenceIds.some(id=>document.evidence.find(e=>e.id===id)?.fieldId!==block.id))throw new Error("Block evidence belongs to another field");
++  for(const [id,field]of fields)if(field.scalar&&(Array.isArray(field.value)?field.value.length:field.value)&&!document.evidence.some(e=>e.fieldId===id))throw new Error(`Missing source evidence for ${id}`);
++  const sections=[...(["summary","skills","experience","projects","education"] as const).filter(k=>document[k].length),...document.additionalSections.map(s=>s.id)];
++  if(new Set(document.sectionOrder).size!==document.sectionOrder.length||sections.length!==document.sectionOrder.length||sections.some(s=>!document.sectionOrder.includes(s)))throw new Error("Invalid section order");
++}
++
++export function canonicalJson(value: unknown): string {
++  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
++  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
++  return JSON.stringify(value);
++}
++
++export function documentToEditor(d: ResumeDocumentV1): ParsedResume {
++  return { personalInfo: { ...d.personalInfo }, summary: d.summary.map(b => b.text),
++    skills: d.skills.map(s => ({category:s.category, items:s.items.map(b => b.text).join(", ")})),
++    experience:d.experience.map(e=>({...e,bullets:e.bullets.map(b=>b.text)})),
++    projects:d.projects.map(p=>({...p,technologies:p.technologies.join(", "),bullets:p.bullets.map(b=>b.text)})),
++    education:d.education.map(e=>({...e,details:e.details.map(b=>b.text).join("\n")})),
++    additionalSections:Object.fromEntries(d.additionalSections.map(s=>[s.id,{title:s.title,lines:s.items.map(b=>b.text)}])),
++    sectionOrder:d.sectionOrder,rawMarkdown:"" };
++}
++
++// The editor changes text only, preserving IDs, evidence, and protected source fields.
++export function applyEditorText(original: ResumeDocumentV1, edited: ParsedResume): ResumeDocumentV1 {
++  const next = structuredClone(original);
++  const replace = (blocks: ResumeBlock[], values: string[]) => {
++    if (blocks.length !== values.length) throw new Error("Change source structure through a validated PDF upload.");
++    blocks.forEach((b,i)=>{b.text=values[i];});
++  };
++  next.personalInfo.title=edited.personalInfo.title;
++  replace(next.summary,edited.summary);
++  next.experience.forEach((e,i)=>{e.role=edited.experience[i].role; replace(e.bullets,edited.experience[i].bullets);});
++  next.projects.forEach((p,i)=>{p.title=edited.projects[i].title;replace(p.bullets,edited.projects[i].bullets);});
++  // Skills and protected contacts/employers/dates/education are immutable here.
++  // Do not comma-split atomic skills with parentheses.
++  next.additionalSections.forEach(s=>replace(s.items,edited.additionalSections?.[s.id]?.lines || s.items.map(b=>b.text)));
++  validateResumeDocument(next); return next;
++}
+diff --git a/lib/contracts/resume-document-v1.schema.json b/lib/contracts/resume-document-v1.schema.json
+new file mode 100644
+--- /dev/null
++++ b/lib/contracts/resume-document-v1.schema.json
+@@ -0,0 +1,396 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "https://jobnex.co/contracts/resume-document-v1.schema.json",
++  "title": "ResumeDocumentV1",
++  "type": "object",
++  "additionalProperties": false,
++  "required": [
++    "schemaVersion",
++    "id",
++    "revision",
++    "source",
++    "personalInfo",
++    "summary",
++    "skills",
++    "experience",
++    "projects",
++    "education",
++    "additionalSections",
++    "sectionOrder",
++    "evidence"
++  ],
++  "properties": {
++    "schemaVersion": {
++      "const": "ResumeDocumentV1"
++    },
++    "id": {
++      "type": "string",
++      "minLength": 1
++    },
++    "revision": {
++      "type": "integer",
++      "minimum": 1
++    },
++    "source": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "fileSha256",
++        "textSha256",
++        "revision",
++        "validatorVersion"
++      ],
++      "properties": {
++        "fileSha256": {
++          "type": "string",
++          "pattern": "^[a-f0-9]{64}$"
++        },
++        "textSha256": {
++          "type": "string",
++          "pattern": "^[a-f0-9]{64}$"
++        },
++        "revision": {
++          "type": "string",
++          "minLength": 1
++        },
++        "validatorVersion": {
++          "type": "string",
++          "minLength": 1
++        }
++      }
++    },
++    "personalInfo": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "id",
++        "name",
++        "title",
++        "email",
++        "phone",
++        "linkedin",
++        "github",
++        "location",
++        "extraContacts"
++      ],
++      "properties": {
++        "id": {
++          "type": "string",
++          "minLength": 1
++        },
++        "name": {
++          "type": "string",
++          "minLength": 1
++        },
++        "title": {
++          "type": "string"
++        },
++        "email": {
++          "type": "string"
++        },
++        "phone": {
++          "type": "string"
++        },
++        "linkedin": {
++          "type": "string"
++        },
++        "github": {
++          "type": "string"
++        },
++        "location": {
++          "type": "string"
++        },
++        "extraContacts": {
++          "type": "array",
++          "items": {
++            "type": "string"
++          }
++        }
++      }
++    },
++    "summary": {
++      "type": "array",
++      "items": {
++        "$ref": "#/$defs/block"
++      }
++    },
++    "skills": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "additionalProperties": false,
++        "required": [
++          "id",
++          "category",
++          "items"
++        ],
++        "properties": {
++          "id": {
++            "type": "string",
++            "minLength": 1
++          },
++          "category": {
++            "type": "string"
++          },
++          "items": {
++            "type": "array",
++            "items": {
++              "$ref": "#/$defs/block"
++            }
++          }
++        }
++      }
++    },
++    "experience": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "additionalProperties": false,
++        "required": [
++          "id",
++          "role",
++          "company",
++          "location",
++          "duration",
++          "bullets"
++        ],
++        "properties": {
++          "id": {
++            "type": "string",
++            "minLength": 1
++          },
++          "role": {
++            "type": "string"
++          },
++          "company": {
++            "type": "string"
++          },
++          "location": {
++            "type": "string"
++          },
++          "duration": {
++            "type": "string"
++          },
++          "bullets": {
++            "type": "array",
++            "items": {
++              "$ref": "#/$defs/block"
++            }
++          }
++        }
++      }
++    },
++    "projects": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "additionalProperties": false,
++        "required": [
++          "id",
++          "title",
++          "technologies",
++          "duration",
++          "bullets"
++        ],
++        "properties": {
++          "id": {
++            "type": "string",
++            "minLength": 1
++          },
++          "title": {
++            "type": "string"
++          },
++          "technologies": {
++            "type": "array",
++            "items": {
++              "type": "string"
++            }
++          },
++          "duration": {
++            "type": "string"
++          },
++          "bullets": {
++            "type": "array",
++            "items": {
++              "$ref": "#/$defs/block"
++            }
++          }
++        }
++      }
++    },
++    "education": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "additionalProperties": false,
++        "required": [
++          "id",
++          "institution",
++          "location",
++          "degree",
++          "duration",
++          "details"
++        ],
++        "properties": {
++          "id": {
++            "type": "string",
++            "minLength": 1
++          },
++          "institution": {
++            "type": "string"
++          },
++          "location": {
++            "type": "string"
++          },
++          "degree": {
++            "type": "string"
++          },
++          "duration": {
++            "type": "string"
++          },
++          "details": {
++            "type": "array",
++            "items": {
++              "$ref": "#/$defs/block"
++            }
++          }
++        }
++      }
++    },
++    "additionalSections": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "additionalProperties": false,
++        "required": [
++          "id",
++          "title",
++          "items"
++        ],
++        "properties": {
++          "id": {
++            "type": "string",
++            "minLength": 1
++          },
++          "title": {
++            "type": "string"
++          },
++          "items": {
++            "type": "array",
++            "items": {
++              "$ref": "#/$defs/block"
++            }
++          }
++        }
++      }
++    },
++    "sectionOrder": {
++      "type": "array",
++      "items": {
++        "type": "string",
++        "minLength": 1
++      }
++    },
++    "evidence": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "additionalProperties": false,
++        "required": [
++          "id",
++          "fieldId",
++          "sourceSpan",
++          "spanStart",
++          "spanEnd",
++          "page",
++          "box",
++          "roleId",
++          "origin"
++        ],
++        "properties": {
++          "id": {
++            "type": "string",
++            "minLength": 1
++          },
++          "fieldId": {
++            "type": "string",
++            "minLength": 1
++          },
++          "sourceSpan": {
++            "type": "string"
++          },
++          "spanStart": {
++            "type": "integer",
++            "minimum": 0
++          },
++          "spanEnd": {
++            "type": "integer",
++            "minimum": 0
++          },
++          "page": {
++            "type": [
++              "integer",
++              "null"
++            ],
++            "minimum": 1
++          },
++          "box": {
++            "anyOf": [
++              {
++                "type": "null"
++              },
++              {
++                "type": "array",
++                "items": {
++                  "type": "integer",
++                  "minimum": 0
++                },
++                "minItems": 4,
++                "maxItems": 4
++              }
++            ]
++          },
++          "roleId": {
++            "type": [
++              "string",
++              "null"
++            ]
++          },
++          "origin": {
++            "enum": [
++              "pdf",
++              "user"
++            ]
++          }
++        }
++      }
++    }
++  },
++  "$defs": {
++    "block": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": [
++        "id",
++        "text",
++        "evidenceIds"
++      ],
++      "properties": {
++        "id": {
++          "type": "string",
++          "minLength": 1
++        },
++        "text": {
++          "type": "string"
++        },
++        "evidenceIds": {
++          "type": "array",
++          "items": {
++            "type": "string",
++            "minLength": 1
++          }
++        }
++      }
++    }
++  }
++}
+diff --git a/lib/resume-publication-server.ts b/lib/resume-publication-server.ts
+new file mode 100644
+--- /dev/null
++++ b/lib/resume-publication-server.ts
+@@ -0,0 +1,90 @@
++import { createHash } from "node:crypto";
++import { pool } from "@/lib/db";
++import { canonicalJson, validateResumeDocument, type ResumeDocumentV1 } from "@/lib/resume-document";
++
++export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
++export const digestDocument = (d: unknown) => createHash("sha256").update(canonicalJson(d)).digest("hex");
++export class PublicationError extends Error {
++  constructor(public code: string, message: string, public status = 409) { super(message); }
++}
++
++// Vercel forwards the verified session, never caller-supplied user IDs or service secrets.
++export async function forwardPublication(request: Request): Promise<Response | null> {
++  const base = process.env.RESUME_PUBLICATION_SERVICE_URL?.replace(/\/$/, "");
++  if (!base) return null;
++  if (!base.startsWith("https://") || new URL(base).origin === new URL(request.url).origin) throw new Error("Invalid publication service URL");
++  const url = new URL(request.url);
++  const response = await fetch(`${base}${url.pathname}${url.search}`, { method: request.method,
++    headers: { Cookie: request.headers.get("cookie") || "", "Content-Type": "application/json" },
++    body: request.method === "GET" ? undefined : await request.text(), cache:"no-store", signal:AbortSignal.timeout(120_000) });
++  return new Response(response.body,{status:response.status,headers:{"Content-Type":response.headers.get("content-type") || "application/json",
++    "Cache-Control":"private, no-store",...(response.headers.get("content-disposition") ? {"Content-Disposition":response.headers.get("content-disposition")!}:{}),
++    ...(response.headers.get("x-pdf-sha256") ? {"X-PDF-SHA256":response.headers.get("x-pdf-sha256")!}:{})}});
++}
++
++async function identity(base: string,audience=base) {
++  const result = await fetch(`http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(audience)}&format=full`,
++    {headers:{"Metadata-Flavor":"Google"},cache:"no-store",signal:AbortSignal.timeout(5000)});
++  if(!result.ok) throw new Error("Service identity unavailable"); return (await result.text()).trim();
++}
++export async function publicationBackend(userId:string,jobId:string,suffix:string,body?:unknown) {
++  const base=process.env.RESUME_PDF_BACKEND_URL?.replace(/\/$/,""); const token=process.env.RESUME_PDF_BACKEND_TOKEN;
++  if(!base?.startsWith("https://") || !token) throw new Error("Publication backend unavailable");
++  return fetch(`${base}/api/v2/jobs/${jobId}/${suffix}`,{method:body===undefined?"GET":"POST",headers:{Authorization:`Bearer ${token}`,
++    "X-Serverless-Authorization":`Bearer ${await identity(base,process.env.RESUME_PDF_BACKEND_AUDIENCE||base)}`,"X-User-Id":userId,"Content-Type":"application/json"},
++    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",signal:AbortSignal.timeout(110_000)});
++}
++export async function latestDocument(userId:string,jobId:string,generationId?:string) {
++  const result=await pool.query(`SELECT d.* FROM resume_document_versions d JOIN resume_generations g
++    ON g.id=d.generation_id AND g.user_id=d.user_id AND g.job_id=d.job_id
++    WHERE d.user_id=$1 AND d.job_id=$2 AND ($3::uuid IS NULL OR d.generation_id=$3)
++      AND g.id=(SELECT id FROM resume_generations WHERE user_id=$1 AND job_id=$2 ORDER BY version DESC,created_at DESC LIMIT 1)
++    ORDER BY d.revision DESC LIMIT 1`,[userId,jobId,generationId||null]);
++  const row=result.rows[0];
++  if(!row) throw new PublicationError("SOURCE_REVALIDATION_REQUIRED","Validate your source PDF and generate a new draft before downloading this resume.");
++  validateResumeDocument(row.document_json);
++  if(digestDocument(row.document_json)!==row.document_hash) throw new PublicationError("DOCUMENT_HASH_MISMATCH","Document proof is invalid. Generate a new draft.");
++  return row;
++}
++
++export async function saveDocument(userId:string,jobId:string,generationId:string,expectedRevision:number,document:unknown) {
++  validateResumeDocument(document);
++  const client=await pool.connect();
++  try {
++    await client.query("BEGIN");
++    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${userId}:${jobId}`]);
++    const current=await client.query(`SELECT d.* FROM resume_document_versions d JOIN resume_generations g ON g.id=d.generation_id
++      WHERE d.user_id=$1 AND d.job_id=$2 AND d.generation_id=$3
++        AND g.id=(SELECT id FROM resume_generations WHERE user_id=$1 AND job_id=$2 ORDER BY version DESC,created_at DESC LIMIT 1)
++      ORDER BY revision DESC LIMIT 1 FOR UPDATE OF d`,[userId,jobId,generationId]);
++    const old=current.rows[0];
++    if(!old || old.revision!==expectedRevision) throw new PublicationError("STALE_REVISION","This draft changed in another window. Reload the latest version.");
++    if(document.id!==generationId || document.revision!==expectedRevision || canonicalJson(document.source)!==canonicalJson(old.document_json.source)) throw new PublicationError("SOURCE_PROTECTED","Source corrections require a validated source revision.");
++    const revision=expectedRevision+1;
++    const next:ResumeDocumentV1={...document,revision};
++    // Every save produces a new revision. Validation runs on this exact immutable row.
++    const audit={...old.audit_json,certificationChecks:{schema:true,source:false,factual:false},editValidation:{status:"pending"},issues:[]};
++    const result=await client.query(`INSERT INTO resume_document_versions(user_id,job_id,generation_id,revision,source_import_id,document_json,document_hash,source_hash,audit_json)
++      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,[userId,jobId,generationId,revision,old.source_import_id,JSON.stringify(next),digestDocument(next),old.source_hash,JSON.stringify(audit)]);
++    await client.query("COMMIT");
++    return {id:result.rows[0].id,document:next,documentHash:digestDocument(next)};
++  } catch(error) {await client.query("ROLLBACK");throw error;} finally {client.release();}
++}
++export async function validateSavedDocument(versionId:string) {
++  const base=process.env.RESUME_WORKER_URL?.replace(/\/$/,"");
++  if(!base?.startsWith("https://")) throw new Error("Document validator unavailable");
++  const result=await fetch(`${base}/internal/validate-document`,{method:"POST",headers:{Authorization:`Bearer ${await identity(base,process.env.RESUME_WORKER_AUDIENCE||base)}`,"Content-Type":"application/json"},
++    body:JSON.stringify({versionId}),signal:AbortSignal.timeout(30_000),cache:"no-store"});
++  if(!result.ok) throw new Error("Document validation could not finish");
++  return result.json();
++}
++
++export async function publicationMetadata(userId:string,generationId:string){
++  const result=await pool.query(`SELECT d.revision,d.audit_json,c.id AS artifact_id,c.pdf_sha256 FROM resume_document_versions d
++    LEFT JOIN LATERAL (SELECT id,pdf_sha256 FROM resume_publication_certifications c WHERE c.user_id=d.user_id AND c.generation_id=d.generation_id
++      AND c.document_revision=d.revision AND public.resume_certification_current(d.user_id,d.job_id,c.id) ORDER BY created_at DESC LIMIT 1) c ON true
++    WHERE d.user_id=$1 AND d.generation_id=$2 ORDER BY d.revision DESC LIMIT 1`,[userId,generationId]);
++  const row=result.rows[0];
++  return {documentRevision:row?.revision||null,publicationStatus:row?.artifact_id?"ready":"blocked",certifiedArtifactId:row?.artifact_id||null,pdfSha256:row?.pdf_sha256||null,
++    issues:row?.audit_json?.issues||(!row?[{code:"SOURCE_REVALIDATION_REQUIRED",message:"Validate your source PDF and generate a new draft before downloading.",fieldId:null}]:[])};
++}
+diff --git a/lib/profile-service.ts b/lib/profile-service.ts
+--- a/lib/profile-service.ts
++++ b/lib/profile-service.ts
+@@ -24,6 +24,7 @@
+   preferences?: JobPreferencesData;
+   resume_details?: ResumeDetailsData;
+   compiler_payload?: unknown;
++  resumeDocument?: unknown;
+   error?: string;
+ }
+ 
+@@ -103,6 +104,7 @@
+       reasonCode: data.reasonCode,
+       validatorVersion: data.validatorVersion,
+       fileSha256: data.fileSha256,
++      resumeDocument: data.resumeDocument,
+       markdown: data.markdown,
+       message: data.message,
+       detail: data.detail,
+diff --git a/lib/resume-imports.ts b/lib/resume-imports.ts
+--- a/lib/resume-imports.ts
++++ b/lib/resume-imports.ts
+@@ -7,6 +7,7 @@
+ import { RESUME_VALIDATOR_VERSION, sourceDigest, UNSUPPORTED_LAYOUT } from "@/lib/resume-admission";
+ import { createHash, randomUUID } from "node:crypto";
+ import { parseResumeMarkdown } from "@/lib/resume-parser";
++import { documentToEditor, validateResumeDocument, type ResumeDocumentV1 } from "@/lib/resume-document";
+ 
+ const UUID = /^[0-9a-f-]{36}$/i;
+ type ImportRow = { id: string; user_id: string; object_key: string; file_name: string; file_size: number; baseline_key: string | null;
+@@ -34,7 +35,7 @@
+     if (!result.markdown || !result.fileSha256 || !result.resume_details) throw new Error("Incomplete validation response.");
+     const changed = await pool.query(`UPDATE resume_imports SET status='accepted',validator_version=$3,file_sha256=$4,
+       markdown=$5,parsed_data=$6,reason_code='ACCEPTED' WHERE id=$1 AND revision=$2 AND status='parsing' RETURNING id`,
+-      [id,revision,result.validatorVersion,result.fileSha256,result.markdown,JSON.stringify({...result.resume_details,inferredPreferences:result.preferences||{}})]);
++      [id,revision,result.validatorVersion,result.fileSha256,result.markdown,JSON.stringify({...result.resume_details,resumeDocument:result.resumeDocument,inferredPreferences:result.preferences||{}})]);
+     if (!changed.rows.length) throw new Error("This upload changed. Please retry the latest PDF.");
+     return {success:true,accepted:true,importId:id,revision,markdown:result.markdown,resume_details:result.resume_details,
+       message:result.message,previewUrl:signed.downloadUrl};
+@@ -76,14 +77,24 @@
+     permanentKey=`user_pref_resumes/${userId}/${randomUUID()}.pdf`;
+     await r2Client.send(new PutObjectCommand({Bucket:R2_BUCKET_NAME,Key:permanentKey,Body:bytes,ContentType:'application/pdf'}));
+     const digest = sourceDigest(markdown);
+-    const model=parseResumeMarkdown(markdown);
++    let canonical:ResumeDocumentV1|undefined;
++    const candidateDocument=candidate.parsed_data.resumeDocument;
++    if (candidateDocument) {
++      validateResumeDocument(candidateDocument);
++      canonical=candidateDocument;
++      if (markdown !== candidate.markdown.replace(/\r\n?/g,"\n").trim()) throw new Error("Source corrections require a new validated PDF upload.");
++      canonical.source.revision = importId;
++      canonical.id = `source-${importId}`;
++      if (canonical.source.fileSha256 !== candidate.file_sha256) throw new Error("Source file proof changed. Validate the PDF again.");
++    } else if (process.env.RESUME_CERTIFIED_PUBLICATION === "true") throw new Error("Validate the PDF with the current profile service before continuing.");
++    const model=canonical ? documentToEditor(canonical) : parseResumeMarkdown(markdown);
+     const dateFields=(duration:string)=>{
+       const parts=duration.split(/\s+[–—-]\s+/,2);
+       return {dates:duration,startDate:parts.length===2?parts[0]:'',endDate:parts.length===2?parts[1]:duration};
+     };
+     // Keep legacy editable fields consistent with reviewed Markdown. Raw PDF
+     // extraction is provenance only and must not override the confirmed source.
+-    const details = {...candidate.parsed_data, originalText:candidate.parsed_data.text, text:markdown,
++    const details = {...candidate.parsed_data, resumeDocument:canonical, originalText:candidate.parsed_data.originalText||candidate.parsed_data.text, text:markdown,
+       header:{name:model.personalInfo.name,title:model.personalInfo.title,email:model.personalInfo.email,phone:model.personalInfo.phone,
+         location:model.personalInfo.location,links:[model.personalInfo.linkedin,model.personalInfo.github,...(model.personalInfo.extraContacts||[])].filter(Boolean)},
+       personalDetails:{fullName:model.personalInfo.name,email:model.personalInfo.email,phoneNumber:model.personalInfo.phone,location:model.personalInfo.location},
+diff --git a/app/api/resume/publication/route.ts b/app/api/resume/publication/route.ts
+new file mode 100644
+--- /dev/null
++++ b/app/api/resume/publication/route.ts
+@@ -0,0 +1,47 @@
++import { getCurrentUser } from "@/lib/auth/server";
++import { RESUME_TEMPLATES } from "@/data/resume-templates";
++import { forwardPublication,latestDocument,publicationBackend,PublicationError,saveDocument,validateSavedDocument,UUID } from "@/lib/resume-publication-server";
++
++export const dynamic="force-dynamic";
++export const maxDuration=120;
++const failure=(error:unknown)=>error instanceof PublicationError ? Response.json({publicationStatus:"blocked",issues:[{code:error.code,message:error.message,fieldId:null}]},{status:error.status})
++  : Response.json({publicationStatus:"blocked",issues:[{code:"VALIDATION_UNAVAILABLE",message:"Resume checks could not finish. Your draft is saved; retry preview shortly.",fieldId:null}]},{status:503});
++
++export async function GET(request:Request) {
++  try {
++    const user=await getCurrentUser(); if(!user) return Response.json({error:"Sign in first"},{status:401});
++    const forwarded=await forwardPublication(request);if(forwarded)return forwarded;
++    const params=new URL(request.url).searchParams;
++    const jobId=params.get("jobId")||"",generationId=params.get("generationId")||undefined;
++    const templateId=params.get("templateId")||"mit-capd";
++    if(!UUID.test(jobId)||(generationId&&!UUID.test(generationId))||!RESUME_TEMPLATES.some(t=>t.id===templateId))return Response.json({error:"Invalid request"},{status:400});
++    const row=await latestDocument(user.id,jobId,generationId);
++    const response=await publicationBackend(user.id,jobId,`publication?generationId=${row.generation_id}&documentRevision=${row.revision}&templateId=${templateId}`);
++    const status=await response.json();
++    return Response.json({...status,document:row.document_json,generationId:row.generation_id,documentRevision:row.revision,documentHash:row.document_hash},{status:response.status,headers:{"Cache-Control":"private, no-store"}});
++  }catch(error){return failure(error);}
++}
++export async function POST(request:Request) {
++  try {
++    const user=await getCurrentUser();if(!user)return Response.json({error:"Sign in first"},{status:401});
++    const forwarded=await forwardPublication(request);if(forwarded)return forwarded;
++    if(Number(request.headers.get("content-length")||0)>1_000_000)return Response.json({error:"Document too large"},{status:413});
++    const body=await request.json();
++    const {jobId,generationId,documentRevision,documentHash,templateId="mit-capd",action="preview"}=body;
++    if(!UUID.test(jobId)||!UUID.test(generationId)||!Number.isInteger(documentRevision)||!RESUME_TEMPLATES.some(t=>t.id===templateId)||!["save","preview"].includes(action))return Response.json({error:"Invalid request"},{status:400});
++    if(action==="save"){
++      const saved=await saveDocument(user.id,jobId,generationId,documentRevision,body.document);
++      let validation;
++      try{validation=await validateSavedDocument(saved.id);}catch{validation={issues:[{code:"VALIDATION_UNAVAILABLE",message:"Draft saved. Required checks could not finish; retry preview.",fieldId:null}]};}
++      return Response.json({document:saved.document,documentRevision:saved.document.revision,documentHash:saved.documentHash,publicationStatus:"blocked",artifactId:null,issues:validation.issues||[]});
++    }
++    const row=await latestDocument(user.id,jobId,generationId);
++    if(row.revision!==documentRevision||row.document_hash!==documentHash)throw new PublicationError("STALE_REVISION","This draft changed. Reload the latest version.");
++    if(row.audit_json.editValidation){
++      const validation=await validateSavedDocument(row.id);
++      if(validation.validated!==true)return Response.json({documentRevision,documentHash,publicationStatus:"blocked",issues:validation.issues||[],artifactId:null,pdfSha256:null},{headers:{"Cache-Control":"private, no-store"}});
++    }
++    const response=await publicationBackend(user.id,jobId,"preview",{generationId,documentRevision,documentHash,templateId});
++    return new Response(response.body,{status:response.status,headers:{"Content-Type":"application/json","Cache-Control":"private, no-store"}});
++  }catch(error){return failure(error);}
++}
+diff --git a/app/api/resume/publication/[artifactId]/pdf/route.ts b/app/api/resume/publication/[artifactId]/pdf/route.ts
+new file mode 100644
+--- /dev/null
++++ b/app/api/resume/publication/[artifactId]/pdf/route.ts
+@@ -0,0 +1,15 @@
++import { getCurrentUser } from "@/lib/auth/server";
++import { forwardPublication,publicationBackend,UUID } from "@/lib/resume-publication-server";
++export const dynamic="force-dynamic";
++export async function GET(request:Request,{params}:{params:Promise<{artifactId:string}>}){
++  const user=await getCurrentUser();if(!user)return Response.json({error:"Sign in first"},{status:401});
++  try {
++    const forwarded=await forwardPublication(request);if(forwarded)return forwarded;
++    const {artifactId}=await params;const query=new URL(request.url).searchParams;const jobId=query.get("jobId")||"";
++    if(!UUID.test(jobId)||!UUID.test(artifactId))return Response.json({error:"Invalid artifact"},{status:400});
++    const response=await publicationBackend(user.id,jobId,`artifacts/${artifactId}/pdf${query.get("download")==="1"?"?download=1":""}`);
++    return new Response(response.body,{status:response.status,headers:{"Content-Type":response.headers.get("content-type")||"application/json","Cache-Control":"private, no-store",
++      "Content-Disposition":query.get("download")==="1"?'attachment; filename="resume.pdf"':"inline",
++      "X-PDF-SHA256":response.headers.get("x-pdf-sha256")||"","X-Content-Type-Options":"nosniff"}});
++  }catch{return Response.json({error:"Certified PDF unavailable. Refresh preview and retry.",code:"VALIDATION_UNAVAILABLE"},{status:503});}
++}
+diff --git a/app/api/resume/export/route.ts b/app/api/resume/export/route.ts
+--- a/app/api/resume/export/route.ts
++++ b/app/api/resume/export/route.ts
+@@ -23,6 +23,7 @@
+ }
+ 
+ export async function POST(request: Request) {
++  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
+   let uncommittedKey: string | undefined;
+   try {
+     const user = await getCurrentUser().catch(() => null);
+@@ -222,6 +223,7 @@
+ }
+ 
+ export async function GET(request: Request) {
++  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return Response.json({publicationStatus:"blocked",code:"USE_CERTIFIED_PUBLICATION",issues:[{code:"USE_CERTIFIED_PUBLICATION",message:"Open the certified resume preview before downloading or saving.",fieldId:null}]},{status:409});
+   try {
+     const user = await getCurrentUser().catch(() => null);
+     if (!user || !user.id || !UUID_REGEX.test(user.id)) {
+diff --git a/app/actions/storage.ts b/app/actions/storage.ts
+--- a/app/actions/storage.ts
++++ b/app/actions/storage.ts
+@@ -124,6 +124,10 @@
+       if (parts.length < 3 || parts[1] !== user.id) {
+         return { success: false, error: "Unauthorized access to this resource." };
+       }
++    }
++
++    if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true" && !["templates/","resume_imports/","user_pref_resumes/","avatars/"].some(prefix=>objectKey.startsWith(prefix))) {
++      return {success:false,error:"Open the certified resume preview to download this file."};
+     }
+ 
+     // Verify physical object existence in Cloudflare R2 before generating presigned URL
+diff --git a/app/actions/tailored-resume.ts b/app/actions/tailored-resume.ts
+--- a/app/actions/tailored-resume.ts
++++ b/app/actions/tailored-resume.ts
+@@ -723,6 +723,7 @@
+   templateId?: string,
+   expectedGenerationId?: string | null
+ ): Promise<{ success: boolean; error?: string; code?: string }> {
++  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return {success:false,code:"USE_CERTIFIED_PUBLICATION",error:"Use the certified resume editor. Required checks cannot be manually overridden."};
+   try {
+     if (!UUID_REGEX.test(jobId)) return { success: false, error: "Invalid job identifier." };
+     const contentError = resumeContentError(markdown);
+@@ -764,6 +765,7 @@
+   jobId: string,
+   expectedGenerationId?: string | null
+ ): Promise<{ success: boolean; error?: string; code?: string }> {
++  if(process.env.RESUME_CERTIFIED_PUBLICATION_STRICT === "true") return {success:false,code:"USE_CERTIFIED_PUBLICATION",error:"Use the certified resume editor. Required checks cannot be manually overridden."};
+   try {
+     const user = await getCurrentUser();
+     if (!user?.id || !UUID_REGEX.test(jobId)) return { success: false, error: "Unauthorized or invalid job." };
+diff --git a/scripts/check-certified-publication.cjs b/scripts/check-certified-publication.cjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/check-certified-publication.cjs
+@@ -0,0 +1,22 @@
++const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
++const root=path.resolve(__dirname,'..');
++require(path.join(root,'node_modules/tsx/dist/cjs/index.cjs'));
++const {validateResumeDocument,documentToEditor,applyEditorText,canonicalJson}=require(path.join(root,'lib/resume-document.ts'));
++const {document}=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/canonical-resume.json'),'utf8'));
++validateResumeDocument(document);
++const editor=documentToEditor(document);
++assert.match(editor.skills[0].items,/Observability \(Prometheus, Grafana\)/);
++assert.deepEqual(applyEditorText(document,structuredClone(editor)),document);
++const changed=structuredClone(editor);changed.personalInfo.name='Changed identity';changed.experience[0].company='Changed employer';changed.skills[0].items='Unknown skill';
++assert.deepEqual(applyEditorText(document,changed),document);
++const invalid=structuredClone(document);invalid.experience[0].bullets[0].evidenceIds=['missing'];assert.throws(()=>validateResumeDocument(invalid));
++const duplicate=structuredClone(document);duplicate.sectionOrder.push('skills');assert.throws(()=>validateResumeDocument(duplicate));
++assert.equal(canonicalJson({z:'Café',a:1}),'{"a":1,"z":"Café"}');
++const modal=fs.readFileSync(path.join(root,'components/CertifiedResumeModal.tsx'),'utf8');
++assert.ok(modal.includes('crypto.subtle.digest("SHA-256",bytes)'));
++assert.ok(modal.includes('checkedBytes(publication,true)'));
++assert.ok(!modal.includes('parseResumeMarkdown'));
++const server=fs.readFileSync(path.join(root,'lib/resume-publication-server.ts'),'utf8');
++assert.ok(server.includes('/api/v2/jobs/'));
++assert.ok(!server.includes('ui-export')&&!server.includes('generateResumeDownloadUrl'));
++console.log('CERTIFIED_UI_CONTRACT_VERIFIED');
+diff --git a/scripts/fixtures/canonical-resume.json b/scripts/fixtures/canonical-resume.json
+new file mode 100644
+--- /dev/null
++++ b/scripts/fixtures/canonical-resume.json
+@@ -0,0 +1,1863 @@
++{
++  "generation": "9645adef-a281-4ac1-bcd2-14159c4a1256",
++  "document": {
++    "schemaVersion": "ResumeDocumentV1",
++    "id": "9645adef-a281-4ac1-bcd2-14159c4a1256",
++    "revision": 1,
++    "source": {
++      "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++      "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++      "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
++      "validatorVersion": "source-v1"
++    },
++    "personalInfo": {
++      "id": "personal",
++      "name": "Café Candidate",
++      "title": "Software Engineer",
++      "email": "candidate@example.com",
++      "phone": "+1 (212) 555-0123",
++      "linkedin": "https://linkedin.com/in/candidate",
++      "github": "https://github.com/candidate",
++      "location": "New York, NY",
++      "extraContacts": []
++    },
++    "summary": [
++      {
++        "id": "summary-1",
++        "text": "Builds reliable software and communicates clearly with engineering teams.",
++        "evidenceIds": [
++          "e-summary-1-0"
++        ]
++      }
++    ],
++    "skills": [
++      {
++        "id": "skills-1",
++        "category": "Engineering",
++        "items": [
++          {
++            "id": "skills-1-1",
++            "text": "Rust, Python, and PostgreSQL",
++            "evidenceIds": [
++              "e-skills-1-1-0"
++            ]
++          },
++          {
++            "id": "skills-1-2",
++            "text": "Observability (Prometheus, Grafana)",
++            "evidenceIds": [
++              "e-skills-1-2-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "experience": [
++      {
++        "id": "role-1",
++        "role": "Software Engineer",
++        "company": "Acme Systems",
++        "location": "New York, NY",
++        "duration": "January 2022 – December 2025",
++        "bullets": [
++          {
++            "id": "role-1-bullet-1",
++            "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++            "evidenceIds": [
++              "e-role-1-bullet-1-0"
++            ]
++          },
++          {
++            "id": "role-1-bullet-2",
++            "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++            "evidenceIds": [
++              "e-role-1-bullet-2-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "projects": [
++      {
++        "id": "project-1",
++        "title": "Service Inspector",
++        "technologies": [
++          "Rust",
++          "PostgreSQL"
++        ],
++        "duration": "2024",
++        "bullets": [
++          {
++            "id": "project-1-bullet-1",
++            "text": "Built a tool that inspects service health and displays actionable diagnostics.",
++            "evidenceIds": [
++              "e-project-1-bullet-1-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "education": [
++      {
++        "id": "education-1",
++        "institution": "Example University",
++        "location": "Boston, MA",
++        "degree": "Bachelor of Science in Computer Science",
++        "duration": "2018 – 2022",
++        "details": [
++          {
++            "id": "education-1-detail-1",
++            "text": "Completed a capstone project on dependable distributed systems.",
++            "evidenceIds": [
++              "e-education-1-detail-1-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "additionalSections": [
++      {
++        "id": "additional-1",
++        "title": "Community",
++        "items": [
++          {
++            "id": "additional-1-item-1",
++            "text": "Mentored engineers in a local software community.",
++            "evidenceIds": [
++              "e-additional-1-item-1-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "sectionOrder": [
++      "summary",
++      "skills",
++      "experience",
++      "projects",
++      "education",
++      "additional-1"
++    ],
++    "evidence": [
++      {
++        "id": "e-personal.name-0",
++        "fieldId": "personal.name",
++        "sourceSpan": "Café Candidate",
++        "spanStart": 0,
++        "spanEnd": 14,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.title-0",
++        "fieldId": "personal.title",
++        "sourceSpan": "Software Engineer",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.email-0",
++        "fieldId": "personal.email",
++        "sourceSpan": "candidate@example.com",
++        "spanStart": 0,
++        "spanEnd": 21,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.phone-0",
++        "fieldId": "personal.phone",
++        "sourceSpan": "+1 (212) 555-0123",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.linkedin-0",
++        "fieldId": "personal.linkedin",
++        "sourceSpan": "https://linkedin.com/in/candidate",
++        "spanStart": 0,
++        "spanEnd": 33,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.github-0",
++        "fieldId": "personal.github",
++        "sourceSpan": "https://github.com/candidate",
++        "spanStart": 0,
++        "spanEnd": 28,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.location-0",
++        "fieldId": "personal.location",
++        "sourceSpan": "New York, NY",
++        "spanStart": 0,
++        "spanEnd": 12,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.role-0",
++        "fieldId": "role-1.role",
++        "sourceSpan": "Software Engineer",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.company-0",
++        "fieldId": "role-1.company",
++        "sourceSpan": "Acme Systems",
++        "spanStart": 0,
++        "spanEnd": 12,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.location-0",
++        "fieldId": "role-1.location",
++        "sourceSpan": "New York, NY",
++        "spanStart": 0,
++        "spanEnd": 12,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.duration-0",
++        "fieldId": "role-1.duration",
++        "sourceSpan": "January 2022 – December 2025",
++        "spanStart": 0,
++        "spanEnd": 28,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.title-0",
++        "fieldId": "project-1.title",
++        "sourceSpan": "Service Inspector",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.duration-0",
++        "fieldId": "project-1.duration",
++        "sourceSpan": "2024",
++        "spanStart": 0,
++        "spanEnd": 4,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.institution-0",
++        "fieldId": "education-1.institution",
++        "sourceSpan": "Example University",
++        "spanStart": 0,
++        "spanEnd": 18,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.location-0",
++        "fieldId": "education-1.location",
++        "sourceSpan": "Boston, MA",
++        "spanStart": 0,
++        "spanEnd": 10,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.degree-0",
++        "fieldId": "education-1.degree",
++        "sourceSpan": "Bachelor of Science in Computer Science",
++        "spanStart": 0,
++        "spanEnd": 39,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.duration-0",
++        "fieldId": "education-1.duration",
++        "sourceSpan": "2018 – 2022",
++        "spanStart": 0,
++        "spanEnd": 11,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-skills-1.category-0",
++        "fieldId": "skills-1.category",
++        "sourceSpan": "Engineering",
++        "spanStart": 0,
++        "spanEnd": 11,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.technologies-0",
++        "fieldId": "project-1.technologies",
++        "sourceSpan": "Rust",
++        "spanStart": 0,
++        "spanEnd": 4,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.technologies-1",
++        "fieldId": "project-1.technologies",
++        "sourceSpan": "PostgreSQL",
++        "spanStart": 0,
++        "spanEnd": 10,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-additional-1.title-0",
++        "fieldId": "additional-1.title",
++        "sourceSpan": "Community",
++        "spanStart": 0,
++        "spanEnd": 9,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-summary-1-0",
++        "fieldId": "summary-1",
++        "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
++        "spanStart": 0,
++        "spanEnd": 73,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-skills-1-1-0",
++        "fieldId": "skills-1-1",
++        "sourceSpan": "Rust, Python, and PostgreSQL",
++        "spanStart": 0,
++        "spanEnd": 28,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-skills-1-2-0",
++        "fieldId": "skills-1-2",
++        "sourceSpan": "Observability (Prometheus, Grafana)",
++        "spanStart": 0,
++        "spanEnd": 35,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1-bullet-1-0",
++        "fieldId": "role-1-bullet-1",
++        "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++        "spanStart": 0,
++        "spanEnd": 136,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1-bullet-2-0",
++        "fieldId": "role-1-bullet-2",
++        "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++        "spanStart": 0,
++        "spanEnd": 136,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1-bullet-1-0",
++        "fieldId": "project-1-bullet-1",
++        "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
++        "spanStart": 0,
++        "spanEnd": 78,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1-detail-1-0",
++        "fieldId": "education-1-detail-1",
++        "sourceSpan": "Completed a capstone project on dependable distributed systems.",
++        "spanStart": 0,
++        "spanEnd": 63,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-additional-1-item-1-0",
++        "fieldId": "additional-1-item-1",
++        "sourceSpan": "Mentored engineers in a local software community.",
++        "spanStart": 0,
++        "spanEnd": 49,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      }
++    ]
++  },
++  "source": {
++    "schemaVersion": "ResumeDocumentV1",
++    "id": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
++    "revision": 1,
++    "source": {
++      "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++      "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++      "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
++      "validatorVersion": "source-v1"
++    },
++    "personalInfo": {
++      "id": "personal",
++      "name": "Café Candidate",
++      "title": "Software Engineer",
++      "email": "candidate@example.com",
++      "phone": "+1 (212) 555-0123",
++      "linkedin": "https://linkedin.com/in/candidate",
++      "github": "https://github.com/candidate",
++      "location": "New York, NY",
++      "extraContacts": []
++    },
++    "summary": [
++      {
++        "id": "summary-1",
++        "text": "Builds reliable software and communicates clearly with engineering teams.",
++        "evidenceIds": [
++          "e-summary-1-0"
++        ]
++      }
++    ],
++    "skills": [
++      {
++        "id": "skills-1",
++        "category": "Engineering",
++        "items": [
++          {
++            "id": "skills-1-1",
++            "text": "Rust, Python, and PostgreSQL",
++            "evidenceIds": [
++              "e-skills-1-1-0"
++            ]
++          },
++          {
++            "id": "skills-1-2",
++            "text": "Observability (Prometheus, Grafana)",
++            "evidenceIds": [
++              "e-skills-1-2-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "experience": [
++      {
++        "id": "role-1",
++        "role": "Software Engineer",
++        "company": "Acme Systems",
++        "location": "New York, NY",
++        "duration": "January 2022 – December 2025",
++        "bullets": [
++          {
++            "id": "role-1-bullet-1",
++            "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++            "evidenceIds": [
++              "e-role-1-bullet-1-0"
++            ]
++          },
++          {
++            "id": "role-1-bullet-2",
++            "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++            "evidenceIds": [
++              "e-role-1-bullet-2-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "projects": [
++      {
++        "id": "project-1",
++        "title": "Service Inspector",
++        "technologies": [
++          "Rust",
++          "PostgreSQL"
++        ],
++        "duration": "2024",
++        "bullets": [
++          {
++            "id": "project-1-bullet-1",
++            "text": "Built a tool that inspects service health and displays actionable diagnostics.",
++            "evidenceIds": [
++              "e-project-1-bullet-1-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "education": [
++      {
++        "id": "education-1",
++        "institution": "Example University",
++        "location": "Boston, MA",
++        "degree": "Bachelor of Science in Computer Science",
++        "duration": "2018 – 2022",
++        "details": [
++          {
++            "id": "education-1-detail-1",
++            "text": "Completed a capstone project on dependable distributed systems.",
++            "evidenceIds": [
++              "e-education-1-detail-1-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "additionalSections": [
++      {
++        "id": "additional-1",
++        "title": "Community",
++        "items": [
++          {
++            "id": "additional-1-item-1",
++            "text": "Mentored engineers in a local software community.",
++            "evidenceIds": [
++              "e-additional-1-item-1-0"
++            ]
++          }
++        ]
++      }
++    ],
++    "sectionOrder": [
++      "summary",
++      "skills",
++      "experience",
++      "projects",
++      "education",
++      "additional-1"
++    ],
++    "evidence": [
++      {
++        "id": "e-personal.name-0",
++        "fieldId": "personal.name",
++        "sourceSpan": "Café Candidate",
++        "spanStart": 0,
++        "spanEnd": 14,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.title-0",
++        "fieldId": "personal.title",
++        "sourceSpan": "Software Engineer",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.email-0",
++        "fieldId": "personal.email",
++        "sourceSpan": "candidate@example.com",
++        "spanStart": 0,
++        "spanEnd": 21,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.phone-0",
++        "fieldId": "personal.phone",
++        "sourceSpan": "+1 (212) 555-0123",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.linkedin-0",
++        "fieldId": "personal.linkedin",
++        "sourceSpan": "https://linkedin.com/in/candidate",
++        "spanStart": 0,
++        "spanEnd": 33,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.github-0",
++        "fieldId": "personal.github",
++        "sourceSpan": "https://github.com/candidate",
++        "spanStart": 0,
++        "spanEnd": 28,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-personal.location-0",
++        "fieldId": "personal.location",
++        "sourceSpan": "New York, NY",
++        "spanStart": 0,
++        "spanEnd": 12,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.role-0",
++        "fieldId": "role-1.role",
++        "sourceSpan": "Software Engineer",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.company-0",
++        "fieldId": "role-1.company",
++        "sourceSpan": "Acme Systems",
++        "spanStart": 0,
++        "spanEnd": 12,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.location-0",
++        "fieldId": "role-1.location",
++        "sourceSpan": "New York, NY",
++        "spanStart": 0,
++        "spanEnd": 12,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1.duration-0",
++        "fieldId": "role-1.duration",
++        "sourceSpan": "January 2022 – December 2025",
++        "spanStart": 0,
++        "spanEnd": 28,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.title-0",
++        "fieldId": "project-1.title",
++        "sourceSpan": "Service Inspector",
++        "spanStart": 0,
++        "spanEnd": 17,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.duration-0",
++        "fieldId": "project-1.duration",
++        "sourceSpan": "2024",
++        "spanStart": 0,
++        "spanEnd": 4,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.institution-0",
++        "fieldId": "education-1.institution",
++        "sourceSpan": "Example University",
++        "spanStart": 0,
++        "spanEnd": 18,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.location-0",
++        "fieldId": "education-1.location",
++        "sourceSpan": "Boston, MA",
++        "spanStart": 0,
++        "spanEnd": 10,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.degree-0",
++        "fieldId": "education-1.degree",
++        "sourceSpan": "Bachelor of Science in Computer Science",
++        "spanStart": 0,
++        "spanEnd": 39,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1.duration-0",
++        "fieldId": "education-1.duration",
++        "sourceSpan": "2018 – 2022",
++        "spanStart": 0,
++        "spanEnd": 11,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-skills-1.category-0",
++        "fieldId": "skills-1.category",
++        "sourceSpan": "Engineering",
++        "spanStart": 0,
++        "spanEnd": 11,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.technologies-0",
++        "fieldId": "project-1.technologies",
++        "sourceSpan": "Rust",
++        "spanStart": 0,
++        "spanEnd": 4,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1.technologies-1",
++        "fieldId": "project-1.technologies",
++        "sourceSpan": "PostgreSQL",
++        "spanStart": 0,
++        "spanEnd": 10,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-additional-1.title-0",
++        "fieldId": "additional-1.title",
++        "sourceSpan": "Community",
++        "spanStart": 0,
++        "spanEnd": 9,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-summary-1-0",
++        "fieldId": "summary-1",
++        "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
++        "spanStart": 0,
++        "spanEnd": 73,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-skills-1-1-0",
++        "fieldId": "skills-1-1",
++        "sourceSpan": "Rust, Python, and PostgreSQL",
++        "spanStart": 0,
++        "spanEnd": 28,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-skills-1-2-0",
++        "fieldId": "skills-1-2",
++        "sourceSpan": "Observability (Prometheus, Grafana)",
++        "spanStart": 0,
++        "spanEnd": 35,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1-bullet-1-0",
++        "fieldId": "role-1-bullet-1",
++        "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++        "spanStart": 0,
++        "spanEnd": 136,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-role-1-bullet-2-0",
++        "fieldId": "role-1-bullet-2",
++        "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++        "spanStart": 0,
++        "spanEnd": 136,
++        "page": null,
++        "box": null,
++        "roleId": "role-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-project-1-bullet-1-0",
++        "fieldId": "project-1-bullet-1",
++        "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
++        "spanStart": 0,
++        "spanEnd": 78,
++        "page": null,
++        "box": null,
++        "roleId": "project-1",
++        "origin": "user"
++      },
++      {
++        "id": "e-education-1-detail-1-0",
++        "fieldId": "education-1-detail-1",
++        "sourceSpan": "Completed a capstone project on dependable distributed systems.",
++        "spanStart": 0,
++        "spanEnd": 63,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      },
++      {
++        "id": "e-additional-1-item-1-0",
++        "fieldId": "additional-1-item-1",
++        "sourceSpan": "Mentored engineers in a local software community.",
++        "spanStart": 0,
++        "spanEnd": 49,
++        "page": null,
++        "box": null,
++        "roleId": null,
++        "origin": "user"
++      }
++    ]
++  },
++  "audit": {
++    "status": "completed",
++    "resume_document": {
++      "schemaVersion": "ResumeDocumentV1",
++      "id": "9645adef-a281-4ac1-bcd2-14159c4a1256",
++      "revision": 1,
++      "source": {
++        "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++        "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++        "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
++        "validatorVersion": "source-v1"
++      },
++      "personalInfo": {
++        "id": "personal",
++        "name": "Café Candidate",
++        "title": "Software Engineer",
++        "email": "candidate@example.com",
++        "phone": "+1 (212) 555-0123",
++        "linkedin": "https://linkedin.com/in/candidate",
++        "github": "https://github.com/candidate",
++        "location": "New York, NY",
++        "extraContacts": []
++      },
++      "summary": [
++        {
++          "id": "summary-1",
++          "text": "Builds reliable software and communicates clearly with engineering teams.",
++          "evidenceIds": [
++            "e-summary-1-0"
++          ]
++        }
++      ],
++      "skills": [
++        {
++          "id": "skills-1",
++          "category": "Engineering",
++          "items": [
++            {
++              "id": "skills-1-1",
++              "text": "Rust, Python, and PostgreSQL",
++              "evidenceIds": [
++                "e-skills-1-1-0"
++              ]
++            },
++            {
++              "id": "skills-1-2",
++              "text": "Observability (Prometheus, Grafana)",
++              "evidenceIds": [
++                "e-skills-1-2-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "experience": [
++        {
++          "id": "role-1",
++          "role": "Software Engineer",
++          "company": "Acme Systems",
++          "location": "New York, NY",
++          "duration": "January 2022 – December 2025",
++          "bullets": [
++            {
++              "id": "role-1-bullet-1",
++              "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++              "evidenceIds": [
++                "e-role-1-bullet-1-0"
++              ]
++            },
++            {
++              "id": "role-1-bullet-2",
++              "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++              "evidenceIds": [
++                "e-role-1-bullet-2-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "projects": [
++        {
++          "id": "project-1",
++          "title": "Service Inspector",
++          "technologies": [
++            "Rust",
++            "PostgreSQL"
++          ],
++          "duration": "2024",
++          "bullets": [
++            {
++              "id": "project-1-bullet-1",
++              "text": "Built a tool that inspects service health and displays actionable diagnostics.",
++              "evidenceIds": [
++                "e-project-1-bullet-1-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "education": [
++        {
++          "id": "education-1",
++          "institution": "Example University",
++          "location": "Boston, MA",
++          "degree": "Bachelor of Science in Computer Science",
++          "duration": "2018 – 2022",
++          "details": [
++            {
++              "id": "education-1-detail-1",
++              "text": "Completed a capstone project on dependable distributed systems.",
++              "evidenceIds": [
++                "e-education-1-detail-1-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "additionalSections": [
++        {
++          "id": "additional-1",
++          "title": "Community",
++          "items": [
++            {
++              "id": "additional-1-item-1",
++              "text": "Mentored engineers in a local software community.",
++              "evidenceIds": [
++                "e-additional-1-item-1-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "sectionOrder": [
++        "summary",
++        "skills",
++        "experience",
++        "projects",
++        "education",
++        "additional-1"
++      ],
++      "evidence": [
++        {
++          "id": "e-personal.name-0",
++          "fieldId": "personal.name",
++          "sourceSpan": "Café Candidate",
++          "spanStart": 0,
++          "spanEnd": 14,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.title-0",
++          "fieldId": "personal.title",
++          "sourceSpan": "Software Engineer",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.email-0",
++          "fieldId": "personal.email",
++          "sourceSpan": "candidate@example.com",
++          "spanStart": 0,
++          "spanEnd": 21,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.phone-0",
++          "fieldId": "personal.phone",
++          "sourceSpan": "+1 (212) 555-0123",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.linkedin-0",
++          "fieldId": "personal.linkedin",
++          "sourceSpan": "https://linkedin.com/in/candidate",
++          "spanStart": 0,
++          "spanEnd": 33,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.github-0",
++          "fieldId": "personal.github",
++          "sourceSpan": "https://github.com/candidate",
++          "spanStart": 0,
++          "spanEnd": 28,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.location-0",
++          "fieldId": "personal.location",
++          "sourceSpan": "New York, NY",
++          "spanStart": 0,
++          "spanEnd": 12,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.role-0",
++          "fieldId": "role-1.role",
++          "sourceSpan": "Software Engineer",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.company-0",
++          "fieldId": "role-1.company",
++          "sourceSpan": "Acme Systems",
++          "spanStart": 0,
++          "spanEnd": 12,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.location-0",
++          "fieldId": "role-1.location",
++          "sourceSpan": "New York, NY",
++          "spanStart": 0,
++          "spanEnd": 12,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.duration-0",
++          "fieldId": "role-1.duration",
++          "sourceSpan": "January 2022 – December 2025",
++          "spanStart": 0,
++          "spanEnd": 28,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.title-0",
++          "fieldId": "project-1.title",
++          "sourceSpan": "Service Inspector",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.duration-0",
++          "fieldId": "project-1.duration",
++          "sourceSpan": "2024",
++          "spanStart": 0,
++          "spanEnd": 4,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.institution-0",
++          "fieldId": "education-1.institution",
++          "sourceSpan": "Example University",
++          "spanStart": 0,
++          "spanEnd": 18,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.location-0",
++          "fieldId": "education-1.location",
++          "sourceSpan": "Boston, MA",
++          "spanStart": 0,
++          "spanEnd": 10,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.degree-0",
++          "fieldId": "education-1.degree",
++          "sourceSpan": "Bachelor of Science in Computer Science",
++          "spanStart": 0,
++          "spanEnd": 39,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.duration-0",
++          "fieldId": "education-1.duration",
++          "sourceSpan": "2018 – 2022",
++          "spanStart": 0,
++          "spanEnd": 11,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-skills-1.category-0",
++          "fieldId": "skills-1.category",
++          "sourceSpan": "Engineering",
++          "spanStart": 0,
++          "spanEnd": 11,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.technologies-0",
++          "fieldId": "project-1.technologies",
++          "sourceSpan": "Rust",
++          "spanStart": 0,
++          "spanEnd": 4,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.technologies-1",
++          "fieldId": "project-1.technologies",
++          "sourceSpan": "PostgreSQL",
++          "spanStart": 0,
++          "spanEnd": 10,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-additional-1.title-0",
++          "fieldId": "additional-1.title",
++          "sourceSpan": "Community",
++          "spanStart": 0,
++          "spanEnd": 9,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-summary-1-0",
++          "fieldId": "summary-1",
++          "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
++          "spanStart": 0,
++          "spanEnd": 73,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-skills-1-1-0",
++          "fieldId": "skills-1-1",
++          "sourceSpan": "Rust, Python, and PostgreSQL",
++          "spanStart": 0,
++          "spanEnd": 28,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-skills-1-2-0",
++          "fieldId": "skills-1-2",
++          "sourceSpan": "Observability (Prometheus, Grafana)",
++          "spanStart": 0,
++          "spanEnd": 35,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1-bullet-1-0",
++          "fieldId": "role-1-bullet-1",
++          "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++          "spanStart": 0,
++          "spanEnd": 136,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1-bullet-2-0",
++          "fieldId": "role-1-bullet-2",
++          "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++          "spanStart": 0,
++          "spanEnd": 136,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1-bullet-1-0",
++          "fieldId": "project-1-bullet-1",
++          "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
++          "spanStart": 0,
++          "spanEnd": 78,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1-detail-1-0",
++          "fieldId": "education-1-detail-1",
++          "sourceSpan": "Completed a capstone project on dependable distributed systems.",
++          "spanStart": 0,
++          "spanEnd": 63,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-additional-1-item-1-0",
++          "fieldId": "additional-1-item-1",
++          "sourceSpan": "Mentored engineers in a local software community.",
++          "spanStart": 0,
++          "spanEnd": 49,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        }
++      ]
++    },
++    "certificationChecks": {
++      "schema": true,
++      "source": true,
++      "factual": true
++    },
++    "source_document": {
++      "schemaVersion": "ResumeDocumentV1",
++      "id": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
++      "revision": 1,
++      "source": {
++        "fileSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++        "textSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++        "revision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6",
++        "validatorVersion": "source-v1"
++      },
++      "personalInfo": {
++        "id": "personal",
++        "name": "Café Candidate",
++        "title": "Software Engineer",
++        "email": "candidate@example.com",
++        "phone": "+1 (212) 555-0123",
++        "linkedin": "https://linkedin.com/in/candidate",
++        "github": "https://github.com/candidate",
++        "location": "New York, NY",
++        "extraContacts": []
++      },
++      "summary": [
++        {
++          "id": "summary-1",
++          "text": "Builds reliable software and communicates clearly with engineering teams.",
++          "evidenceIds": [
++            "e-summary-1-0"
++          ]
++        }
++      ],
++      "skills": [
++        {
++          "id": "skills-1",
++          "category": "Engineering",
++          "items": [
++            {
++              "id": "skills-1-1",
++              "text": "Rust, Python, and PostgreSQL",
++              "evidenceIds": [
++                "e-skills-1-1-0"
++              ]
++            },
++            {
++              "id": "skills-1-2",
++              "text": "Observability (Prometheus, Grafana)",
++              "evidenceIds": [
++                "e-skills-1-2-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "experience": [
++        {
++          "id": "role-1",
++          "role": "Software Engineer",
++          "company": "Acme Systems",
++          "location": "New York, NY",
++          "duration": "January 2022 – December 2025",
++          "bullets": [
++            {
++              "id": "role-1-bullet-1",
++              "text": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++              "evidenceIds": [
++                "e-role-1-bullet-1-0"
++              ]
++            },
++            {
++              "id": "role-1-bullet-2",
++              "text": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++              "evidenceIds": [
++                "e-role-1-bullet-2-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "projects": [
++        {
++          "id": "project-1",
++          "title": "Service Inspector",
++          "technologies": [
++            "Rust",
++            "PostgreSQL"
++          ],
++          "duration": "2024",
++          "bullets": [
++            {
++              "id": "project-1-bullet-1",
++              "text": "Built a tool that inspects service health and displays actionable diagnostics.",
++              "evidenceIds": [
++                "e-project-1-bullet-1-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "education": [
++        {
++          "id": "education-1",
++          "institution": "Example University",
++          "location": "Boston, MA",
++          "degree": "Bachelor of Science in Computer Science",
++          "duration": "2018 – 2022",
++          "details": [
++            {
++              "id": "education-1-detail-1",
++              "text": "Completed a capstone project on dependable distributed systems.",
++              "evidenceIds": [
++                "e-education-1-detail-1-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "additionalSections": [
++        {
++          "id": "additional-1",
++          "title": "Community",
++          "items": [
++            {
++              "id": "additional-1-item-1",
++              "text": "Mentored engineers in a local software community.",
++              "evidenceIds": [
++                "e-additional-1-item-1-0"
++              ]
++            }
++          ]
++        }
++      ],
++      "sectionOrder": [
++        "summary",
++        "skills",
++        "experience",
++        "projects",
++        "education",
++        "additional-1"
++      ],
++      "evidence": [
++        {
++          "id": "e-personal.name-0",
++          "fieldId": "personal.name",
++          "sourceSpan": "Café Candidate",
++          "spanStart": 0,
++          "spanEnd": 14,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.title-0",
++          "fieldId": "personal.title",
++          "sourceSpan": "Software Engineer",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.email-0",
++          "fieldId": "personal.email",
++          "sourceSpan": "candidate@example.com",
++          "spanStart": 0,
++          "spanEnd": 21,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.phone-0",
++          "fieldId": "personal.phone",
++          "sourceSpan": "+1 (212) 555-0123",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.linkedin-0",
++          "fieldId": "personal.linkedin",
++          "sourceSpan": "https://linkedin.com/in/candidate",
++          "spanStart": 0,
++          "spanEnd": 33,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.github-0",
++          "fieldId": "personal.github",
++          "sourceSpan": "https://github.com/candidate",
++          "spanStart": 0,
++          "spanEnd": 28,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-personal.location-0",
++          "fieldId": "personal.location",
++          "sourceSpan": "New York, NY",
++          "spanStart": 0,
++          "spanEnd": 12,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.role-0",
++          "fieldId": "role-1.role",
++          "sourceSpan": "Software Engineer",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.company-0",
++          "fieldId": "role-1.company",
++          "sourceSpan": "Acme Systems",
++          "spanStart": 0,
++          "spanEnd": 12,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.location-0",
++          "fieldId": "role-1.location",
++          "sourceSpan": "New York, NY",
++          "spanStart": 0,
++          "spanEnd": 12,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1.duration-0",
++          "fieldId": "role-1.duration",
++          "sourceSpan": "January 2022 – December 2025",
++          "spanStart": 0,
++          "spanEnd": 28,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.title-0",
++          "fieldId": "project-1.title",
++          "sourceSpan": "Service Inspector",
++          "spanStart": 0,
++          "spanEnd": 17,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.duration-0",
++          "fieldId": "project-1.duration",
++          "sourceSpan": "2024",
++          "spanStart": 0,
++          "spanEnd": 4,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.institution-0",
++          "fieldId": "education-1.institution",
++          "sourceSpan": "Example University",
++          "spanStart": 0,
++          "spanEnd": 18,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.location-0",
++          "fieldId": "education-1.location",
++          "sourceSpan": "Boston, MA",
++          "spanStart": 0,
++          "spanEnd": 10,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.degree-0",
++          "fieldId": "education-1.degree",
++          "sourceSpan": "Bachelor of Science in Computer Science",
++          "spanStart": 0,
++          "spanEnd": 39,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1.duration-0",
++          "fieldId": "education-1.duration",
++          "sourceSpan": "2018 – 2022",
++          "spanStart": 0,
++          "spanEnd": 11,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-skills-1.category-0",
++          "fieldId": "skills-1.category",
++          "sourceSpan": "Engineering",
++          "spanStart": 0,
++          "spanEnd": 11,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.technologies-0",
++          "fieldId": "project-1.technologies",
++          "sourceSpan": "Rust",
++          "spanStart": 0,
++          "spanEnd": 4,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1.technologies-1",
++          "fieldId": "project-1.technologies",
++          "sourceSpan": "PostgreSQL",
++          "spanStart": 0,
++          "spanEnd": 10,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-additional-1.title-0",
++          "fieldId": "additional-1.title",
++          "sourceSpan": "Community",
++          "spanStart": 0,
++          "spanEnd": 9,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-summary-1-0",
++          "fieldId": "summary-1",
++          "sourceSpan": "Builds reliable software and communicates clearly with engineering teams.",
++          "spanStart": 0,
++          "spanEnd": 73,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-skills-1-1-0",
++          "fieldId": "skills-1-1",
++          "sourceSpan": "Rust, Python, and PostgreSQL",
++          "spanStart": 0,
++          "spanEnd": 28,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-skills-1-2-0",
++          "fieldId": "skills-1-2",
++          "sourceSpan": "Observability (Prometheus, Grafana)",
++          "spanStart": 0,
++          "spanEnd": 35,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1-bullet-1-0",
++          "fieldId": "role-1-bullet-1",
++          "sourceSpan": "Delivered reliable service 1 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++          "spanStart": 0,
++          "spanEnd": 136,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-role-1-bullet-2-0",
++          "fieldId": "role-1-bullet-2",
++          "sourceSpan": "Delivered reliable service 2 with careful testing, readable documentation, and useful operational dashboards for customer support teams.",
++          "spanStart": 0,
++          "spanEnd": 136,
++          "page": null,
++          "box": null,
++          "roleId": "role-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-project-1-bullet-1-0",
++          "fieldId": "project-1-bullet-1",
++          "sourceSpan": "Built a tool that inspects service health and displays actionable diagnostics.",
++          "spanStart": 0,
++          "spanEnd": 78,
++          "page": null,
++          "box": null,
++          "roleId": "project-1",
++          "origin": "user"
++        },
++        {
++          "id": "e-education-1-detail-1-0",
++          "fieldId": "education-1-detail-1",
++          "sourceSpan": "Completed a capstone project on dependable distributed systems.",
++          "spanStart": 0,
++          "spanEnd": 63,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        },
++        {
++          "id": "e-additional-1-item-1-0",
++          "fieldId": "additional-1-item-1",
++          "sourceSpan": "Mentored engineers in a local software community.",
++          "spanStart": 0,
++          "spanEnd": 49,
++          "page": null,
++          "box": null,
++          "roleId": null,
++          "origin": "user"
++        }
++      ]
++    },
++    "compliance_ledger": [
++      {
++        "code": "source.factual",
++        "passed": true,
++        "severity": "error",
++        "field_path": "document",
++        "evidence_ids": [],
++        "repair_message": "",
++        "waiver": null
++      }
++    ]
++  },
++  "sourceRevision": "b05f6325-8c73-4a96-9b24-f58acc13d8f6"
++}

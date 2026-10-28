@@ -1,0 +1,19 @@
+steps:
+  - name: node:24-bookworm-slim
+    entrypoint: node
+    args: [tests/source-digest.mjs]
+  - name: gcr.io/cloud-builders/docker
+    args: [build, --target, tester, --tag, certified-publication-tester, --progress=plain, .]
+  - name: gcr.io/cloud-builders/docker
+    args: [run, --rm, --entrypoint, sh, --volume, '/workspace/pdf-artifacts:/out', certified-publication-tester, -c, 'find /tmp -type f \( -name "short-*.pdf" -o -name "multipage-*.pdf" \) -exec cp {} /out/ \;']
+  - name: gcr.io/cloud-builders/docker
+    args: [build, --target, final, --tag, 'us-east1-docker.pkg.dev/job-scout-508222/job-hunt/resume-pdf-backend:certified-20261022', .]
+images:
+  - 'us-east1-docker.pkg.dev/job-scout-508222/job-hunt/resume-pdf-backend:certified-20261022'
+artifacts:
+  objects:
+    location: 'gs://job-scout-508222_cloudbuild/certified-publication/$BUILD_ID/'
+    paths: ['pdf-artifacts/*.pdf']
+timeout: 1800s
+options:
+  logging: CLOUD_LOGGING_ONLY

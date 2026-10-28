@@ -295,8 +295,11 @@ def main() -> None:
                         "prompt_version": config.analyzer_prompt_version,
                         "schema_version": config.schema_version,
                         "analyzer_version": config.analyzer_version,
+                        "writer_model": config.writer_model,
+                        "analyzer_model": config.analyzer_model,
+                        "review_model": config.review_model,
                     },
-                    tags=["resume-tailoring", "portal"],
+                    tags=["resume-tailoring", "portal", config.writer_model],
                 )(pipeline.run)
             result = run(run_request, thread_id=request["generation_id"])
             if result.status == "failed":

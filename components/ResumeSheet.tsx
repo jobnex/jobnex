@@ -338,7 +338,7 @@ export function ResumeSheet({
   };
 
   return (
-    <div className="relative flex flex-col items-center select-text">
+    <div className="resume-sheet-root relative flex flex-col items-center select-text">
       {/* Zoom Scaled Wrapper */}
       <div
         style={{
@@ -364,7 +364,7 @@ export function ResumeSheet({
             overflow: "hidden",
             ...themeStyles,
           }}
-          className={`relative shadow-[0_15px_45px_rgba(0,0,0,0.3)] bg-white transition-shadow duration-200 ${
+          className={`resume-paper relative shadow-[0_15px_45px_rgba(0,0,0,0.3)] bg-white transition-shadow duration-200 ${
             isOverflowing ? "border-b-2 border-dashed border-red-500" : ""
           }`}
         >

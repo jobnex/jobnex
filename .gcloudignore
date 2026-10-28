@@ -1,0 +1,12 @@
+.gcloudignore
+.git
+.env*
+!.env.example
+node_modules
+.next
+.next-dev
+scratch
+ui-handoff
+.unlazy
+**/__pycache__
+**/target

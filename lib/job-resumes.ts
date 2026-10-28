@@ -11,7 +11,7 @@ export async function ownsApplication(userId: string, jobId: string) {
 }
 
 export async function latestJobResume(userId: string, jobId: string) {
-  return (await pool.query('SELECT markdown,template_id,r2_object_key,status FROM user_job_resumes WHERE user_id=$1 AND job_id=$2', [userId, jobId])).rows[0] ?? null;
+  return (await pool.query('SELECT markdown,template_id,r2_object_key,status FROM user_job_resumes WHERE user_id=$1 AND job_id=$2 AND public.resume_saved_markdown_is_publishable(user_id::text,job_id,markdown)', [userId, jobId])).rows[0] ?? null;
 }
 
 export async function exportJobResume(userId: string, jobId: string, markdown: string, templateId: string) {
@@ -34,6 +34,8 @@ export async function exportJobResume(userId: string, jobId: string, markdown: s
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`${userId}:${jobId}`]);
+      const allowed = await client.query('SELECT public.resume_saved_markdown_is_publishable($1,$2,$3) AS allowed', [userId,jobId,markdown]);
+      if (!allowed.rows[0]?.allowed) throw new Error("Resume failed source verification; regenerate before export.");
       previous = (await client.query('SELECT r2_object_key FROM user_job_resumes WHERE user_id=$1 AND job_id=$2', [userId, jobId])).rows[0]?.r2_object_key ?? null;
       await client.query(`INSERT INTO user_job_resumes(user_id,job_id,markdown,r2_object_key,template_id,theme,status,file_size,exported_at)
         VALUES($1,$2,$3,$4,$5,$6,'ready',$7,now()) ON CONFLICT(user_id,job_id) DO UPDATE SET

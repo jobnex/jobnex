@@ -5,7 +5,7 @@ from typing import Any, Literal, TypedDict
 from pydantic import BaseModel, ConfigDict, Field
 
 ANALYZER_MODEL = "google/gemini-3.8-flash"
-WRITER_MODEL = "openai/gpt-5.6-terra"
+WRITER_MODEL = "google/gemini-3.8-flash"
 REVIEW_MODEL = "google/gemini-3.8-flash"
 
 TerminalStatus = Literal["completed", "completed_with_estimates", "needs_review", "failed"]
@@ -49,6 +49,8 @@ class RunRequest(FrozenModel):
     allow_synthetic_metrics: bool = False
     project_library: str = ""
     project_library_name: str = ""
+    source_document: dict[str, Any] | None = None
+    source_text: str | None = None
 
 
 class SourceFact(FrozenModel):
@@ -250,6 +252,7 @@ class ClaimProvenance(FrozenModel):
 class ViolationSnapshot(FrozenModel):
     fingerprint: str
     error_count: int = Field(ge=1)
+    phase: Literal["deterministic", "semantic"] = "deterministic"
 
 
 class PipelineConfig(FrozenModel):
@@ -267,7 +270,7 @@ class PipelineConfig(FrozenModel):
     analyzer_version: str = "analyzer-v2"
     max_repairs: int = Field(default=2, ge=0, le=2)
     transient_retries: int = Field(default=1, ge=0, le=3)
-    timeout_seconds: float = Field(default=45.0, gt=0)
+    timeout_seconds: float = Field(default=90.0, gt=0)
 
 
 class PipelineResult(FrozenModel):
@@ -288,9 +291,14 @@ class PipelineResult(FrozenModel):
     cache_hit: bool
     error: str
     project_selection: dict[str, Any] = Field(default_factory=dict)
+    # Omit absent additive fields so legacy audit serialization and persistence
+    # retries remain byte-for-byte compatible with earlier generation results.
+    resume_document: dict[str, Any] | None = Field(default=None, exclude_if=lambda value: value is None)
+    source_document: dict[str, Any] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class GraphState(TypedDict, total=False):
+    resume_document: dict[str, Any]
     request: RunRequest
     source: ResumeSource
     resume_hash: str
@@ -313,6 +321,7 @@ class GraphState(TypedDict, total=False):
     repair_payload: dict[str, Any]
     revision_count: int
     violation_history: list[ViolationSnapshot]
+    fit_length_failure: str
     terminal_status: TerminalStatus
     resume_markdown: str
     usage: list[TokenUsage]

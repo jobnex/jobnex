@@ -49,6 +49,10 @@ class ResumeStore:
         base_resume_id = UUID(str(base_resume_id)) if base_resume_id else None
         audit = result.model_dump(mode="json")
         with self.connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (user_id + ":" + str(job_id),),
+            )
             cur.execute("SELECT job_description FROM public.jobs WHERE id=%s FOR SHARE", (job_id,))
             job = cur.fetchone()
             if not job or sha256_text(normalize_document(job[0])) != result.job_hash:

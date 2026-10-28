@@ -49,12 +49,16 @@ class StorageTests(unittest.TestCase):
 
     def test_exact_markdown_and_audit_are_saved(self):
         r = result("needs_review")
+        self.assertNotIn("resume_document", r.model_dump(mode="json"))
+        self.assertNotIn("source_document", r.model_dump(mode="json"))
         store, cur, _ = self.store([(JOB,), (2,)])
         saved = store.save(
             generation_id=RUN_ID, user_id="u", job_id=JOB_ID, base_resume_id=None, result=r
         )
         self.assertEqual(saved["version"], 2)
-        params = cur.execute.call_args_list[1].args[1]
+        self.assertIn("pg_advisory_xact_lock", cur.execute.call_args_list[0].args[0])
+        self.assertEqual(cur.execute.call_args_list[0].args[1], ("u:" + JOB_ID,))
+        params = cur.execute.call_args_list[2].args[1]
         self.assertEqual(params[5], r.resume_markdown)
         self.assertEqual(params[6].obj, r.model_dump(mode="json"))
         self.assertEqual(params[4], "needs_review")
@@ -69,7 +73,7 @@ class StorageTests(unittest.TestCase):
                 base_resume_id=None,
                 result=result(),
             )
-        self.assertEqual(cur.execute.call_count, 1)
+        self.assertEqual(cur.execute.call_count, 2)
         self.assertEqual(conn.__exit__.call_args.args[0], ValueError)
 
     def test_retry_reuses_identical_row(self):

@@ -20,6 +20,7 @@ from low_risk_agent.models import (  # noqa: E402
 )
 from low_risk_agent.pipeline import ResumeTailoringPipeline  # noqa: E402
 from low_risk_agent.policy import (  # noqa: E402
+    attach_metric_fact_ids,
     check,
     draft_uses_estimates,
     has_errors,
@@ -53,6 +54,27 @@ Coursework: Distributed Systems
 
 
 class PolicyTests(unittest.TestCase):
+    def test_metric_annotation_uses_exact_cited_literal_without_changing_claim(self):
+        source = extract_source(SOURCE_TEXT.replace("3 teams", "20+ teams"))
+        body = next(f for f in source.facts if f.kind == "responsibility" and "20+" in f.source_span)
+        metric = next(f for f in source.facts if f.kind == "metric" and f.source_span == "20+")
+        for stale in ("20", "20 persona"):
+            with self.subTest(stale=stale):
+                bullet = DraftBullet(text="Built checks across 20+ teams.", purpose="experience",
+                    fact_ids=[body.fact_id, metric.fact_id], ownership_level="contributor",
+                    metrics=[MetricAnnotation(literal=stale, origin="source", fact_id=metric.fact_id)])
+                draft = self.draft_with_role_bullet(bullet)
+                corrected = attach_metric_fact_ids(draft, source)
+                saved = corrected.experience[0].bullets[0]
+                self.assertEqual(saved.text, bullet.text)
+                self.assertEqual([(m.literal, m.fact_id) for m in saved.metrics], [("20+", metric.fact_id)])
+                checks = lint_draft(corrected, source, self.strategy, False)
+                self.assertTrue(all(c.passed for c in checks if c.code in {"metric.annotations", "metric.provenance"}))
+                unsupported = bullet.model_copy(update={"text": "Built checks across 99+ teams."})
+                invalid = attach_metric_fact_ids(self.draft_with_role_bullet(unsupported), source)
+                self.assertTrue(any(not c.passed for c in lint_draft(invalid, source, self.strategy, False)
+                    if c.code in {"metric.annotations", "metric.provenance"}))
+
     def setUp(self) -> None:
         self.source = extract_source(SOURCE_TEXT)
         self.role = self.source.roles[0]

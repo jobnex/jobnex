@@ -1,0 +1,32 @@
+{
+  "release": "resume-layout-20261021",
+  "services": {
+    "profile": {
+      "url": "https://layout-v1---job-hunt-profile-znsph25yja-ue.a.run.app",
+      "revision": "job-hunt-profile-00023-xiq",
+      "digestImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile@sha256:c314512ff38e36bac7323271faf0b31897ac64ee117bf68474a5c0fb7a6c8efa",
+      "buildId": "dc007184-1e78-4de8-945e-2c7c0003f5d0"
+    },
+    "worker": {
+      "url": "https://job-hunt-resume-worker-layout-znsph25yja-ue.a.run.app",
+      "revision": "job-hunt-resume-worker-layout-00003-zdq",
+      "digestImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-resume-worker-layout@sha256:05b51b7faaf25c27f32567bc2ec0cc7e48ed502be401090ca640158364cf393c",
+      "buildId": "8c2c13e2-0af2-457b-871a-772089c5a57b"
+    },
+    "web": {
+      "url": "https://layout-v1---job-hunt-web-znsph25yja-ue.a.run.app",
+      "revision": "job-hunt-web-00057-mas",
+      "digestImage": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web@sha256:63966bb9b0975949bff41f829a8164a41a250e0c89a945c0a882ee43f9369d49",
+      "buildId": "876cd025-7826-437a-adac-ba6295d3185a"
+    }
+  },
+  "checks": {
+    "signed_pdf_accept_reject": true,
+    "profile_auth_required": true,
+    "generation_session_required": true,
+    "worker_private_health_verified": true,
+    "schema_and_legacy_trigger_state": true,
+    "legacy_traffic_preserved": true
+  },
+  "scope": "Backend endpoints deployed; Vercel UI and global strict-trigger cutover remain assigned to UI team."
+}

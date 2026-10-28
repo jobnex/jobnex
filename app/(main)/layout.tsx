@@ -1,3 +1,5 @@
+import { TailorResumeModal } from "@/components/TailorResumeModal";
+import { BackgroundResumeTasks } from "@/components/BackgroundResumeTasks";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ApplyModal } from "@/components/ApplyModal";
@@ -15,6 +17,8 @@ export default function MainLayout({
       </main>
       <Footer />
       <ApplyModal />
+      <TailorResumeModal />
+      <BackgroundResumeTasks />
     </>
   );
 }

@@ -1,3 +1,4 @@
+mod certified;
 mod render;
 mod store;
 use serde::{Deserialize, Serialize};
@@ -25,10 +26,15 @@ type ApiResult<T> = Result<T, ApiError>;
 struct ApiError {
     status: u16,
     message: &'static str,
+    code: Option<&'static str>,
 }
 impl ApiError {
     fn new(status: u16, message: &'static str) -> Self {
-        Self { status, message }
+        Self {
+            status,
+            message,
+            code: None,
+        }
     }
     fn unavailable() -> Self {
         Self::new(503, "Storage unavailable; retry")
@@ -155,6 +161,10 @@ fn auth(request: &Request, secret: &[u8; 32]) -> ApiResult<Uuid> {
     Uuid::parse_str(user.value.as_str()).map_err(|_| ApiError::new(400, "Invalid user identity"))
 }
 fn body(request: &mut Request) -> ApiResult<Input> {
+    serde_json::from_slice(&body_bytes(request)?)
+        .map_err(|_| ApiError::new(400, "Invalid request JSON"))
+}
+fn body_bytes(request: &mut Request) -> ApiResult<Vec<u8>> {
     let mut bytes = Vec::new();
     request
         .as_reader()
@@ -164,7 +174,7 @@ fn body(request: &mut Request) -> ApiResult<Input> {
     if bytes.len() > 256_000 {
         return Err(ApiError::new(413, "Request exceeds 256 KB"));
     }
-    serde_json::from_slice(&bytes).map_err(|_| ApiError::new(400, "Invalid request JSON"))
+    Ok(bytes)
 }
 fn artifact(app: &App, user: Uuid, job: Uuid, id: Uuid) -> ApiResult<Artifact> {
     let bytes = app.store.get(&key(user, job, id, "json"))?;
@@ -176,6 +186,8 @@ fn artifact(app: &App, user: Uuid, job: Uuid, id: Uuid) -> ApiResult<Artifact> {
     {
         return Err(ApiError::new(404, "Preview not found"));
     }
+    app.store
+        .require_publishable(user, job, &record.saved.markdown)?;
     Ok(record)
 }
 fn pdf(app: &App, record: &Artifact) -> ApiResult<Vec<u8>> {
@@ -200,16 +212,28 @@ fn saved_preview(saved: &Saved, user: Uuid, job: Uuid) -> ApiResult<Uuid> {
 fn route(request: &mut Request, app: &App) -> ApiResult<(&'static str, Vec<u8>)> {
     let path = request.url().split('?').next().unwrap_or("/").to_owned();
     if path == "/health" && request.method() == &Method::Get {
-        return Ok(("application/json",serde_json::to_vec(&json!({"status":"online","runtime":"rust","pdf_compiler":"typst","backend_only":true})).unwrap()));
+        return Ok(("application/json",serde_json::to_vec(&json!({"status":"online","runtime":"rust","pdf_compiler":"typst","backend_only":true,"certified_publication_enabled":env::var("CERTIFIED_PUBLICATION_ENABLED").as_deref()==Ok("true"),"renderer_version":certified::RENDERER_VERSION,"template_version":certified::TEMPLATE_VERSION,"policy_version":certified::POLICY_VERSION})).unwrap()));
     }
     let user = auth(request, &app.secret)?;
     let parts: Vec<_> = path.trim_matches('/').split('/').collect();
+    if parts.len() >= 4 && parts[..3] == ["api", "v2", "jobs"] {
+        return certified::route(request, app, user, &parts);
+    }
     if parts.len() < 5 || parts[..3] != ["api", "v1", "jobs"] {
         return Err(ApiError::new(404, "Unknown API route"));
     }
     let job = Uuid::parse_str(parts[3]).map_err(|_| ApiError::new(400, "Invalid job ID"))?;
     let current = app.store.load(user, job)?;
     let action = parts[4];
+    if env::var("RESUME_CERTIFIED_PUBLICATION_STRICT").as_deref() == Ok("true")
+        && ["preview", "export", "pdf"].contains(&action)
+    {
+        return Err(ApiError {
+            status: 409,
+            message: "Use certified publication for PDF preview and download",
+            code: Some("USE_CERTIFIED_PUBLICATION"),
+        });
+    }
     let method = request.method().clone();
     let response = match (action, method) {
         ("resume", Method::Get) if parts.len() == 5 => {
@@ -249,6 +273,7 @@ fn route(request: &mut Request, app: &App) -> ApiResult<(&'static str, Vec<u8>)>
                 }
                 saved
             };
+            app.store.require_publishable(user, job, &saved.markdown)?;
             let _permit = permit(&app.compiling, app.max_compiles)?;
             let (bytes, mut result) = render::compile(&app.root, &saved.markdown, saved.theme)
                 .map_err(|_| {
@@ -327,12 +352,22 @@ fn route(request: &mut Request, app: &App) -> ApiResult<(&'static str, Vec<u8>)>
 fn handle(mut request: Request, app: &App) {
     let started = Instant::now();
     let id = Uuid::new_v4();
+    let inline_certified = request.url().starts_with("/api/v2/")
+        && !request
+            .url()
+            .split_once('?')
+            .is_some_and(|(_, q)| q.split('&').any(|p| p == "download=1"));
     let (status, mime, bytes) = match route(&mut request, app) {
         Ok((mime, bytes)) => (200, mime, bytes),
         Err(e) => (
             e.status,
             "application/json",
-            serde_json::to_vec(&json!({"error":e.message,"request_id":id})).unwrap(),
+            serde_json::to_vec(&if let Some(code) = e.code {
+                json!({"error":e.message,"code":code,"request_id":id})
+            } else {
+                json!({"error":e.message,"request_id":id})
+            })
+            .unwrap(),
         ),
     };
     let mut response = Response::from_data(bytes)
@@ -343,8 +378,15 @@ fn handle(mut request: Request, app: &App) {
         .with_header(Header::from_bytes("X-Request-Id", id.to_string()).unwrap());
     if mime == "application/pdf" {
         response = response.with_header(
-            Header::from_bytes("Content-Disposition", "attachment; filename=\"resume.pdf\"")
-                .unwrap(),
+            Header::from_bytes(
+                "Content-Disposition",
+                if inline_certified {
+                    "inline; filename=\"resume.pdf\""
+                } else {
+                    "attachment; filename=\"resume.pdf\""
+                },
+            )
+            .unwrap(),
         );
     }
     if status == 429 || status == 503 {
@@ -359,9 +401,7 @@ fn handle(mut request: Request, app: &App) {
 }
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if env::args().any(|a| a == "--check-storage") {
-        let result = Store::new()?
-            .verify()
-            .map_err(|e| e.message)?;
+        let result = Store::new()?.verify().map_err(|e| e.message)?;
         println!("{}", result);
         return Ok(());
     }

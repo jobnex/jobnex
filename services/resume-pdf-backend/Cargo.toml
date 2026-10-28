@@ -14,13 +14,15 @@ tempfile = "3"
 regex = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 subtle = "2"
-postgres = { version = "0.19", features = ["with-uuid-1"] }
-postgres-native-tls = "0.5"
-native-tls = "0.2"
-r2d2 = "0.8"
-r2d2_postgres = "0.18"
-rust-s3 = { version = "0.37.2", default-features = false, features = ["sync-native-tls"] }
+postgres = { version = "0.19", features = ["with-uuid-1"], optional = true }
+postgres-native-tls = { version = "0.5", optional = true }
+native-tls = { version = "0.2", optional = true }
+r2d2 = { version = "0.8", optional = true }
+r2d2_postgres = { version = "0.18", optional = true }
+rust-s3 = { version = "0.37.2", default-features = false, features = ["sync-native-tls"], optional = true }
 
 [features]
+default = ["production-storage"]
+production-storage = ["dep:postgres", "dep:postgres-native-tls", "dep:native-tls", "dep:r2d2", "dep:r2d2_postgres", "dep:rust-s3"]
 # Filesystem adapters are deliberately absent from production builds.
 local-test = []

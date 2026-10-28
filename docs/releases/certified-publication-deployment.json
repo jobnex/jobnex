@@ -1,0 +1,181 @@
+{
+  "project": "job-scout-508222",
+  "region": "us-east1",
+  "checkedAt": "2026-10-22T07:56:38.301101+00:00",
+  "strictEnforcement": false,
+  "productionUiDeployed": false,
+  "services": {
+    "profile": {
+      "service": "job-hunt-profile",
+      "revision": "job-hunt-profile-00028-xip",
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-profile@sha256:be92f3a4cb388c9453c00ed12f269e7dbfc54bdbe655289d27863474f38e0f02",
+      "buildId": "c9d7440f-35c0-4028-ac58-2ea233747b83",
+      "versionedUrl": "https://certified-v1---job-hunt-profile-znsph25yja-ue.a.run.app",
+      "defaultTraffic": [
+        {
+          "revision": "job-hunt-profile-00024-zav",
+          "percent": 100
+        }
+      ],
+      "rollbackTraffic": [
+        {
+          "revision": "job-hunt-profile-00024-zav",
+          "percent": 100
+        }
+      ]
+    },
+    "web": {
+      "service": "job-hunt-web",
+      "revision": "job-hunt-web-00059-kip",
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-web@sha256:e554d83612c17b2fcaf52b8aa7e5d9b39071039edd59adfa8fcb684464ef75de",
+      "buildId": "d8219c52-0147-4d04-ae17-a890e8b5ba60",
+      "versionedUrl": "https://certified-v1---job-hunt-web-znsph25yja-ue.a.run.app",
+      "defaultTraffic": [
+        {
+          "revision": "job-hunt-web-curated-fresh-1010",
+          "percent": 100
+        }
+      ],
+      "rollbackTraffic": [
+        {
+          "revision": "job-hunt-web-curated-fresh-1010",
+          "percent": 100
+        }
+      ]
+    },
+    "worker": {
+      "service": "job-hunt-resume-worker-layout",
+      "revision": "job-hunt-resume-worker-layout-00007-vev",
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-resume-worker-layout@sha256:840e89eb897fe29863ad46a99455ee8f56f2f5215d3104f4fcf2b3b468d52c10",
+      "buildId": "9cd718f3-445f-4a08-a6a3-e2189ffa44d9",
+      "versionedUrl": "https://certified-v1---job-hunt-resume-worker-layout-znsph25yja-ue.a.run.app",
+      "defaultTraffic": [
+        {
+          "revision": "job-hunt-resume-worker-layout-00004-xoc",
+          "percent": 100
+        }
+      ],
+      "rollbackTraffic": [
+        {
+          "revision": "job-hunt-resume-worker-layout-00004-xoc",
+          "percent": 100
+        }
+      ]
+    },
+    "legacy-worker": {
+      "service": "job-hunt-resume-worker",
+      "revision": "job-hunt-resume-worker-00055-sow",
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/job-hunt-resume-worker@sha256:84033b61f600b5bb78dc71e2d55262618a7841cb3f6830145541a1ff056d9a67",
+      "buildId": "1842b1d4-f309-4360-8b19-16b678c11494",
+      "versionedUrl": "https://certified-compat---job-hunt-resume-worker-znsph25yja-ue.a.run.app",
+      "defaultTraffic": [
+        {
+          "revision": "job-hunt-resume-worker-00055-sow",
+          "percent": 100
+        }
+      ],
+      "rollbackTraffic": [
+        {
+          "revision": "job-hunt-resume-worker-00053-kab",
+          "percent": 100
+        }
+      ]
+    },
+    "pdf": {
+      "service": "resume-pdf-backend",
+      "revision": "resume-pdf-backend-00007-woy",
+      "image": "us-east1-docker.pkg.dev/job-scout-508222/job-hunt/resume-pdf-backend@sha256:541baea7ff044807f98d6832eca85fc6513408e222ae64ec848ac0593cfa192b",
+      "buildId": "2ad701e5-35b0-4eef-96fc-e82ddeda220d",
+      "versionedUrl": "https://certified-v1---resume-pdf-backend-znsph25yja-ue.a.run.app",
+      "defaultTraffic": [
+        {
+          "revision": "resume-pdf-backend-backend-p1-1016",
+          "percent": 100
+        }
+      ],
+      "rollbackTraffic": [
+        {
+          "revision": "resume-pdf-backend-backend-p1-1016",
+          "percent": 100
+        }
+      ]
+    }
+  },
+  "httpChecks": [
+    {
+      "service": "profile",
+      "path": "/health",
+      "status": 200
+    },
+    {
+      "service": "worker",
+      "path": "/health",
+      "status": 200
+    },
+    {
+      "service": "legacy-worker",
+      "path": "/health",
+      "status": 200
+    },
+    {
+      "service": "worker",
+      "path": "/internal/validate-document",
+      "status": 400
+    },
+    {
+      "service": "web",
+      "path": "/api/resume/publication?jobId=9d25a66c-3b9c-482f-8544-7ffcb600cb2d",
+      "status": 401
+    },
+    {
+      "service": "pdf",
+      "path": "/health",
+      "status": 200
+    },
+    {
+      "service": "pdf",
+      "path": "/api/v2/jobs/a937934d-ffef-4ed8-8682-9b7a3f4423a7/preview",
+      "status": 401
+    },
+    {
+      "service": "profile",
+      "path": "/profile/resume",
+      "template": "mit-capd",
+      "status": 200,
+      "accepted": true,
+      "fileHashVerified": true
+    },
+    {
+      "service": "profile",
+      "path": "/profile/resume",
+      "template": "modern-ivy",
+      "status": 200,
+      "accepted": true,
+      "fileHashVerified": true
+    },
+    {
+      "service": "profile",
+      "path": "/profile/resume",
+      "template": "tech-specialist",
+      "status": 200,
+      "accepted": true,
+      "fileHashVerified": true
+    },
+    {
+      "service": "profile",
+      "path": "/profile/resume",
+      "template": "minimalist-exec",
+      "status": 200,
+      "accepted": true,
+      "fileHashVerified": true
+    }
+  ],
+  "recovery": {
+    "job": "resume-certified-recovery",
+    "schedule": "*/5 * * * *",
+    "oidcAudience": "https://job-hunt-resume-worker-layout-znsph25yja-ue.a.run.app",
+    "successfulExecutionVerified": true
+  },
+  "schemaMigration": "migrations/20261022_certified_publication.sql",
+  "runtimeSourceParityVerified": true
+}

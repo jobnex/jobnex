@@ -66,3 +66,29 @@ export const JobSearchParamsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(24),
   keyword: z.string().trim().toLowerCase().optional().default(""),
 });
+
+export function normalizeExternalUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === "#" || trimmed.toLowerCase() === "javascript:void(0)") {
+    return null;
+  }
+
+  // Guard against unsafe schemes
+  if (/^(javascript|data|vbscript|file):/i.test(trimmed)) {
+    return null;
+  }
+
+  // Handle protocol-relative URL
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+
+  // Already has valid http:// or https:// scheme
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Prepend https:// for schemeless domains (e.g. "boards.greenhouse.io/xyz")
+  return `https://${trimmed}`;
+}

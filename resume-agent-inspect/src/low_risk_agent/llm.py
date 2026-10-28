@@ -19,8 +19,11 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 MODEL_PRICES = {
     "google/gemini-3.8-flash": (0.75, 3.75, 0.075),
     "openai/gpt-5.6-terra": (2.0, 12.0, 0.2),
+    "openai/gpt-6.1-sol:batch": (1.0, 5.0, 0.05),
+    "openai/gpt-6.1-sol": (2.0, 10.0, 0.1),
 }
 MAX_OUTPUT_TOKENS = 16_000
+GEMINI_MAX_OUTPUT_TOKENS = 32_000
 
 
 def configure_langsmith_env() -> None:
@@ -43,8 +46,20 @@ def configure_langsmith_env() -> None:
         os.environ.pop("LANGSMITH_HIDE_OUTPUTS", None)
 
 
+class ProviderRequestError(RuntimeError):
+    pass
+
+
 class ModelOutputError(RuntimeError):
     pass
+
+
+class StructuredOutputError(ModelOutputError):
+    """Schema rejection with usage; retry without replaying the cached bad response."""
+
+    def __init__(self, message: str, usage: TokenUsage) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 class OutputTokenLimitError(ModelOutputError):
@@ -80,7 +95,7 @@ def estimated_cost(
     dollars = (
         (input_tokens - cache_read_tokens) * input_rate
         + cache_read_tokens * cache_read_rate
-        + cache_write_tokens * input_rate
+        + cache_write_tokens * ({"openai/gpt-6.1-sol:batch": 1.25, "openai/gpt-6.1-sol": 2.5}.get(model, input_rate))
         + output_tokens * output_rate
     ) / 1_000_000
     return round(dollars, 10)
@@ -92,7 +107,7 @@ def langsmith_usage(usage: TokenUsage) -> dict[str, Any]:
     cache_read_cost = usage.cache_read_tokens * cache_read_rate / 1_000_000
     input_cost = (
         (usage.input_tokens - usage.cache_read_tokens) * input_rate
-        + usage.cache_write_tokens * input_rate
+        + usage.cache_write_tokens * (1.25 if usage.model == "openai/gpt-6.1-sol:batch" else input_rate)
     ) / 1_000_000
     details = {"cache_read": usage.cache_read_tokens} if usage.cache_read_tokens else {}
     if usage.cache_write_tokens:
@@ -189,6 +204,10 @@ class OpenAICompatibleClient:
                 "ls_provider": "openrouter",
                 "ls_model_name": model,
                 "resume_stage": stage,
+                "structured_output_retry_limit": 1,
+                "provider_timeout_seconds": self.config.timeout_seconds,
+                "reasoning_effort": "low" if model.startswith("google/gemini-") and stage in {"craft", "fit_length", "repair"} else effort,
+                "completion_token_ceiling": GEMINI_MAX_OUTPUT_TOKENS if model.startswith("google/gemini-") else MAX_OUTPUT_TOKENS,
             },
             tags=["resume-tailoring", stage],
         )(
@@ -206,9 +225,13 @@ class OpenAICompatibleClient:
         max_tokens: int,
         effort: Effort | None = None,
     ) -> tuple[OutputT, TokenUsage]:
-        if not 0 < max_tokens <= MAX_OUTPUT_TOKENS:
-            raise ValueError(f"max_tokens must be between 1 and {MAX_OUTPUT_TOKENS}")
+        ceiling = GEMINI_MAX_OUTPUT_TOKENS if model.startswith("google/gemini-") else MAX_OUTPUT_TOKENS
+        if not 0 < max_tokens <= ceiling:
+            raise ValueError(f"max_tokens must be between 1 and {ceiling}")
+        if model.startswith("google/gemini-") and stage in {"craft", "fit_length", "repair"}:
+            effort = "low"
         prior_usage: list[TokenUsage] = []
+        structured_retries = 0
         for attempt in range(3):
             try:
                 value, usage = self._complete(
@@ -222,29 +245,34 @@ class OpenAICompatibleClient:
                 )
             except OutputTokenLimitError as error:
                 prior_usage.append(error.usage)
-                if attempt == 2 or max_tokens == MAX_OUTPUT_TOKENS:
+                if attempt == 2 or max_tokens == ceiling:
+                    error.usage = self._combined_usage(prior_usage)
+                    self._record_langsmith_usage(error.usage)
                     raise
-                max_tokens = min(max_tokens * 2, MAX_OUTPUT_TOKENS)
+                max_tokens = min(max_tokens * 2, ceiling)
+            except StructuredOutputError as error:
+                prior_usage.append(error.usage)
+                if structured_retries >= 1 or attempt == 2:
+                    error.usage = self._combined_usage(prior_usage)
+                    self._record_langsmith_usage(error.usage)
+                    raise
+                structured_retries += 1
+                # Changes the durable body hash: the invalid cached response is never replayed.
+                system += "\nPrevious response failed schema validation. Return all required fields with exact types; no Markdown fences."
             else:
                 # Include paid, truncated attempts in the successful stage's audit totals.
-                fields = (
-                    "input_tokens",
-                    "output_tokens",
-                    "cache_read_tokens",
-                    "cache_write_tokens",
-                    "estimated_cost_usd",
-                )
-                records = [*prior_usage, usage]
-                updates = {field: sum(getattr(item, field) for item in records) for field in fields}
-                updates["provider_cost_usd"] = (
-                    sum(item.provider_cost_usd for item in records)
-                    if all(item.provider_cost_usd is not None for item in records)
-                    else None
-                )
-                total_usage = usage.model_copy(update=updates)
+                total_usage = self._combined_usage([*prior_usage, usage])
                 self._record_langsmith_usage(total_usage)
                 return value, total_usage
         raise AssertionError("unreachable")
+
+    @staticmethod
+    def _combined_usage(records: list[TokenUsage]) -> TokenUsage:
+        fields = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "estimated_cost_usd")
+        updates = {field: sum(getattr(item, field) for item in records) for field in fields}
+        updates["provider_cost_usd"] = (sum(item.provider_cost_usd for item in records)
+            if all(item.provider_cost_usd is not None for item in records) else None)
+        return records[-1].model_copy(update=updates)
 
     @staticmethod
     def _provider_settings() -> tuple[str, str]:
@@ -287,8 +315,15 @@ class OpenAICompatibleClient:
                 {"role": "user", "content": stable_json(payload)},
             ],
         }
+        if model.startswith("google/gemini-"):
+            body["response_format"] = {"type": "json_schema", "json_schema": {
+                "name": output_type.__name__, "strict": True, "schema": schema,
+            }}
+            body["provider"] = {"require_parameters": True}
         if effort:
             body["reasoning"] = {"effort": effort, "exclude": True}
+        if model.endswith(":batch") and self.transport == self._post_json:
+            raise ValueError("Batch models require durable batch transport; use --job-id and --generation-id")
         response = self._request(
             endpoint,
             api_key,
@@ -341,7 +376,7 @@ class OpenAICompatibleClient:
         try:
             value = output_type.model_validate_json(text)
         except (json.JSONDecodeError, ValidationError) as error:
-            raise ModelOutputError("model returned invalid structured output") from error
+            raise StructuredOutputError(f"{stage}: model returned invalid structured output", usage) from error
 
         return value, usage
 
@@ -394,13 +429,13 @@ class OpenAICompatibleClient:
                     time.sleep(delay)
                     retry_seconds_remaining -= delay
         if isinstance(last_error, _InlineRateLimitError):
-            raise RuntimeError(f"model provider request failed ({last_error})") from last_error
+            raise ProviderRequestError(f"model provider request failed ({last_error})") from last_error
         if isinstance(last_error, HTTPError):
             message = f"model provider request failed (HTTP {last_error.code})"
-            raise RuntimeError(message) from last_error
+            raise ProviderRequestError(message) from last_error
         if isinstance(last_error, TimeoutError):
-            raise RuntimeError("model provider request timed out") from last_error
-        raise RuntimeError("model provider network request failed") from last_error
+            raise ProviderRequestError("model provider request timed out") from last_error
+        raise ProviderRequestError("model provider network request failed") from last_error
 
     @staticmethod
     def _post_json(

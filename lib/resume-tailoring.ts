@@ -73,6 +73,7 @@ export async function enqueueTailoring(userId: string, jobId: string, resume: Ta
       (id,user_id,job_id,base_resume_id,idempotency_key,source_text,job_description,include_summary,status,credit_state,credit_cost)
       VALUES($1,$2,$3,$4,$5,$6,$7,true,'queued','held',1)`,
       [id, userId, jobId, resume.id, idempotencyKey, resume.markdown, job.rows[0].job_description]);
+    await client.query(`INSERT INTO resume_dispatch_outbox(request_id) VALUES($1)`, [id]);
     await client.query("COMMIT");
     return { id, status: "queued", credit_state: "held", duplicate: false };
   } catch (error) {

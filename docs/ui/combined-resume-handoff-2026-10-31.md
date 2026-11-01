@@ -4,6 +4,8 @@ Updated October 31, 2026 (America/New_York). This document consolidates the earl
 
 **Status:** Backend deployed and verified on GCP. Frontend patch published in PR #15; deployment to the Vercel project serving `www.jobnex.co` is still pending. The UI team owns preview acceptance, frontend production deployment and the final browser check.
 
+**Rollout hold — integration gaps found in the subsequent audit:** The checked upload patch activates a new file key without creating the confirmed import required by the checked generation-admission path. The production admission function also requires validator version `single-column-v1`, while the newer versioned parser reports `single-column-v2`. Separately, the checked resume-details save path can rebuild Markdown without coursework, GPA or locations. The public frontend and worker routing have not been verified. Resolve these compatibility and preservation issues and validate end-to-end using a test account before deploying this patch. Preserve ownership, source-hash and validation checks; do not bypass them to make admission pass.
+
 Shareable resources:
 
 - [Read this handoff on GitHub](https://github.com/jobnex/jobnex/blob/fix/resume-validated-activation/docs/ui/combined-resume-handoff-2026-10-31.md)

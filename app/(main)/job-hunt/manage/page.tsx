@@ -884,6 +884,13 @@ export default function ManageJobHuntPage() {
   };
 
   const handleResumeFileUpload = async (file: File) => {
+    const previousResume = { selectedFile, resumeUploaded, resumeFileName, resumeFileKey };
+    const restoreResumeDisplay = () => {
+      setSelectedFile(previousResume.selectedFile);
+      setResumeUploaded(previousResume.resumeUploaded);
+      setResumeFileName(previousResume.resumeFileName);
+      setResumeFileKey(previousResume.resumeFileKey);
+    };
     setSelectedFile(file);
     setResumeUploaded(true);
     setResumeFileName(file.name);
@@ -906,11 +913,10 @@ export default function ManageJobHuntPage() {
       });
 
       if (commitRes.success) {
+        setResumeFileKey(commitRes.data.fileKey);
         try {
-          const response = await fetch("/api/job-hunt/profile", { method: "POST",
-            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objectKey: res.objectKey, fileName: file.name }) });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Resume extraction failed");
+          const data = commitRes.extraction;
+          if (!data) throw new Error("Resume saved, but its validated extraction is unavailable. Reload the page.");
           const details = data.resume_details || {};
           const preferences = data.preferences || {};
           setConfirmation({ isConfirmed: false, confirmedAt: preferences.confirmedAt ?? null,
@@ -919,12 +925,12 @@ export default function ManageJobHuntPage() {
             if (details.personalDetails) setPersonalDetails(details.personalDetails);
             setEducations(details.educationHistory || []);
             setExperiences(details.experienceHistory || []);
-            if (Array.isArray(preferences.skills)) setSkills(preferences.skills);
-            if (Array.isArray(preferences.domains)) setDomains(preferences.domains);
-            if (Array.isArray(preferences.cities)) setCities(preferences.cities);
-            if (preferences.country) setCountry(preferences.country);
-            if (preferences.seniority) setSeniority(preferences.seniority);
-            if (preferences.experienceYears != null) setExperience(String(preferences.experienceYears));
+            setSkills(Array.isArray(preferences.skills) ? preferences.skills : []);
+            setDomains(Array.isArray(preferences.domains) ? preferences.domains : []);
+            setCities(Array.isArray(preferences.cities) ? preferences.cities : []);
+            setCountry(preferences.country || "");
+            setSeniority(preferences.seniority || "");
+            setExperience(preferences.experienceYears == null ? "" : String(preferences.experienceYears));
           }
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Resume details extraction failed", { id: "resume-upload-toast" });
@@ -932,9 +938,11 @@ export default function ManageJobHuntPage() {
         }
         toast.success("Resume updated & previous version pruned from cloud!", { id: "resume-upload-toast" });
       } else {
+        restoreResumeDisplay();
         toast.error(commitRes.error || "File uploaded, but database save failed. Retry upload.", { id: "resume-upload-toast" });
       }
     } else {
+      restoreResumeDisplay();
       toast.error(res.error || "Failed to upload resume to Cloudflare R2.", { id: "resume-upload-toast" });
     }
   };

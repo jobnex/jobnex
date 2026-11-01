@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const signed = await getPresignedDownloadUrl(input.objectKey);
     if (!signed.downloadUrl) throw new Error("Resume unavailable");
     return Response.json(await profileService(user.id, "/profile/resume-from-r2", { ...input, downloadUrl: signed.downloadUrl }));
-  } catch {
-    return Response.json({ error: "Could not extract resume details. Your uploaded file is retained; retry extraction." }, { status: 502 });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Could not extract resume details. Your uploaded file is retained; retry extraction." }, { status: 502 });
   }
 }

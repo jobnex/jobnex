@@ -13,6 +13,8 @@ export async function profileService(userId: string, path: string, body?: Record
       "x-signature": createHmac("sha256", secret).update(bound).digest("hex") },
     body: payload, signal: AbortSignal.timeout(60_000), cache: "no-store",
   });
-  if (!response.ok) throw new Error("Resume extraction service failed");
-  return response.json();
+  const result = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(typeof result?.detail === "string" ? result.detail : "Resume extraction service failed");
+  if (!result || typeof result !== "object") throw new Error("Resume extraction service returned an invalid response");
+  return result;
 }

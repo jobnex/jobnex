@@ -12,7 +12,7 @@ Shareable resources:
 - [Download the complete handoff ZIP](https://github.com/jobnex/jobnex/raw/refs/heads/fix/resume-validated-activation/docs/ui/combined-ui-resume-handoff-2026-10-31.zip)
 - [Review the implementation in PR #15](https://github.com/jobnex/jobnex/pull/15)
 
-## Release to deploy
+## Patch to review
 
 - Repository: https://github.com/jobnex/jobnex
 - Draft PR: https://github.com/jobnex/jobnex/pull/15
@@ -21,7 +21,7 @@ Shareable resources:
 - Patch base: `f9a3b8163af57ff780696754850425985c09807f`
 - Target: the Vercel project serving `www.jobnex.co`. Its project identity and actual deployed source commit still need confirmation by the UI owner.
 
-Deploy only the five changed files in this PR. Do not replace the entire frontend with an older Cloud Run checkout. The ZIP contains a Git patch, exact changed-file snapshots under `files/`, a runnable failure check, and SHA-256 hashes. It contains no credentials, environment files or customer resumes.
+The existing patch changes five implementation/test files; the integration fixes described in the rollout hold require additional work. Do not replace the entire frontend with an older Cloud Run checkout. The ZIP contains the current Git patch, exact changed-file snapshots under `files/`, a runnable failure check, and SHA-256 hashes. It contains no credentials, environment files or customer resumes.
 
 ## Problem and resulting behavior
 
@@ -50,7 +50,7 @@ The patch:
 
 ## Backend dependency: already deployed
 
-Both backend releases are already included in the active revisions below. No additional backend deployment is required to apply this UI patch.
+Both parser releases were deployed to the revisions listed below. Generation admission and validator compatibility still require investigation and changes before rollout; do not assume the parser deployment resolves those dependencies.
 
 Earlier fixes included:
 
@@ -129,7 +129,7 @@ Include these parser regression styles in the successful-upload checks:
 
 Use synthetic files or a separate test account for routine verification. Customer uploads replace active base resumes and can change autofilled preferences; obtain the account owner's authorization before using a customer account. Never include customer files or credentials in test reports.
 
-Only after preview acceptance, deploy to the Vercel production project and repeat a small authorized upload/reload check on `www.jobnex.co`. Record the deployment URL, source commit and test results.
+After resolving the rollout-hold issues and passing preview acceptance, deploy to the Vercel production project and repeat a small authorized upload/reload check on `www.jobnex.co`. Record the deployment URL, source commit and test results.
 
 The UI team's completion note should include: Vercel project and production deployment URL; deployed source commit; preview and production upload/reload results; any remaining issues; and the previous Vercel deployment available for rollback. Backend availability alone does not establish frontend completion.
 

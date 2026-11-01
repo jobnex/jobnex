@@ -929,7 +929,7 @@ export default function ManageJobHuntPage() {
             setDomains(Array.isArray(preferences.domains) ? preferences.domains : []);
             setCities(Array.isArray(preferences.cities) ? preferences.cities : []);
             setCountry(preferences.country || "");
-            setSeniority(preferences.seniority || "");
+            setSeniority(preferences.seniority === "Senior-level" ? "Senior" : preferences.seniority || "");
             setExperience(preferences.experienceYears == null ? "" : String(preferences.experienceYears));
           }
         } catch (error) {

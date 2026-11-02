@@ -15,6 +15,8 @@ import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
 import { preferenceWrite } from "@/lib/db/preferences-confirmation";
+import { profileService } from "@/lib/profile-service";
+import { validateResumeDocument } from "@/lib/resume-document";
 
 export type StorageCategory = "resume" | "avatar";
 
@@ -255,10 +257,8 @@ export interface CommitResumeParams {
 }
 
 /**
- * Commits a newly uploaded resume to the relational 'resumes' table
- * and strictly enforces the production storage invariant:
- * ONLY ONE RESUME PER ACCOUNT IN CLOUDFLARE R2 AT ANY POINT IN TIME.
- * Any older resume versions in R2 for this user account are pruned/deleted.
+ * Validates a staged upload before atomically replacing the active resume.
+ * Prior cloud objects remain recoverable until ownership-aware cleanup.
  */
 export async function commitResumeUpload({
   objectKey,
@@ -267,6 +267,7 @@ export async function commitResumeUpload({
 }: CommitResumeParams): Promise<{
   success: boolean;
   data?: any;
+  extraction?: { preferences: any; resume_details: any };
   error?: string;
 }> {
   try {
@@ -285,83 +286,85 @@ export async function commitResumeUpload({
       return { success: false, error: "Unauthorized file key." };
     }
 
-    // 1. Storage Invariant Enforcement:
-    // List and delete ALL existing objects in Cloudflare R2 under user_pref_resumes/{user.id}/
-    // EXCEPT the newly uploaded objectKey. Never delete the persistent directory marker (.keep).
-    try {
-      const listCommand = new ListObjectsV2Command({
-        Bucket: R2_BUCKET_NAME,
-        Prefix: expectedPrefix,
-      });
-      const listRes = await r2Client.send(listCommand);
-      if (listRes.Contents && listRes.Contents.length > 0) {
-        for (const item of listRes.Contents) {
-          if (item.Key && item.Key !== objectKey && !item.Key.endsWith("/.keep")) {
-            console.log(`[R2 Prune] Deleting old resume version: ${item.Key}`);
-            await r2Client.send(
-              new DeleteObjectCommand({
-                Bucket: R2_BUCKET_NAME,
-                Key: item.Key,
-              })
-            );
-          }
-        }
-      }
-    } catch (r2Err) {
-      console.error("Failed to prune old R2 resumes:", r2Err);
-      // Non-fatal if R2 list fails, but we continue to DB commit
+    // Parse the staged file before replacing metadata or pruning the active file.
+    const signed = await getPresignedDownloadUrl(objectKey);
+    if (!signed.success || !signed.downloadUrl) {
+      return { success: false, error: "Could not read the uploaded resume. Your current resume is unchanged." };
+    }
+    const validation = await profileService(user.id, "/profile/resume-from-r2", {
+      objectKey, fileName, downloadUrl: signed.downloadUrl, validateOnly: true,
+      requireCanonical: fileName.toLowerCase().endsWith('.pdf'),
+    });
+    if (validation.valid !== true) {
+      return { success: false, error: validation.detail || "Resume validation failed. Your current resume is unchanged." };
     }
 
+    if (!validation.resume_details || typeof validation.resume_details !== "object" ||
+        typeof validation.markdown !== "string" || !validation.markdown.trim() ||
+        typeof validation.fileSha256 !== "string" || !/^[a-f0-9]{64}$/.test(validation.fileSha256)) {
+      return { success: false, error: "Parser update required. Your current resume is unchanged." };
+    }
+    // Browser PUT URLs remain reusable briefly. Activate a server-only copy of
+    // the exact validated bytes, rather than that mutable staging object.
+    const staged = await r2Client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: objectKey }));
+    if (!staged.Body || !staged.ContentLength || staged.ContentLength > 10 * 1024 * 1024) {
+      throw new Error("Invalid resume size. Your current resume is unchanged.");
+    }
+    const bytes = await staged.Body.transformToByteArray();
+    if (bytes.length > 10 * 1024 * 1024 || crypto.createHash("sha256").update(bytes).digest("hex") !== validation.fileSha256) {
+      throw new Error("The uploaded resume changed during validation. Upload it again.");
+    }
+    const extension = fileName.toLowerCase().endsWith(".docx") ? ".docx" : ".pdf";
+    objectKey = `${expectedPrefix}${crypto.randomUUID()}${extension}`;
+    await r2Client.send(new PutObjectCommand({ Bucket: R2_BUCKET_NAME, Key: objectKey, Body: bytes,
+      ContentType: extension === ".pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }));
     const now = new Date();
     const cleanFileName = fileName || "Uploaded_Resume.pdf";
-
-    // 2. Database Upsert into normalized 'user_pref_resumes' table
-    const [savedResume] = await db
-      .insert(userPrefResumes)
-      .values({
-        userId: user.id,
-        title: cleanFileName,
-        fileName: cleanFileName,
-        fileKey: objectKey,
-        fileSize: fileSize || null,
-        fileUrl: objectKey,
-        isPrimary: true,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: userPrefResumes.userId,
-        set: {
-          title: cleanFileName,
-          fileName: cleanFileName,
-          fileKey: objectKey,
-          content: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN NULL ELSE ${userPrefResumes.content} END`,
-          parsedData: sql`CASE WHEN ${userPrefResumes.fileKey} IS DISTINCT FROM ${objectKey} THEN '{}'::jsonb ELSE ${userPrefResumes.parsedData} END`,
-          fileSize: fileSize || null,
-          fileUrl: objectKey,
-          isPrimary: true,
-          updatedAt: now,
-        },
-      })
-      .returning();
-
-    // 3. Update user_job_preferences with activeResumeId foreign key
-    // and sync JSON document for backward compatibility
-    const [existingPref] = await db
-      .select()
-      .from(userJobPreferences)
-      .where(eq(userJobPreferences.userId, user.id))
-      .limit(1);
-
-    if (existingPref) {
-      await db
-        .update(userJobPreferences)
-        .set({
-          activeResumeId: savedResume.id,
-          preferences: preferenceWrite({ resumeUploaded: true, resumeFileName: cleanFileName, resumeFileKey: objectKey }),
-          updatedAt: now,
-        })
-        .where(eq(userJobPreferences.userId, user.id));
+    const details = validation.resume_details;
+    const importId = crypto.randomUUID();
+    const canonical = details.resumeDocument;
+    if (extension === '.pdf') {
+      if (!canonical || validation.validatorVersion !== 'single-column-v2' || canonical.source?.fileSha256 !== validation.fileSha256) {
+        throw new Error('Parser update required for verified PDF generation. Your current resume is unchanged.');
+      }
+      canonical.id = importId;
+      canonical.source.revision = importId;
+      validateResumeDocument(canonical);
     }
+    const savedResume = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${user.id},0))`);
+      const busy = await tx.execute(sql`SELECT id FROM resume_generation_requests WHERE user_id=${user.id} AND status IN ('queued','running') LIMIT 1`);
+      if (busy.rows.length) throw new Error("Wait for resume generation to finish before changing the base resume");
+      const [existingPref] = await tx.select().from(userJobPreferences)
+        .where(eq(userJobPreferences.userId,user.id)).limit(1);
+      const inferred = validation.preferences || {};
+      const updates: Record<string, unknown> = {
+        resumeUploaded: true, resumeFileName: cleanFileName, resumeFileKey: objectKey,
+      };
+      if (existingPref?.preferences?.autofillFromResume !== false) {
+        for (const field of ['cities','skills','domains']) updates[field] = Array.isArray(inferred[field]) ? inferred[field] : [];
+        for (const field of ['country','currency','seniority','experienceYears']) updates[field] = inferred[field] ?? null;
+      }
+      const values = {
+        title: cleanFileName, fileName: cleanFileName, fileKey: objectKey,
+        fileSize: bytes.length, fileUrl: objectKey, isPrimary: true,
+        content: validation.markdown, parsedData: details, updatedAt: now,
+      };
+      const [saved] = await tx.insert(userPrefResumes).values({userId:user.id,...values})
+        .onConflictDoUpdate({target:userPrefResumes.userId,set:values}).returning();
+      if (extension === '.pdf') await tx.execute(sql`INSERT INTO resume_imports
+        (id,user_id,object_key,file_name,file_size,status,validator_version,file_sha256,content_sha256,markdown,parsed_data,confirmed_at)
+        VALUES(${importId}::uuid,${user.id},${objectKey},${cleanFileName},${bytes.length},'confirmed',
+        ${validation.validatorVersion},${validation.fileSha256},encode(digest(replace(replace(${validation.markdown},chr(13)||chr(10),chr(10)),chr(13),chr(10)),'sha256'),'hex'),
+        ${validation.markdown},${JSON.stringify(details)}::jsonb,now())`);
+      await tx.insert(userJobPreferences).values({userId:user.id,activeResumeId:saved.id,
+        preferences:updates,resumeDetails:details,updatedAt:now})
+        .onConflictDoUpdate({target:userJobPreferences.userId,set:{activeResumeId:saved.id,
+          preferences:preferenceWrite(updates),resumeDetails:details,updatedAt:now}});
+      return saved;
+    });
+    // Keep previous objects recoverable. Cleanup must verify active ownership
+    // under the same user lock; pruning all objects here races another upload.
 
     revalidatePath("/job-hunt/manage");
     revalidatePath("/job-hunt");
@@ -370,6 +373,7 @@ export async function commitResumeUpload({
     return {
       success: true,
       data: savedResume,
+      extraction: { preferences: validation.preferences, resume_details: details },
     };
   } catch (error: any) {
     console.error("Failed to commit resume upload:", error);

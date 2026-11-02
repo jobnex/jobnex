@@ -16,6 +16,7 @@ import { revalidatePath } from "next/cache";
 import crypto from "crypto";
 import { preferenceWrite } from "@/lib/db/preferences-confirmation";
 import { profileService } from "@/lib/profile-service";
+import { validateResumeDocument } from "@/lib/resume-document";
 
 export type StorageCategory = "resume" | "avatar";
 
@@ -292,6 +293,7 @@ export async function commitResumeUpload({
     }
     const validation = await profileService(user.id, "/profile/resume-from-r2", {
       objectKey, fileName, downloadUrl: signed.downloadUrl, validateOnly: true,
+      requireCanonical: fileName.toLowerCase().endsWith('.pdf'),
     });
     if (validation.valid !== true) {
       return { success: false, error: validation.detail || "Resume validation failed. Your current resume is unchanged." };
@@ -319,6 +321,16 @@ export async function commitResumeUpload({
     const now = new Date();
     const cleanFileName = fileName || "Uploaded_Resume.pdf";
     const details = validation.resume_details;
+    const importId = crypto.randomUUID();
+    const canonical = details.resumeDocument;
+    if (extension === '.pdf') {
+      if (!canonical || validation.validatorVersion !== 'single-column-v2' || canonical.source?.fileSha256 !== validation.fileSha256) {
+        throw new Error('Parser update required for verified PDF generation. Your current resume is unchanged.');
+      }
+      canonical.id = importId;
+      canonical.source.revision = importId;
+      validateResumeDocument(canonical);
+    }
     const savedResume = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${user.id},0))`);
       const busy = await tx.execute(sql`SELECT id FROM resume_generation_requests WHERE user_id=${user.id} AND status IN ('queued','running') LIMIT 1`);
@@ -340,6 +352,11 @@ export async function commitResumeUpload({
       };
       const [saved] = await tx.insert(userPrefResumes).values({userId:user.id,...values})
         .onConflictDoUpdate({target:userPrefResumes.userId,set:values}).returning();
+      if (extension === '.pdf') await tx.execute(sql`INSERT INTO resume_imports
+        (id,user_id,object_key,file_name,file_size,status,validator_version,file_sha256,content_sha256,markdown,parsed_data,confirmed_at)
+        VALUES(${importId}::uuid,${user.id},${objectKey},${cleanFileName},${bytes.length},'confirmed',
+        ${validation.validatorVersion},${validation.fileSha256},encode(digest(replace(replace(${validation.markdown},chr(13)||chr(10),chr(10)),chr(13),chr(10)),'sha256'),'hex'),
+        ${validation.markdown},${JSON.stringify(details)}::jsonb,now())`);
       await tx.insert(userJobPreferences).values({userId:user.id,activeResumeId:saved.id,
         preferences:updates,resumeDetails:details,updatedAt:now})
         .onConflictDoUpdate({target:userJobPreferences.userId,set:{activeResumeId:saved.id,

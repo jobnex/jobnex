@@ -110,6 +110,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
   };
 
   const summary: string[] = [];
+  let summaryParagraph = false;
   const skills: SkillCategory[] = [];
   const experience: ExperienceItem[] = [];
   const projects: ProjectItem[] = [];
@@ -214,8 +215,13 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
       const bulletText = extractBulletText(line);
       if (bulletText !== null) {
         summary.push(bulletText);
+        summaryParagraph = false;
       } else if (line.length > 0) {
-        summary.push(line);
+        if (summaryParagraph && summary.length) summary[summary.length - 1] += ` ${line}`;
+        else summary.push(line);
+        summaryParagraph = true;
+      } else {
+        summaryParagraph = false;
       }
     } else if (currentSection === "skills") {
       // Formats: - **Category:** Items OR Category : Items
@@ -237,7 +243,7 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
           if (skills.length > 0) {
             const lastSkill = skills[skills.length - 1];
             const cleanAdd = line.replace(/^[-*•\u2022]\s*/, "").trim();
-            lastSkill.items = lastSkill.items ? `${lastSkill.items}, ${cleanAdd}` : cleanAdd;
+            lastSkill.items = lastSkill.items ? `${lastSkill.items.replace(/[,;]\s*$/, "")}, ${cleanAdd}` : cleanAdd;
           } else {
             skills.push({
               category: "General",
@@ -289,6 +295,8 @@ export function parseResumeMarkdown(markdown: string): ParsedResume {
           if (currentExpItem) {
             currentExpItem.bullets.push(bulletText);
           }
+        } else if (line && currentExpItem && !currentExpItem.location && currentExpItem.bullets.length === 0 && /^[A-Z][A-Za-z .'-]+,\s*(?:[A-Z]{2}|USA|India|United States)$/.test(line)) {
+          currentExpItem.location = line;
         } else if (line && currentExpItem) {
           // Append continuation to previous bullet if present
           if (currentExpItem.bullets.length > 0) {

@@ -20,6 +20,8 @@ const EducationEntrySchema = z.object({
   grade: z.string().default(""),
   maxGrade: z.string().default(""),
   gradeType: z.string().default("CGPA"),
+  details: z.string().default(""),
+  location: z.string().default(""),
 });
 
 const ExperienceEntrySchema = z.object({
@@ -32,6 +34,7 @@ const ExperienceEntrySchema = z.object({
   skills: z.array(z.string()).default([]),
   domains: z.array(z.string()).default([]),
   responsibilities: z.string().default(""),
+  location: z.string().default(""),
 });
 
 const PersonalDetailsSchema = z.object({

@@ -558,6 +558,8 @@ export function ResumeSheet({
               );
             }
 
+            const extra = parsedData.additionalSections?.[secKey];
+            if (extra) return <div key={secKey} className="mb-[0.3em]">{renderSectionHeader(extra.title)}{extra.lines.map((line, i) => <div key={i} className="whitespace-pre-wrap">{line}</div>)}</div>;
             return null;
           })}
         </div>
